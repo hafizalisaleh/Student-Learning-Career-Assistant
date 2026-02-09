@@ -1,6 +1,6 @@
 'use client';
 
-import { ReactNode } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuthStore } from '@/lib/store';
@@ -17,8 +17,9 @@ import {
   Menu,
   X,
   GraduationCap,
+  MessageSquare,
+  Mic,
 } from 'lucide-react';
-import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import toast from 'react-hot-toast';
 import { cn } from '@/lib/utils';
@@ -30,6 +31,7 @@ interface DashboardLayoutProps {
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Documents', href: '/dashboard/documents', icon: FileText },
+  { name: 'Voice AI Chat', href: '/dashboard/ask', icon: Mic, isHighlighted: true },
   { name: 'Notes', href: '/dashboard/notes', icon: BookOpen },
   { name: 'Summaries', href: '/dashboard/summaries', icon: Brain },
   { name: 'Quizzes', href: '/dashboard/quizzes', icon: ClipboardCheck },
@@ -37,11 +39,11 @@ const navigation = [
   { name: 'Career', href: '/dashboard/career', icon: Briefcase },
 ];
 
-// Bottom nav shows fewer items on mobile
+// Bottom nav shows fewer items on mobile - Voice is prominent
 const bottomNavItems = [
   { name: 'Home', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Docs', href: '/dashboard/documents', icon: FileText },
-  { name: 'Notes', href: '/dashboard/notes', icon: BookOpen },
+  { name: 'Voice', href: '/dashboard/ask', icon: Mic, isVoice: true },
   { name: 'Quiz', href: '/dashboard/quizzes', icon: ClipboardCheck },
   { name: 'More', href: '#more', icon: Menu },
 ];
@@ -49,8 +51,14 @@ const bottomNavItems = [
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, logout } = useAuthStore();
+  const { user, logout, isHydrated } = useAuthStore();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  // Wait for client mount to prevent hydration mismatch
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const handleLogout = () => {
     logout();
@@ -66,7 +74,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   };
 
   return (
-    <div className="min-h-screen bg-[var(--bg-primary)]">
+    <div className="min-h-screen bg-[var(--bg-primary)]" suppressHydrationWarning>
       {/* Mobile sidebar backdrop */}
       {sidebarOpen && (
         <div
@@ -105,6 +113,34 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           {navigation.map((item) => {
             const active = isActive(item.href);
             const Icon = item.icon;
+            const isHighlighted = (item as any).isHighlighted;
+
+            // Special styling for Voice AI - make it stand out
+            if (isHighlighted) {
+              return (
+                <Link
+                  key={item.name}
+                  href={item.href}
+                  className={cn(
+                    'flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200',
+                    active
+                      ? 'bg-gradient-to-r from-[var(--accent-purple)] to-[var(--accent-pink)] text-white shadow-lg shadow-[var(--accent-purple-glow)]'
+                      : 'bg-gradient-to-r from-[var(--accent-purple)]/20 to-[var(--accent-pink)]/20 text-[var(--accent-pink)] border border-[var(--accent-pink)]/30 hover:from-[var(--accent-purple)]/30 hover:to-[var(--accent-pink)]/30'
+                  )}
+                  onClick={() => setSidebarOpen(false)}
+                >
+                  <div className={cn(
+                    'p-1.5 rounded-lg',
+                    active ? 'bg-white/20' : 'bg-[var(--accent-pink)]/20'
+                  )}>
+                    <Icon className="h-4 w-4" />
+                  </div>
+                  <span className="flex-1">{item.name}</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/20 font-semibold">NEW</span>
+                </Link>
+              );
+            }
+
             return (
               <Link
                 key={item.name}
@@ -131,12 +167,21 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               <User className="h-5 w-5 text-white" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-[var(--text-primary)] truncate">
-                {user?.first_name && user?.last_name
-                  ? `${user.first_name} ${user.last_name}`
-                  : user?.email}
-              </p>
-              <p className="text-xs text-[var(--text-tertiary)] truncate">{user?.email}</p>
+              {mounted && user ? (
+                <>
+                  <p className="text-sm font-medium text-[var(--text-primary)] truncate">
+                    {user.first_name && user.last_name
+                      ? `${user.first_name} ${user.last_name}`
+                      : user.email}
+                  </p>
+                  <p className="text-xs text-[var(--text-tertiary)] truncate">{user.email}</p>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm font-medium text-[var(--text-primary)] truncate">Loading...</p>
+                  <p className="text-xs text-[var(--text-tertiary)] truncate">&nbsp;</p>
+                </>
+              )}
             </div>
           </div>
           <Button
@@ -193,6 +238,30 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                   <Icon className="h-5 w-5" />
                   <span className="text-xs font-medium">{item.name}</span>
                 </button>
+              );
+            }
+
+            // Special styling for Voice button - make it stand out
+            if ((item as any).isVoice) {
+              return (
+                <Link
+                  key={item.name}
+                  href={item.href}
+                  className="flex flex-col items-center gap-1 px-3 py-1 -mt-4"
+                >
+                  <div className={cn(
+                    'p-3 rounded-full transition-all duration-300',
+                    active
+                      ? 'bg-gradient-to-br from-[var(--accent-blue)] to-[var(--accent-purple)] shadow-lg shadow-[var(--accent-blue-glow)]'
+                      : 'bg-gradient-to-br from-[var(--accent-purple)] to-[var(--accent-pink)] shadow-lg shadow-[var(--accent-purple-glow)]'
+                  )}>
+                    <Icon className="h-6 w-6 text-white" />
+                  </div>
+                  <span className={cn(
+                    'text-xs font-medium',
+                    active ? 'text-[var(--accent-blue)]' : 'text-[var(--text-secondary)]'
+                  )}>{item.name}</span>
+                </Link>
               );
             }
 

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
+import Link from 'next/link';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -169,9 +170,14 @@ export default function DocumentsPage() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-[var(--text-primary)]">Documents</h1>
-          <p className="text-[var(--text-secondary)] mt-1">Upload and manage your learning materials</p>
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-xl bg-gradient-to-br from-[var(--accent-blue)] to-[var(--accent-green)]">
+            <FileText className="h-6 w-6 text-white" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-[var(--text-primary)]">Documents</h1>
+            <p className="text-sm text-[var(--text-secondary)]">Upload and manage your learning materials</p>
+          </div>
         </div>
         <div className="flex gap-3">
           <Button
@@ -326,16 +332,20 @@ export default function DocumentsPage() {
 
               {/* Actions */}
               <div className="flex gap-2 pt-3 border-t border-[var(--card-border)]">
+                <Link href={`/dashboard/documents/${doc.id}`} className="flex-1">
+                  <Button variant="secondary" size="sm" className="w-full">
+                    <FileText className="h-4 w-4 mr-2" />
+                    View Details
+                  </Button>
+                </Link>
                 {doc.file_url && (
                   <a
                     href={doc.file_url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex-1"
                   >
-                    <Button variant="secondary" size="sm" className="w-full">
-                      <ExternalLink className="h-4 w-4 mr-2" />
-                      View
+                    <Button variant="ghost" size="sm">
+                      <ExternalLink className="h-4 w-4" />
                     </Button>
                   </a>
                 )}

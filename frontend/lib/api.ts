@@ -6,9 +6,11 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 interface ApiInstance extends AxiosInstance {
   // Documents
   getDocuments: () => Promise<any>;
+  getDocument: (id: string) => Promise<any>;
   uploadDocument: (formData: FormData) => Promise<any>;
   deleteDocument: (id: string) => Promise<any>;
   processUrl: (url: string) => Promise<any>;
+  getDocumentMindmap: (id: string, style?: string) => Promise<any>;
 
   // Notes
   getNotes: () => Promise<any>;
@@ -44,6 +46,12 @@ interface ApiInstance extends AxiosInstance {
   getInterviewPrep: () => Promise<any>;
   uploadAndAnalyzeResume: (file: File) => Promise<any>;
   getLatestResume: () => Promise<any>;
+
+  // RAG / Vector Store
+  ragQuery: (question: string, documentId?: string, nResults?: number) => Promise<any>;
+  ragSearch: (query: string, documentId?: string, nResults?: number) => Promise<any>;
+  getVectorStats: () => Promise<any>;
+  getDocumentEmbeddings: (documentId: string) => Promise<any>;
 }
 
 const axiosInstance = axios.create({
@@ -84,11 +92,17 @@ axiosInstance.interceptors.response.use(
 // ===== Documents =====
 axiosInstance.getDocuments = async () => {
   const response = await axiosInstance.get('/api/documents/');
+  // Backend returns { documents: [...], total, page, page_size }
+  return response.data.documents || response.data;
+};
+
+axiosInstance.getDocument = async (id: string) => {
+  const response = await axiosInstance.get(`/api/documents/${id}`);
   return response.data;
 };
 
 axiosInstance.uploadDocument = async (formData: FormData) => {
-  const response = await axiosInstance.post('/api/documents/upload', formData, {
+  const response = await axiosInstance.post('/api/documents/upload/file', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   });
   return response.data;
@@ -99,8 +113,16 @@ axiosInstance.deleteDocument = async (id: string) => {
   return response.data;
 };
 
+axiosInstance.getDocumentMindmap = async (id: string, style: string = 'default') => {
+  const response = await axiosInstance.get(`/api/documents/${id}/mindmap?style=${style}`);
+  return response.data;
+};
+
 axiosInstance.processUrl = async (url: string) => {
-  const response = await axiosInstance.post('/api/documents/process-url', { url });
+  // Detect URL type and call appropriate endpoint
+  const isYouTube = url.includes('youtube.com') || url.includes('youtu.be');
+  const endpoint = isYouTube ? '/api/documents/upload/youtube' : '/api/documents/upload/web';
+  const response = await axiosInstance.post(endpoint, { url });
   return response.data;
 };
 
@@ -116,7 +138,7 @@ axiosInstance.getNote = async (id: string) => {
 };
 
 axiosInstance.createNote = async (data: any) => {
-  const response = await axiosInstance.post('/api/notes/', data);
+  const response = await axiosInstance.post('/api/notes/generate', data);
   return response.data;
 };
 
@@ -133,7 +155,7 @@ axiosInstance.downloadNote = async (id: string) => {
 };
 
 axiosInstance.exportNoteDocx = async (id: string) => {
-  const response = await axiosInstance.get(`/api/notes/${id}/export-docx`, {
+  const response = await axiosInstance.get(`/api/notes/${id}/export/docx`, {
     responseType: 'blob',
   });
   return response.data;
@@ -172,7 +194,7 @@ axiosInstance.generateQuiz = async (data: any) => {
 };
 
 axiosInstance.submitQuizAttempt = async (quizId: string, answers: any) => {
-  const response = await axiosInstance.post(`/api/quizzes/${quizId}/attempt`, { answers });
+  const response = await axiosInstance.post(`/api/quizzes/${quizId}/submit`, { answers });
   return response.data;
 };
 
@@ -188,22 +210,22 @@ axiosInstance.getQuizAnalytics = async () => {
 
 // ===== Progress =====
 axiosInstance.getProgress = async () => {
-  const response = await axiosInstance.get('/api/progress/analytics');
+  const response = await axiosInstance.get('/api/progress/analytics/detailed');
   return response.data;
 };
 
 axiosInstance.getProgressOverview = async () => {
-  const response = await axiosInstance.get('/api/progress/analytics');
+  const response = await axiosInstance.get('/api/progress/dashboard');
   return response.data;
 };
 
 axiosInstance.getActivityLog = async () => {
-  const response = await axiosInstance.get('/api/progress/activity');
+  const response = await axiosInstance.get('/api/progress/activities');
   return response.data;
 };
 
 axiosInstance.getAIInsights = async () => {
-  const response = await axiosInstance.get('/api/progress/ai-insights');
+  const response = await axiosInstance.get('/api/progress/insights/ai');
   return response.data;
 };
 
@@ -240,6 +262,35 @@ axiosInstance.uploadAndAnalyzeResume = async (file: File) => {
 
 axiosInstance.getLatestResume = async () => {
   const response = await axiosInstance.get('/api/career/resume');
+  return response.data;
+};
+
+// ===== RAG / Vector Store =====
+axiosInstance.ragQuery = async (question: string, documentId?: string, nResults: number = 5) => {
+  const response = await axiosInstance.post('/api/vectors/query', {
+    question,
+    document_id: documentId,
+    n_results: nResults,
+  });
+  return response.data;
+};
+
+axiosInstance.ragSearch = async (query: string, documentId?: string, nResults: number = 5) => {
+  const response = await axiosInstance.post('/api/vectors/search', {
+    query,
+    document_id: documentId,
+    n_results: nResults,
+  });
+  return response.data;
+};
+
+axiosInstance.getVectorStats = async () => {
+  const response = await axiosInstance.get('/api/vectors/stats');
+  return response.data;
+};
+
+axiosInstance.getDocumentEmbeddings = async (documentId: string) => {
+  const response = await axiosInstance.get(`/api/vectors/documents/${documentId}/embeddings`);
   return response.data;
 };
 

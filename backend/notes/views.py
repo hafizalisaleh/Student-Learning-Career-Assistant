@@ -8,11 +8,10 @@ from config.database import get_db
 from notes.models import Note
 from notes.schemas import NoteCreate, NoteResponse
 from documents.models import Document, ProcessingStatus
-from documents.upload_handler import upload_handler
 from users.auth import get_current_user
 from users.models import User
 from notes.generator import notes_generator
-from core.rag_pipeline import rag_pipeline
+from core.rag_retriever import rag_retriever
 from docx import Document as DocxDocument
 from docx.shared import Inches, Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -29,14 +28,15 @@ async def generate_notes(
     db: Session = Depends(get_db)
 ):
     """
-    Generate AI-powered notes from document using Gemini
-    Extracts document content on-demand (not from database)
-    
+    Generate AI-powered notes from document using RAG when available.
+    Uses vector similarity search to retrieve relevant chunks,
+    falls back to full text extraction if embeddings not available.
+
     Args:
         note_data: Note creation data
         current_user: Current authenticated user
         db: Database session
-        
+
     Returns:
         Generated notes
     """
@@ -46,49 +46,35 @@ async def generate_notes(
             Document.id == note_data.document_id,
             Document.user_id == current_user.id
         ).first()
-        
+
         if not document:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Document not found"
             )
-        
+
         logger.info(f"Generating notes for document {document.id} by user {current_user.email}")
-        
-        # Extract content on-demand based on document type
-        content = None
-        try:
-            if document.content_type.value == "youtube":
-                logger.info(f"Extracting YouTube content from {document.file_url}")
-                result = rag_pipeline.process_youtube(document.file_url)
-                if result.get("success"):
-                    content = result.get("text")
-            elif document.content_type.value == "article":
-                logger.info(f"Extracting web article content from {document.file_url}")
-                result = rag_pipeline.process_webpage(document.file_url)
-                if result.get("success"):
-                    content = result.get("text")
-            elif document.file_path:
-                logger.info(f"Extracting file content from {document.file_path}")
-                result = upload_handler.extract_content_on_demand(
-                    document.file_path, 
-                    document.content_type.value
-                )
-                if result.get("success"):
-                    content = result.get("text")
-        except Exception as extract_error:
-            logger.error(f"Content extraction error: {extract_error}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to extract document content: {str(extract_error)}"
-            )
-        
-        if not content:
+
+        # Use RAG retriever to get content (uses embeddings if available, else full text)
+        retrieval_result = rag_retriever.get_content_for_generation(
+            document=document,
+            task_type="notes",
+            chunk_count=5
+        )
+
+        content = retrieval_result.get("content")
+        content_source = retrieval_result.get("source")
+
+        logger.info(f"Content retrieved via {content_source}, chunks_used={retrieval_result.get('chunks_used', 0)}")
+
+        if not content or retrieval_result.get("source") == "error":
+            error_msg = retrieval_result.get("error", "Could not extract content from document")
+            logger.error(f"Content retrieval failed: {error_msg}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Could not extract content from document. Please ensure the document is accessible."
+                detail=error_msg
             )
-        
+
         logger.info(f"Content extracted successfully, length: {len(content)} characters")
         
         # Generate notes using Gemini AI

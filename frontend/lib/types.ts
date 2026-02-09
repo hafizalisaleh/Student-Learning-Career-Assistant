@@ -9,18 +9,37 @@ export interface User {
   created_at: string;
 }
 
+// Auth types
+export interface LoginData {
+  email: string;
+  password: string;
+}
+
+export interface RegisterData {
+  email: string;
+  password: string;
+  first_name: string;
+  last_name: string;
+}
+
+export interface TokenResponse {
+  access_token: string;
+  token_type: string;
+  user: User;
+}
+
 // Document types
 export interface Document {
   id: string;
   user_id: string;
   title: string;
-  content_type: 'YOUTUBE' | 'ARTICLE' | 'PDF' | 'PPT' | 'IMAGE' | 'DOCX' | 'EXCEL' | 'TEXT';
+  content_type: 'youtube' | 'article' | 'pdf' | 'ppt' | 'image' | 'docx' | 'excel' | 'text';
   original_filename?: string;
   file_url?: string;
   file_path?: string;
   upload_date: string;
   file_size?: number;
-  processing_status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+  processing_status: 'pending' | 'processing' | 'completed' | 'failed';
   extracted_text?: string;
   topics?: string[];
   keywords?: string[];
@@ -47,7 +66,7 @@ export interface Summary {
   user_id: string;
   document_id: string;
   summary_text: string;
-  summary_length: 'SHORT' | 'MEDIUM' | 'DETAILED';
+  summary_length: 'short' | 'medium' | 'detailed';
   generated_at: string;
 }
 

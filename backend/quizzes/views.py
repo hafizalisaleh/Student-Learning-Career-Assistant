@@ -16,8 +16,7 @@ from users.auth import get_current_user
 from users.models import User
 from quizzes.generator import quiz_generator
 from quizzes.evaluator import quiz_evaluator
-from core.rag_pipeline import rag_pipeline
-from documents.upload_handler import upload_handler
+from core.rag_retriever import rag_retriever
 from utils.logger import logger
 
 router = APIRouter(prefix="/api/quizzes", tags=["quizzes"])
@@ -29,76 +28,68 @@ def generate_quiz(
     db: Session = Depends(get_db)
 ):
     """
-    Generate a new quiz from documents with on-demand content extraction
-    
+    Generate a new quiz from documents using RAG when available.
+    Uses vector similarity search to retrieve relevant chunks,
+    falls back to full text extraction if embeddings not available.
+
     Args:
         quiz_data: Quiz creation data
         current_user: Current authenticated user
         db: Database session
-        
+
     Returns:
         Generated quiz with questions
     """
     logger.info(f"Generating quiz for user {current_user.email}")
     logger.info(f"Document IDs: {quiz_data.document_ids}")
     logger.info(f"Question type: {quiz_data.question_type.value}, Difficulty: {quiz_data.difficulty.value}")
-    
+
     # Validate documents
     documents = db.query(Document).filter(
         Document.id.in_([str(doc_id) for doc_id in quiz_data.document_ids]),
         Document.user_id == current_user.id
     ).all()
-    
+
     if not documents:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No documents found"
         )
-    
+
     logger.info(f"Found {len(documents)} documents")
-    
-    # Extract content from all documents on-demand
+
+    # Extract content from all documents using RAG retriever
     extracted_contents = []
     for doc in documents:
         try:
-            content = None
-            if doc.content_type.value == "youtube":
-                logger.info(f"Extracting YouTube content from {doc.file_url}")
-                result = rag_pipeline.process_youtube(doc.file_url)
-                if result.get("success"):
-                    content = result.get("text")
-            elif doc.content_type.value == "article":
-                logger.info(f"Extracting web article content from {doc.file_url}")
-                result = rag_pipeline.process_webpage(doc.file_url)
-                if result.get("success"):
-                    content = result.get("text")
-            elif doc.file_path:
-                logger.info(f"Extracting file content from {doc.file_path}")
-                result = upload_handler.extract_content_on_demand(
-                    doc.file_path, 
-                    doc.content_type.value
-                )
-                if result.get("success"):
-                    content = result.get("text")
-            
+            # Use RAG retriever (uses embeddings if available, else full text)
+            retrieval_result = rag_retriever.get_content_for_generation(
+                document=doc,
+                task_type="quiz",
+                chunk_count=5
+            )
+
+            content = retrieval_result.get("content")
+            content_source = retrieval_result.get("source")
+
             if content and len(content) > 100:
                 extracted_contents.append(content)
-                logger.info(f"Extracted {len(content)} characters from document {doc.id}")
+                logger.info(f"Document {doc.id}: Retrieved {len(content)} chars via {content_source} (chunks={retrieval_result.get('chunks_used', 0)})")
             else:
                 logger.warning(f"No content extracted from document {doc.id}")
         except Exception as e:
             logger.error(f"Error extracting content from document {doc.id}: {e}", exc_info=True)
-    
+
     if not extracted_contents:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Could not extract content from any documents. Please ensure documents are accessible."
         )
-    
+
     # Combine content from all documents
     combined_content = "\n\n".join(extracted_contents)
     logger.info(f"Combined content length: {len(combined_content)} characters")
-    
+
     if len(combined_content) < 200:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

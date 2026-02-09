@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import dynamic from 'next/dynamic';
 import { api } from '@/lib/api';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
@@ -90,7 +91,7 @@ export default function ProgressPage() {
     try {
       setLoading(true);
       const [analyticsData, insightsData] = await Promise.all([
-        api.getDetailedAnalytics(),
+        api.getProgress(),
         api.getAIInsights()
       ]);
       

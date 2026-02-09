@@ -37,10 +37,20 @@ export default function NewNotePage() {
     async function fetchDocuments() {
       try {
         setIsLoadingDocs(true);
+        console.log('Fetching documents for notes...');
         const data = await api.getDocuments();
-        setDocuments(Array.isArray(data) ? data : []);
+        console.log('Raw documents:', data);
+
+        const docsArray = Array.isArray(data) ? data : [];
+        // Filter for completed documents only
+        const completedDocs = docsArray.filter((doc) =>
+          doc.processing_status?.toLowerCase() === 'completed'
+        );
+        console.log('Completed documents:', completedDocs);
+
+        setDocuments(completedDocs);
       } catch (error) {
-        console.error('Failed to load documents');
+        console.error('Failed to load documents:', error);
         toast.error('Failed to load documents');
         setDocuments([]);
       } finally {

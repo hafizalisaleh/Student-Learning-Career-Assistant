@@ -19,18 +19,22 @@ from documents.topic_extractor import topic_extractor
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
-def process_document_background(document_id: str, db: Session):
+def process_document_background(document_id: str):
     """
     Background task to process document - Enhanced with topic extraction
     For URLs (YouTube/Article): Skip extraction, mark as completed immediately
     For Files: Extract topics, index to vector store
-    
+
     Args:
         document_id: Document ID
-        db: Database session
     """
+    # Create a new database session for background task
+    from config.database import SessionLocal
+    from utils.logger import logger
+
+    db = SessionLocal()
     try:
-        from utils.logger import logger
+        logger.info(f"[Background] Starting document processing for {document_id}")
         doc = db.query(Document).filter(Document.id == document_id).first()
         if not doc:
             return
@@ -52,14 +56,23 @@ def process_document_background(document_id: str, db: Session):
         doc.processing_status = ProcessingStatus.PROCESSING
         db.commit()
         
-        # Extract content for topic analysis
+        # Extract content for topic analysis and create embeddings
         extracted_text = ""
         try:
-            result = rag_pipeline.process_document(doc.file_path)
-            
+            logger.info(f"[Background] Calling RAG pipeline for {document_id}, file: {doc.file_path}")
+
+            # Pass document_id to store embeddings in vector store
+            result = rag_pipeline.process_document(
+                file_path=doc.file_path,
+                document_id=document_id,
+                store_embeddings=True
+            )
+
+            logger.info(f"[Background] RAG pipeline result for {document_id}: success={result.get('success')}, embeddings_stored={result.get('embeddings_stored')}, chunk_count={result.get('chunk_count')}")
+
             if result.get("success"):
                 # Store vector DB reference
-                doc.vector_db_reference_id = result.get("doc_id")
+                doc.vector_db_reference_id = document_id if result.get("embeddings_stored") else None
                 extracted_text = result.get("text", "")
                 
                 # Extract topics and domains using AI
@@ -79,6 +92,7 @@ def process_document_background(document_id: str, db: Session):
                 # Store comprehensive metadata
                 doc.doc_metadata = {
                     "indexed": True,
+                    "embeddings_stored": result.get("embeddings_stored", False),
                     "chunk_count": result.get("chunk_count", 0),
                     "indexed_at": str(doc.upload_date),
                     "technical_skills": topic_data.get('technical_skills', []),
@@ -111,12 +125,20 @@ def process_document_background(document_id: str, db: Session):
         db.commit()
         
     except Exception as e:
-        from utils.logger import logger
         logger.error(f"Error processing document {document_id}: {e}")
-        if doc:
-            doc.processing_status = ProcessingStatus.FAILED
-            doc.doc_metadata = {"error": str(e)}
-            db.commit()
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        try:
+            doc = db.query(Document).filter(Document.id == document_id).first()
+            if doc:
+                doc.processing_status = ProcessingStatus.FAILED
+                doc.doc_metadata = {"error": str(e)}
+                db.commit()
+        except Exception as db_error:
+            logger.error(f"Failed to update document status: {db_error}")
+    finally:
+        db.close()
+        logger.info(f"[Background] Closed database session for {document_id}")
 
 @router.post("/upload/file", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
 async def upload_file(
@@ -169,11 +191,11 @@ async def upload_file(
         
         logger.info(f"Document record created with ID: {new_document.id}")
         
-        # Process in background
-        background_tasks.add_task(process_document_background, str(new_document.id), db)
-        
+        # Process in background (creates its own db session)
+        background_tasks.add_task(process_document_background, str(new_document.id))
+
         return DocumentResponse.from_orm(new_document)
-        
+
     except Exception as e:
         from utils.logger import logger
         logger.error(f"File upload failed: {str(e)}")
@@ -225,10 +247,10 @@ async def upload_youtube(
     db.add(new_document)
     db.commit()
     db.refresh(new_document)
-    
-    # Process in background
-    background_tasks.add_task(process_document_background, str(new_document.id), db)
-    
+
+    # Process in background (creates its own db session)
+    background_tasks.add_task(process_document_background, str(new_document.id))
+
     return DocumentResponse.from_orm(new_document)
 
 @router.post("/upload/web", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
@@ -271,10 +293,10 @@ async def upload_web_article(
     db.add(new_document)
     db.commit()
     db.refresh(new_document)
-    
-    # Process in background
-    background_tasks.add_task(process_document_background, str(new_document.id), db)
-    
+
+    # Process in background (creates its own db session)
+    background_tasks.add_task(process_document_background, str(new_document.id))
+
     return DocumentResponse.from_orm(new_document)
 
 @router.get("/", response_model=DocumentListResponse)
@@ -505,6 +527,97 @@ def get_user_interest_profile(
     # Aggregate interests
     logger.info(f"Aggregating interests from {len(documents_data)} documents for user {current_user.email}")
     interest_profile = topic_extractor.aggregate_user_interests(documents_data)
-    
+
     return interest_profile
+
+
+@router.get("/{document_id}/mindmap")
+async def generate_document_mindmap(
+    document_id: str,
+    style: str = "default",
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Generate a Mermaid mind map diagram from document content.
+
+    Args:
+        document_id: Document ID
+        style: Mind map style (simple, default, detailed)
+        current_user: Current authenticated user
+        db: Database session
+
+    Returns:
+        Mermaid diagram code
+    """
+    from documents.mindmap import mindmap_generator
+    from utils.logger import logger
+
+    # Get document
+    doc = db.query(Document).filter(
+        Document.id == document_id,
+        Document.user_id == current_user.id
+    ).first()
+
+    if not doc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found"
+        )
+
+    logger.info(f"Generating mind map for document {document_id} by user {current_user.email}")
+
+    # Extract content on-demand
+    try:
+        content = None
+        if doc.content_type == ContentType.YOUTUBE:
+            result = rag_pipeline.process_youtube(doc.file_url, store_embeddings=False)
+            if result.get("success"):
+                content = result.get("text")
+        elif doc.content_type == ContentType.ARTICLE:
+            result = rag_pipeline.process_webpage(doc.file_url, store_embeddings=False)
+            if result.get("success"):
+                content = result.get("text")
+        elif doc.file_path:
+            result = upload_handler.extract_content_on_demand(
+                doc.file_path,
+                doc.content_type.value
+            )
+            if result.get("success"):
+                content = result.get("text")
+
+        if not content:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Could not extract content from document"
+            )
+
+        # Generate mind map
+        result = mindmap_generator.generate_mindmap(
+            content=content,
+            title=doc.title,
+            style=style
+        )
+
+        if result.get("success"):
+            return {
+                "document_id": str(doc.id),
+                "title": doc.title,
+                "mermaid_code": result["mermaid_code"],
+                "style": style
+            }
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=result.get("error", "Failed to generate mind map")
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Mind map generation error for {document_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Mind map generation failed: {str(e)}"
+        )
 
