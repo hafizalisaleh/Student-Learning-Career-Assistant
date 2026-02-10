@@ -662,28 +662,48 @@ async def generate_document_diagram(
             detail="Document not found"
         )
 
+    logger.info(f"Generating {diagram_type} diagram for document {document_id} by user {current_user.email}")
+
+    # Extract content on-demand (same approach as mindmap)
     try:
-        # Get document content
-        content = ""
+        content = None
 
-        # Try to get content from vector store
-        try:
-            from core.vector_store import vector_store
-            chunks = vector_store.get_document_chunks(str(doc.id))
-            if chunks and len(chunks) > 0:
-                content = "\n\n".join([c.get("content", "") for c in chunks])
-                logger.info(f"Retrieved {len(chunks)} chunks for diagram generation")
-        except Exception as e:
-            logger.warning(f"Could not retrieve chunks: {e}")
+        # First try to get from extracted_text if already processed
+        if doc.extracted_text:
+            content = doc.extracted_text
+            logger.info(f"Using stored extracted_text for diagram generation")
+        # Otherwise extract on-demand based on content type
+        elif doc.content_type == ContentType.YOUTUBE:
+            result = rag_pipeline.process_youtube(doc.file_url, store_embeddings=False)
+            if result.get("success"):
+                content = result.get("text")
+        elif doc.content_type == ContentType.ARTICLE:
+            result = rag_pipeline.process_webpage(doc.file_url, store_embeddings=False)
+            if result.get("success"):
+                content = result.get("text")
+        elif doc.file_path:
+            result = upload_handler.extract_content_on_demand(
+                doc.file_path,
+                doc.content_type.value
+            )
+            if result.get("success"):
+                content = result.get("text")
 
-        # Fallback to raw content
-        if not content and doc.content:
-            content = doc.content
+        # Try vector store as last fallback
+        if not content:
+            try:
+                from core.vector_store import vector_store
+                chunks = vector_store.get_document_chunks(str(doc.id))
+                if chunks and len(chunks) > 0:
+                    content = "\n\n".join([c.get("content", "") for c in chunks])
+                    logger.info(f"Retrieved {len(chunks)} chunks for diagram generation")
+            except Exception as e:
+                logger.warning(f"Could not retrieve chunks: {e}")
 
         if not content:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Document has no content to generate diagram from"
+                detail="Could not extract content from document"
             )
 
         # Generate diagram
