@@ -11,6 +11,7 @@ interface ApiInstance extends AxiosInstance {
   deleteDocument: (id: string) => Promise<any>;
   processUrl: (url: string) => Promise<any>;
   getDocumentMindmap: (id: string, style?: string) => Promise<any>;
+  getDocumentDiagram: (id: string, diagramType?: string) => Promise<any>;
 
   // Notes
   getNotes: () => Promise<any>;
@@ -115,6 +116,11 @@ axiosInstance.deleteDocument = async (id: string) => {
 
 axiosInstance.getDocumentMindmap = async (id: string, style: string = 'default') => {
   const response = await axiosInstance.get(`/api/documents/${id}/mindmap?style=${style}`);
+  return response.data;
+};
+
+axiosInstance.getDocumentDiagram = async (id: string, diagramType: string = 'flowchart') => {
+  const response = await axiosInstance.get(`/api/documents/${id}/diagram?diagram_type=${diagramType}`);
   return response.data;
 };
 

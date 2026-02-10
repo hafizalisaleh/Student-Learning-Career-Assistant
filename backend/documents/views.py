@@ -621,3 +621,92 @@ async def generate_document_mindmap(
             detail=f"Mind map generation failed: {str(e)}"
         )
 
+
+@router.get("/{document_id}/diagram")
+async def generate_document_diagram(
+    document_id: str,
+    diagram_type: str = "flowchart",
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Generate a Mermaid diagram from document content.
+
+    Args:
+        document_id: Document ID
+        diagram_type: Type of diagram (flowchart, sequence, er, state, class)
+
+    Returns:
+        Mermaid diagram code
+    """
+    from documents.diagram_generator import diagram_generator
+    from utils.logger import logger
+
+    # Validate diagram type
+    valid_types = ["flowchart", "sequence", "er", "state", "class"]
+    if diagram_type not in valid_types:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid diagram type. Must be one of: {', '.join(valid_types)}"
+        )
+
+    # Get document
+    doc = db.query(Document).filter(
+        Document.id == document_id,
+        Document.user_id == current_user.id
+    ).first()
+
+    if not doc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found"
+        )
+
+    try:
+        # Get document content
+        content = ""
+
+        # Try to get content from vector store
+        try:
+            from core.vector_store import vector_store
+            chunks = vector_store.get_document_chunks(str(doc.id))
+            if chunks and len(chunks) > 0:
+                content = "\n\n".join([c.get("content", "") for c in chunks])
+                logger.info(f"Retrieved {len(chunks)} chunks for diagram generation")
+        except Exception as e:
+            logger.warning(f"Could not retrieve chunks: {e}")
+
+        # Fallback to raw content
+        if not content and doc.content:
+            content = doc.content
+
+        if not content:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Document has no content to generate diagram from"
+            )
+
+        # Generate diagram
+        result = diagram_generator.generate_diagram(
+            content=content,
+            title=doc.title,
+            diagram_type=diagram_type
+        )
+
+        return {
+            "document_id": str(doc.id),
+            "title": doc.title,
+            "mermaid_code": result["mermaid_code"],
+            "diagram_type": diagram_type,
+            "success": result.get("success", True)
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Diagram generation error for {document_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Diagram generation failed: {str(e)}"
+        )
+
