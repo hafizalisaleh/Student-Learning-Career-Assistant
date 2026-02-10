@@ -1,0 +1,57 @@
+%% Notes Generation Sequence Diagram
+%% Shows interaction flow: User -> API -> VectorDB -> Claude
+
+sequenceDiagram
+    autonumber
+
+    participant U as User
+    participant API as FastAPI Backend
+    participant Cache as Redis Cache
+    participant VDB as ChromaDB
+    participant LLM as Claude API
+
+    U->>API: POST /notes/generate
+    activate API
+
+    API->>API: Validate request
+
+    %% Cache check alt block
+    alt Cache Hit
+        API->>Cache: Check cache key
+        activate Cache
+        Cache-->>API: Return cached notes
+        deactivate Cache
+        API-->>U: 200 OK (cached)
+    else Cache Miss
+        API->>Cache: Check cache key
+        activate Cache
+        Cache-->>API: null
+        deactivate Cache
+
+        API->>VDB: Query similar chunks
+        activate VDB
+        VDB->>VDB: Compute embeddings
+        VDB->>VDB: Similarity search
+        VDB-->>API: Return top-k chunks
+        deactivate VDB
+
+        API->>API: Build context prompt
+
+        API->>LLM: Generate notes request
+        activate LLM
+        LLM->>LLM: Process context
+        LLM->>LLM: Generate structured notes
+        LLM-->>API: Return notes response
+        deactivate LLM
+
+        API->>Cache: Store in cache
+        activate Cache
+        Cache-->>API: OK
+        deactivate Cache
+
+        API-->>U: 200 OK (generated)
+    end
+
+    deactivate API
+
+    Note over U,LLM: Notes are cached for 24 hours<br/>to reduce API costs

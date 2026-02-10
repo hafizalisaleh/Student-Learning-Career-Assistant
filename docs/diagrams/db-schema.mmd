@@ -1,0 +1,93 @@
+%% Database Entity Relationship Diagram
+%% SLCA (Smart Learning Content Assistant) Schema
+
+erDiagram
+    Users {
+        int id PK
+        string email UK
+        string password_hash
+        string name
+        datetime created_at
+        datetime last_login
+        boolean is_active
+    }
+
+    Documents {
+        int id PK
+        int user_id FK
+        string filename
+        string file_type
+        int file_size
+        string storage_path
+        datetime uploaded_at
+        boolean is_processed
+    }
+
+    Chunks {
+        int id PK
+        int document_id FK
+        int chunk_index
+        text content
+        json embedding
+        int token_count
+        datetime created_at
+    }
+
+    Quizzes {
+        int id PK
+        int user_id FK
+        int document_id FK
+        string title
+        string difficulty
+        int num_questions
+        datetime created_at
+        json settings
+    }
+
+    Questions {
+        int id PK
+        int quiz_id FK
+        int chunk_id FK
+        text question_text
+        text correct_answer
+        json distractors
+        string question_type
+        int order_index
+    }
+
+    UserProgress {
+        int id PK
+        int user_id FK
+        int quiz_id FK
+        int score
+        int total_questions
+        float percentage
+        datetime completed_at
+        json answer_history
+    }
+
+    Notes {
+        int id PK
+        int user_id FK
+        int document_id FK
+        string title
+        text content
+        string format
+        datetime created_at
+        datetime updated_at
+    }
+
+    %% Relationships
+    Users ||--o{ Documents : "uploads"
+    Users ||--o{ Quizzes : "creates"
+    Users ||--o{ UserProgress : "tracks"
+    Users ||--o{ Notes : "generates"
+
+    Documents ||--|{ Chunks : "contains"
+    Documents ||--o{ Quizzes : "generates"
+    Documents ||--o{ Notes : "summarizes"
+
+    Quizzes ||--|{ Questions : "has"
+    Quizzes ||--o{ UserProgress : "records"
+
+    Chunks }o--o{ Questions : "sources"

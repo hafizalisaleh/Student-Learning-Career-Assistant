@@ -1,0 +1,54 @@
+%% Quiz Generation Flow with CRAG (Corrective RAG)
+%% Shows the flow from document input to quiz output
+
+graph TB
+    %% Input Stage
+    subgraph "Input Stage"
+        A[("Document<br/>Upload")] --> B["Text<br/>Extraction"]
+        B --> C["Chunk<br/>Processing"]
+    end
+
+    %% Processing Stage
+    subgraph "Processing Stage"
+        C --> D["Vector<br/>Embedding"]
+        D --> E["Similarity<br/>Search"]
+        E --> F["Context<br/>Retrieval"]
+    end
+
+    %% CRAG Decision
+    F --> CRAG{"CRAG<br/>Relevance<br/>Check"}
+
+    %% CRAG Paths
+    CRAG -->|"Score >= 0.75"| G["Use Retrieved<br/>Context"]
+    CRAG -->|"0.5 <= Score < 0.75"| H["Refine Query<br/>& Re-retrieve"]
+    CRAG -->|"Score < 0.5"| I["Web Search<br/>Fallback"]
+
+    H --> F
+
+    %% Generation Stage
+    subgraph "Generation Stage"
+        G --> J["Claude LLM<br/>Processing"]
+        I --> J
+        J --> K["Question<br/>Generation"]
+        K --> L["Answer<br/>Extraction"]
+        L --> M["Distractor<br/>Generation"]
+    end
+
+    %% Output Stage
+    subgraph "Output Stage"
+        M --> N["Quiz<br/>Formatting"]
+        N --> O[("Quiz<br/>Response")]
+    end
+
+    %% Styling
+    style CRAG fill:#e74c3c,stroke:#c0392b,stroke-width:3px,color:#fff
+
+    classDef inputNode fill:#3498db,stroke:#2980b9,color:#fff
+    classDef processNode fill:#9b59b6,stroke:#8e44ad,color:#fff
+    classDef genNode fill:#27ae60,stroke:#1e8449,color:#fff
+    classDef outputNode fill:#f39c12,stroke:#d68910,color:#fff
+
+    class A,B,C inputNode
+    class D,E,F processNode
+    class J,K,L,M genNode
+    class N,O outputNode

@@ -1,0 +1,69 @@
+%% SLCA System Architecture
+%% Smart Learning Content Assistant - Full Stack Overview
+
+graph LR
+    %% Frontend Subgraph
+    subgraph Frontend["Frontend (Next.js)"]
+        direction TB
+        UI["React Components"]
+        State["Zustand Store"]
+        Hooks["Custom Hooks"]
+        UI --> State
+        UI --> Hooks
+    end
+
+    %% Backend Subgraph
+    subgraph Backend["Backend (FastAPI)"]
+        direction TB
+        API["REST API<br/>Endpoints"]
+        Auth["JWT<br/>Authentication"]
+        RAG["RAG<br/>Pipeline"]
+        Core["Core<br/>Services"]
+        API --> Auth
+        API --> RAG
+        API --> Core
+    end
+
+    %% Storage Subgraph
+    subgraph Storage["Storage Layer"]
+        direction TB
+        PG[("PostgreSQL<br/>Main DB")]
+        Chroma[("ChromaDB<br/>Vectors")]
+        Redis[("Redis<br/>Cache")]
+        Files[("File<br/>Storage")]
+    end
+
+    %% External Services Subgraph
+    subgraph External["External Services"]
+        direction TB
+        Claude["Claude API<br/>LLM"]
+        Whisper["Whisper<br/>Speech-to-Text"]
+        TTS["ElevenLabs<br/>Text-to-Speech"]
+    end
+
+    %% Connections between subgraphs
+    Frontend <-->|"HTTP/REST"| Backend
+    Backend <-->|"SQL"| PG
+    Backend <-->|"Vector Ops"| Chroma
+    Backend <-->|"Cache"| Redis
+    Backend <-->|"Read/Write"| Files
+    Backend <-->|"AI Generation"| Claude
+    Backend <-->|"Audio Input"| Whisper
+    Backend <-->|"Audio Output"| TTS
+
+    %% Styling for subgraphs
+    style Frontend fill:#3498db,stroke:#2980b9,stroke-width:2px,color:#fff
+    style Backend fill:#27ae60,stroke:#1e8449,stroke-width:2px,color:#fff
+    style Storage fill:#f39c12,stroke:#d68910,stroke-width:2px,color:#fff
+    style External fill:#e74c3c,stroke:#c0392b,stroke-width:2px,color:#fff
+
+    %% Node styling
+    classDef frontendNode fill:#5dade2,stroke:#3498db,color:#000
+    classDef backendNode fill:#58d68d,stroke:#27ae60,color:#000
+    classDef storageNode fill:#f9e79f,stroke:#f39c12,color:#000
+    classDef externalNode fill:#f1948a,stroke:#e74c3c,color:#000
+
+    class UI,State,Hooks frontendNode
+    class API,Auth,RAG,Core backendNode
+    class PG,Chroma,Redis,Files storageNode
+    class Claude,Whisper,TTS externalNode

@@ -1,0 +1,63 @@
+%% User Progress State Diagram
+%% Tracks quiz attempt lifecycle with retry capability
+
+stateDiagram-v2
+    [*] --> NotStarted: Quiz Available
+
+    NotStarted --> InProgress: Start Quiz
+
+    state InProgress {
+        [*] --> AnsweringQuestion
+        AnsweringQuestion --> SubmittingAnswer: Submit
+        SubmittingAnswer --> ValidatingAnswer: Process
+        ValidatingAnswer --> AnsweringQuestion: Next Question
+        ValidatingAnswer --> AllAnswered: Last Question
+        AllAnswered --> [*]
+    }
+
+    InProgress --> Paused: Pause/Timeout
+    Paused --> InProgress: Resume
+
+    InProgress --> Completed: Finish Quiz
+
+    state Completed {
+        [*] --> CalculatingScore
+        CalculatingScore --> DisplayingResults
+        DisplayingResults --> SavingProgress
+        SavingProgress --> [*]
+    }
+
+    Completed --> Reviewing: View Answers
+    Reviewing --> Completed: Back to Results
+
+    Completed --> NotStarted: Retry Quiz
+
+    state retry_fork <<fork>>
+    state retry_join <<join>>
+
+    Completed --> retry_fork
+    retry_fork --> ResetProgress
+    retry_fork --> PreserveHistory
+    ResetProgress --> retry_join
+    PreserveHistory --> retry_join
+    retry_join --> NotStarted
+
+    NotStarted --> Abandoned: Delete/Archive
+    InProgress --> Abandoned: Timeout Exceeded
+    Abandoned --> [*]
+
+    note right of InProgress
+        User answers questions
+        one at a time with
+        immediate feedback
+    end note
+
+    note right of Completed
+        Score calculated as
+        correct / total * 100
+    end note
+
+    note left of retry_fork
+        Retry preserves history
+        but resets current score
+    end note
