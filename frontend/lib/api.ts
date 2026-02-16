@@ -30,6 +30,8 @@ interface ApiInstance extends AxiosInstance {
   getQuizzes: () => Promise<any>;
   getQuiz: (id: string) => Promise<any>;
   generateQuiz: (data: any) => Promise<any>;
+  startQuizAttempt: (quizId: string) => Promise<any>;
+  getQuizAttempt: (quizId: string) => Promise<any>;
   submitQuizAttempt: (quizId: string, answers: any) => Promise<any>;
   deleteQuiz: (id: string) => Promise<any>;
   getQuizAnalytics: () => Promise<any>;
@@ -196,6 +198,16 @@ axiosInstance.getQuiz = async (id: string) => {
 
 axiosInstance.generateQuiz = async (data: any) => {
   const response = await axiosInstance.post('/api/quizzes/generate', data);
+  return response.data;
+};
+
+axiosInstance.startQuizAttempt = async (quizId: string) => {
+  const response = await axiosInstance.post(`/api/quizzes/${quizId}/start`);
+  return response.data;
+};
+
+axiosInstance.getQuizAttempt = async (quizId: string) => {
+  const response = await axiosInstance.get(`/api/quizzes/${quizId}/attempt`);
   return response.data;
 };
 

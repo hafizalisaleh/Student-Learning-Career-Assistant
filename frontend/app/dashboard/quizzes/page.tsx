@@ -155,8 +155,8 @@ export default function QuizzesPage() {
               <CardHeader>
                 <div className="flex items-start justify-between mb-2">
                   <CardTitle className="text-lg">{quiz.title}</CardTitle>
-                  <span className={`px-3 py-1 rounded-full text-xs font-medium ${getDifficultyBadgeClass(quiz.difficulty || quiz.difficulty_level || 'medium')}`}>
-                    {quiz.difficulty || quiz.difficulty_level || 'Medium'}
+                  <span className={`px-3 py-1 rounded-full text-xs font-medium ${getDifficultyBadgeClass((quiz as any).difficulty || quiz.difficulty_level || 'medium')}`}>
+                    {(quiz as any).difficulty || quiz.difficulty_level || 'Medium'}
                   </span>
                 </div>
                 <CardDescription className="flex items-center gap-2">
@@ -168,7 +168,7 @@ export default function QuizzesPage() {
                 <div className="space-y-3">
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-gray-600">Topic:</span>
-                    <span className="font-medium">{quiz.topic || quiz.title || 'General'}</span>
+                    <span className="font-medium">{(quiz as any).topic || quiz.title || 'General'}</span>
                   </div>
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-gray-600">Questions:</span>
@@ -188,7 +188,7 @@ export default function QuizzesPage() {
       )}
 
       {/* Topics Performance */}
-      {analytics && analytics.topics && analytics.topics.length > 0 && (
+      {analytics && (analytics as any).topics && (analytics as any).topics.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle>Performance by Topic</CardTitle>
@@ -196,17 +196,17 @@ export default function QuizzesPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {analytics.topics.map((topic) => (
+              {(analytics as any).topics.map((topic: any) => (
                 <div key={topic.topic}>
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium text-gray-700">{topic.topic}</span>
-                    <span className="text-sm text-gray-600">
+                    <span className="text-sm font-medium text-[var(--text-secondary)]">{topic.topic}</span>
+                    <span className="text-sm text-[var(--text-tertiary)]">
                       {topic.average_score.toFixed(1)}% ({topic.count} {topic.count === 1 ? 'quiz' : 'quizzes'})
                     </span>
                   </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div className="w-full bg-[var(--bg-tertiary)] rounded-full h-2">
                     <div
-                      className="bg-blue-600 h-2 rounded-full transition-all"
+                      className="bg-[var(--primary)] h-2 rounded-full transition-all"
                       style={{ width: `${topic.average_score}%` }}
                     />
                   </div>

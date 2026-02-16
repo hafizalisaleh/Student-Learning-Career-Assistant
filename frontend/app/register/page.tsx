@@ -46,32 +46,30 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[var(--bg-primary)] px-4 py-12 relative overflow-hidden">
-      {/* Background effects */}
-      <div className="absolute inset-0 bg-[var(--gradient-mesh)] pointer-events-none" />
-      <div className="absolute top-1/3 right-1/4 w-96 h-96 bg-[var(--accent-purple)] rounded-full blur-[128px] opacity-20 pointer-events-none" />
-      <div className="absolute bottom-1/3 left-1/4 w-96 h-96 bg-[var(--accent-green)] rounded-full blur-[128px] opacity-20 pointer-events-none" />
-
-      <div className="w-full max-w-md relative z-10">
+    <div className="min-h-screen flex items-center justify-center bg-[var(--bg-primary)] px-4 py-8">
+      <div className="w-full max-w-sm">
         {/* Logo */}
-        <div className="flex items-center justify-center gap-3 mb-8">
-          <div className="p-2 rounded-xl bg-gradient-to-br from-[var(--accent-blue)] to-[var(--accent-purple)]">
-            <GraduationCap className="h-8 w-8 text-white" />
+        <div className="flex items-center justify-center gap-2 mb-6">
+          <div className="p-2 rounded-lg bg-[var(--primary)]">
+            <GraduationCap className="h-5 w-5 text-white" />
           </div>
-          <h1 className="text-3xl font-bold text-[var(--text-primary)]">SLCA</h1>
+          <span className="text-lg font-semibold text-[var(--text-primary)]">SLCA</span>
         </div>
 
-        {/* Card */}
-        <div className="p-8 rounded-2xl bg-[var(--card-bg)] backdrop-blur-xl border border-[var(--card-border)]">
-          <div className="mb-6">
-            <h2 className="text-2xl font-bold text-[var(--text-primary)]">Create Account</h2>
-            <p className="text-[var(--text-secondary)] mt-1">Start your learning journey today</p>
-          </div>
+        {/* Form Header */}
+        <div className="text-center mb-6">
+          <h1 className="text-xl font-semibold text-[var(--text-primary)]">Create account</h1>
+          <p className="text-sm text-[var(--text-tertiary)] mt-1">
+            Sign up to start using SLCA
+          </p>
+        </div>
 
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
-            <div className="grid grid-cols-2 gap-4">
+        {/* Form Card */}
+        <div className="card p-6">
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+            <div className="grid grid-cols-2 gap-3">
               <Input
-                label="First Name"
+                label="First name"
                 type="text"
                 placeholder="John"
                 error={errors.first_name?.message}
@@ -79,7 +77,7 @@ export default function RegisterPage() {
               />
 
               <Input
-                label="Last Name"
+                label="Last name"
                 type="text"
                 placeholder="Doe"
                 error={errors.last_name?.message}
@@ -90,7 +88,7 @@ export default function RegisterPage() {
             <Input
               label="Email"
               type="email"
-              placeholder="your@email.com"
+              placeholder="you@example.com"
               error={errors.email?.message}
               {...register('email')}
             />
@@ -98,29 +96,28 @@ export default function RegisterPage() {
             <Input
               label="Password"
               type="password"
-              placeholder="Create a strong password"
+              placeholder="Create a password"
               error={errors.password?.message}
               {...register('password')}
             />
 
             <Input
-              label="Confirm Password"
+              label="Confirm password"
               type="password"
               placeholder="Confirm your password"
               error={errors.confirmPassword?.message}
               {...register('confirmPassword')}
             />
 
-            <p className="text-xs text-[var(--text-tertiary)]">
+            <p className="text-xs text-[var(--text-muted)]">
               By creating an account, you agree to our{' '}
-              <Link href="/terms" className="text-[var(--accent-blue)] hover:opacity-80 transition-opacity">
-                Terms of Service
+              <Link href="/terms" className="text-[var(--primary)] hover:underline">
+                Terms
               </Link>{' '}
               and{' '}
-              <Link href="/privacy" className="text-[var(--accent-blue)] hover:opacity-80 transition-opacity">
+              <Link href="/privacy" className="text-[var(--primary)] hover:underline">
                 Privacy Policy
               </Link>
-              .
             </p>
 
             <Button
@@ -130,23 +127,25 @@ export default function RegisterPage() {
               isLoading={isLoading}
               disabled={isLoading}
             >
-              Create Account
+              Create account
             </Button>
-
-            <p className="text-center text-sm text-[var(--text-secondary)]">
-              Already have an account?{' '}
-              <Link href="/login" className="text-[var(--accent-blue)] font-medium hover:opacity-80 transition-opacity">
-                Sign in
-              </Link>
-            </p>
           </form>
         </div>
 
+        {/* Sign in link */}
+        <p className="text-center text-sm text-[var(--text-tertiary)] mt-5">
+          Already have an account?{' '}
+          <Link href="/login" className="text-[var(--primary)] font-medium hover:underline">
+            Sign in
+          </Link>
+        </p>
+
+        {/* Back to home */}
         <Link
           href="/"
-          className="flex items-center justify-center gap-2 mt-6 text-sm text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors"
+          className="flex items-center justify-center gap-1.5 mt-5 text-xs text-[var(--text-muted)] hover:text-[var(--text-tertiary)] transition-colors"
         >
-          <ArrowLeft className="h-4 w-4" />
+          <ArrowLeft className="h-3.5 w-3.5" />
           Back to home
         </Link>
       </div>

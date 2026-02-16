@@ -10,15 +10,15 @@ class UserProgressResponse(BaseModel):
     """Schema for user progress response"""
     id: uuid.UUID
     user_id: uuid.UUID
-    total_documents: int
-    total_notes: int
-    total_summaries: int
-    total_quizzes_generated: int
-    total_quizzes_attempted: int
-    average_quiz_score: float
-    study_streak_days: int
-    last_activity_date: datetime
-    
+    total_documents: int = 0
+    total_notes: int = 0
+    total_summaries: int = 0
+    total_quizzes_generated: int = 0
+    total_quizzes_attempted: int = 0
+    average_quiz_score: float = 0.0
+    study_streak_days: int = 0
+    last_activity_date: datetime | None = None
+
     class Config:
         from_attributes = True
 
@@ -27,11 +27,21 @@ class ActivityLogResponse(BaseModel):
     id: uuid.UUID
     user_id: uuid.UUID
     activity_type: str
-    activity_details: Dict[str, Any]
+    activity_details: Dict[str, Any] = {}
     timestamp: datetime
-    
+
     class Config:
         from_attributes = True
+
+    @classmethod
+    def from_orm(cls, obj):
+        return cls(
+            id=obj.id,
+            user_id=obj.user_id,
+            activity_type=obj.activity_type.value if hasattr(obj.activity_type, 'value') else str(obj.activity_type),
+            activity_details=obj.activity_details or {},
+            timestamp=obj.timestamp
+        )
 
 class DashboardStats(BaseModel):
     """Schema for dashboard statistics"""
@@ -70,7 +80,7 @@ class TopicPerformance(BaseModel):
     topic: str
     avg_score: float
     attempts: int
-    last_attempt: datetime
+    last_attempt: str  # ISO format datetime string
     trend: str  # 'improving', 'declining', 'stable'
 
 class ActivitySummary(BaseModel):

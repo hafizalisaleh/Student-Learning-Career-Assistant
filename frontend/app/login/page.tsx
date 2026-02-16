@@ -42,33 +42,31 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[var(--bg-primary)] px-4 relative overflow-hidden">
-      {/* Background effects */}
-      <div className="absolute inset-0 bg-[var(--gradient-mesh)] pointer-events-none" />
-      <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-[var(--accent-blue)] rounded-full blur-[128px] opacity-20 pointer-events-none" />
-      <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-[var(--accent-purple)] rounded-full blur-[128px] opacity-20 pointer-events-none" />
-
-      <div className="w-full max-w-md relative z-10">
+    <div className="min-h-screen flex items-center justify-center bg-[var(--bg-primary)] px-4 py-8">
+      <div className="w-full max-w-sm">
         {/* Logo */}
-        <div className="flex items-center justify-center gap-3 mb-8">
-          <div className="p-2 rounded-xl bg-gradient-to-br from-[var(--accent-blue)] to-[var(--accent-purple)]">
-            <GraduationCap className="h-8 w-8 text-white" />
+        <div className="flex items-center justify-center gap-2 mb-6">
+          <div className="p-2 rounded-lg bg-[var(--primary)]">
+            <GraduationCap className="h-5 w-5 text-white" />
           </div>
-          <h1 className="text-3xl font-bold text-[var(--text-primary)]">SLCA</h1>
+          <span className="text-lg font-semibold text-[var(--text-primary)]">SLCA</span>
         </div>
 
-        {/* Card */}
-        <div className="p-8 rounded-2xl bg-[var(--card-bg)] backdrop-blur-xl border border-[var(--card-border)]">
-          <div className="mb-6">
-            <h2 className="text-2xl font-bold text-[var(--text-primary)]">Welcome Back</h2>
-            <p className="text-[var(--text-secondary)] mt-1">Sign in to your account to continue learning</p>
-          </div>
+        {/* Form Header */}
+        <div className="text-center mb-6">
+          <h1 className="text-xl font-semibold text-[var(--text-primary)]">Sign in</h1>
+          <p className="text-sm text-[var(--text-tertiary)] mt-1">
+            Enter your credentials to access your account
+          </p>
+        </div>
 
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+        {/* Form Card */}
+        <div className="card p-6">
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             <Input
               label="Email"
               type="email"
-              placeholder="your@email.com"
+              placeholder="you@example.com"
               error={errors.email?.message}
               {...register('email')}
             />
@@ -81,15 +79,18 @@ export default function LoginPage() {
               {...register('password')}
             />
 
-            <div className="flex items-center justify-between text-sm">
+            <div className="flex items-center justify-between">
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
-                  className="w-4 h-4 rounded border-[var(--card-border)] bg-[var(--bg-elevated)] text-[var(--accent-blue)] focus:ring-[var(--accent-blue)] focus:ring-offset-0"
+                  className="w-3.5 h-3.5 rounded border-[var(--card-border)] text-[var(--primary)] focus:ring-[var(--primary)]"
                 />
-                <span className="text-[var(--text-secondary)]">Remember me</span>
+                <span className="text-xs text-[var(--text-tertiary)]">Remember me</span>
               </label>
-              <Link href="/reset-password" className="text-[var(--accent-blue)] hover:opacity-80 transition-opacity">
+              <Link
+                href="/reset-password"
+                className="text-xs text-[var(--primary)] hover:underline"
+              >
                 Forgot password?
               </Link>
             </div>
@@ -101,23 +102,28 @@ export default function LoginPage() {
               isLoading={isLoading}
               disabled={isLoading}
             >
-              Sign In
+              Sign in
             </Button>
-
-            <p className="text-center text-sm text-[var(--text-secondary)]">
-              Don&apos;t have an account?{' '}
-              <Link href="/register" className="text-[var(--accent-blue)] font-medium hover:opacity-80 transition-opacity">
-                Sign up
-              </Link>
-            </p>
           </form>
         </div>
 
+        {/* Sign up link */}
+        <p className="text-center text-sm text-[var(--text-tertiary)] mt-5">
+          Don&apos;t have an account?{' '}
+          <Link
+            href="/register"
+            className="text-[var(--primary)] font-medium hover:underline"
+          >
+            Create account
+          </Link>
+        </p>
+
+        {/* Back to home */}
         <Link
           href="/"
-          className="flex items-center justify-center gap-2 mt-6 text-sm text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors"
+          className="flex items-center justify-center gap-1.5 mt-5 text-xs text-[var(--text-muted)] hover:text-[var(--text-tertiary)] transition-colors"
         >
-          <ArrowLeft className="h-4 w-4" />
+          <ArrowLeft className="h-3.5 w-3.5" />
           Back to home
         </Link>
       </div>

@@ -17,7 +17,6 @@ import {
   Menu,
   X,
   GraduationCap,
-  MessageSquare,
   Mic,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -31,7 +30,7 @@ interface DashboardLayoutProps {
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Documents', href: '/dashboard/documents', icon: FileText },
-  { name: 'Voice AI Chat', href: '/dashboard/ask', icon: Mic, isHighlighted: true },
+  { name: 'AI Assistant', href: '/dashboard/ask', icon: Mic },
   { name: 'Notes', href: '/dashboard/notes', icon: BookOpen },
   { name: 'Summaries', href: '/dashboard/summaries', icon: Brain },
   { name: 'Quizzes', href: '/dashboard/quizzes', icon: ClipboardCheck },
@@ -39,11 +38,10 @@ const navigation = [
   { name: 'Career', href: '/dashboard/career', icon: Briefcase },
 ];
 
-// Bottom nav shows fewer items on mobile - Voice is prominent
 const bottomNavItems = [
   { name: 'Home', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Docs', href: '/dashboard/documents', icon: FileText },
-  { name: 'Voice', href: '/dashboard/ask', icon: Mic, isVoice: true },
+  { name: 'AI', href: '/dashboard/ask', icon: Mic, highlight: true },
   { name: 'Quiz', href: '/dashboard/quizzes', icon: ClipboardCheck },
   { name: 'More', href: '#more', icon: Menu },
 ];
@@ -51,179 +49,136 @@ const bottomNavItems = [
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, logout, isHydrated } = useAuthStore();
+  const { user, logout } = useAuthStore();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
 
-  // Wait for client mount to prevent hydration mismatch
   useEffect(() => {
     setMounted(true);
   }, []);
 
   const handleLogout = () => {
     logout();
-    toast.success('Logged out successfully');
+    toast.success('Logged out');
     router.push('/login');
   };
 
   const isActive = (href: string) => {
-    if (href === '/dashboard') {
-      return pathname === '/dashboard';
-    }
+    if (href === '/dashboard') return pathname === '/dashboard';
     return pathname?.startsWith(href);
   };
 
   return (
     <div className="min-h-screen bg-[var(--bg-primary)]" suppressHydrationWarning>
-      {/* Mobile sidebar backdrop */}
+      {/* Mobile backdrop */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 bg-[var(--bg-overlay)] backdrop-blur-sm z-40 lg:hidden"
+          className="fixed inset-0 bg-[var(--bg-overlay)] z-40 lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
-      {/* Sidebar - Desktop */}
+      {/* Sidebar */}
       <aside
         className={cn(
-          'fixed top-0 left-0 z-50 h-full w-72 bg-[var(--bg-secondary)] border-r border-[var(--card-border)]',
-          'transform transition-transform duration-300 ease-out',
+          'fixed top-0 left-0 z-50 h-full w-56 sidebar flex flex-col',
+          'transform transition-transform duration-200',
           'lg:translate-x-0',
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         )}
       >
         {/* Logo */}
-        <div className="flex items-center justify-between px-6 py-5 border-b border-[var(--card-border)]">
-          <Link href="/dashboard" className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-gradient-to-br from-[var(--accent-blue)] to-[var(--accent-purple)]">
-              <GraduationCap className="h-6 w-6 text-white" />
+        <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--sidebar-border)]">
+          <Link href="/dashboard" className="flex items-center gap-2">
+            <div className="p-1.5 rounded-md bg-white/10">
+              <GraduationCap className="h-5 w-5 text-white" />
             </div>
-            <span className="text-xl font-bold text-[var(--text-primary)]">SLCA</span>
+            <span className="text-base font-semibold text-white">SLCA</span>
           </Link>
           <button
-            className="lg:hidden p-2 rounded-lg hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)]"
+            className="lg:hidden p-1.5 rounded-md hover:bg-white/10 text-[var(--sidebar-text-muted)]"
             onClick={() => setSidebarOpen(false)}
           >
-            <X className="h-5 w-5" />
+            <X className="h-4 w-4" />
           </button>
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 px-4 py-6 space-y-1.5 overflow-y-auto">
+        <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto">
           {navigation.map((item) => {
             const active = isActive(item.href);
             const Icon = item.icon;
-            const isHighlighted = (item as any).isHighlighted;
-
-            // Special styling for Voice AI - make it stand out
-            if (isHighlighted) {
-              return (
-                <Link
-                  key={item.name}
-                  href={item.href}
-                  className={cn(
-                    'flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200',
-                    active
-                      ? 'bg-gradient-to-r from-[var(--accent-purple)] to-[var(--accent-pink)] text-white shadow-lg shadow-[var(--accent-purple-glow)]'
-                      : 'bg-gradient-to-r from-[var(--accent-purple)]/20 to-[var(--accent-pink)]/20 text-[var(--accent-pink)] border border-[var(--accent-pink)]/30 hover:from-[var(--accent-purple)]/30 hover:to-[var(--accent-pink)]/30'
-                  )}
-                  onClick={() => setSidebarOpen(false)}
-                >
-                  <div className={cn(
-                    'p-1.5 rounded-lg',
-                    active ? 'bg-white/20' : 'bg-[var(--accent-pink)]/20'
-                  )}>
-                    <Icon className="h-4 w-4" />
-                  </div>
-                  <span className="flex-1">{item.name}</span>
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/20 font-semibold">NEW</span>
-                </Link>
-              );
-            }
 
             return (
               <Link
                 key={item.name}
                 href={item.href}
-                className={cn(
-                  'flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200',
-                  active
-                    ? 'bg-[var(--accent-blue-subtle)] text-[var(--accent-blue)] border border-[rgba(0,212,255,0.2)]'
-                    : 'text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)]'
-                )}
+                className={cn('sidebar-nav-item', active && 'active')}
                 onClick={() => setSidebarOpen(false)}
               >
-                <Icon className={cn('h-5 w-5', active && 'drop-shadow-[0_0_8px_var(--accent-blue-glow)]')} />
-                {item.name}
+                <Icon className="h-4 w-4" />
+                <span>{item.name}</span>
               </Link>
             );
           })}
         </nav>
 
-        {/* User section */}
-        <div className="border-t border-[var(--card-border)] p-4">
-          <div className="flex items-center gap-3 p-3 rounded-xl bg-[var(--bg-elevated)] mb-3">
-            <div className="h-10 w-10 rounded-full bg-gradient-to-br from-[var(--accent-purple)] to-[var(--accent-pink)] flex items-center justify-center">
-              <User className="h-5 w-5 text-white" />
+        {/* User */}
+        <div className="border-t border-[var(--sidebar-border)] p-3">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="h-8 w-8 rounded-md bg-white/10 flex items-center justify-center flex-shrink-0">
+              <User className="h-4 w-4 text-white" />
             </div>
             <div className="flex-1 min-w-0">
               {mounted && user ? (
-                <>
-                  <p className="text-sm font-medium text-[var(--text-primary)] truncate">
-                    {user.first_name && user.last_name
-                      ? `${user.first_name} ${user.last_name}`
-                      : user.email}
-                  </p>
-                  <p className="text-xs text-[var(--text-tertiary)] truncate">{user.email}</p>
-                </>
+                <p className="text-sm font-medium text-white truncate">
+                  {user.first_name || user.email?.split('@')[0]}
+                </p>
               ) : (
-                <>
-                  <p className="text-sm font-medium text-[var(--text-primary)] truncate">Loading...</p>
-                  <p className="text-xs text-[var(--text-tertiary)] truncate">&nbsp;</p>
-                </>
+                <div className="h-4 w-20 bg-white/10 rounded animate-pulse" />
               )}
             </div>
           </div>
           <Button
             variant="ghost"
             size="sm"
-            className="w-full justify-start text-[var(--error)] hover:bg-[var(--error-subtle)]"
+            className="w-full justify-start text-[var(--sidebar-text-muted)] hover:text-white hover:bg-white/10 h-8"
             onClick={handleLogout}
           >
-            <LogOut className="h-4 w-4 mr-2" />
-            Logout
+            <LogOut className="h-3.5 w-3.5 mr-2" />
+            Sign Out
           </Button>
         </div>
       </aside>
 
-      {/* Main content wrapper */}
-      <div className="lg:pl-72 pb-20 lg:pb-0">
+      {/* Main */}
+      <div className="lg:pl-56 pb-16 lg:pb-0">
         {/* Mobile header */}
-        <header className="lg:hidden sticky top-0 z-30 bg-[var(--bg-secondary)]/80 backdrop-blur-xl border-b border-[var(--card-border)]">
-          <div className="flex items-center justify-between px-4 py-3">
+        <header className="lg:hidden sticky top-0 z-30 bg-white border-b border-[var(--card-border)]">
+          <div className="flex items-center justify-between px-3 py-2">
             <button
               onClick={() => setSidebarOpen(true)}
-              className="p-2 rounded-lg hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)]"
+              className="p-1.5 rounded-md hover:bg-[var(--bg-secondary)] text-[var(--text-secondary)]"
             >
               <Menu className="h-5 w-5" />
             </button>
             <Link href="/dashboard" className="flex items-center gap-2">
-              <div className="p-1.5 rounded-lg bg-gradient-to-br from-[var(--accent-blue)] to-[var(--accent-purple)]">
-                <GraduationCap className="h-5 w-5 text-white" />
+              <div className="p-1 rounded-md bg-[var(--sidebar-bg)]">
+                <GraduationCap className="h-4 w-4 text-white" />
               </div>
-              <span className="text-lg font-bold text-[var(--text-primary)]">SLCA</span>
+              <span className="text-base font-semibold text-[var(--text-primary)]">SLCA</span>
             </Link>
-            <div className="w-9" /> {/* Spacer for centering */}
+            <div className="w-8" />
           </div>
         </header>
 
-        {/* Page content */}
-        <main className="min-h-screen p-4 lg:p-8">{children}</main>
+        {/* Content */}
+        <main className="p-4 lg:p-6">{children}</main>
       </div>
 
-      {/* Mobile bottom navigation */}
-      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-30 bg-[var(--bg-secondary)]/90 backdrop-blur-xl border-t border-[var(--card-border)] safe-area-bottom">
-        <div className="flex items-center justify-around px-2 py-2">
+      {/* Mobile bottom nav */}
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-[var(--card-border)]">
+        <div className="flex items-center justify-around py-1.5">
           {bottomNavItems.map((item) => {
             const active = item.href === '#more' ? false : isActive(item.href);
             const Icon = item.icon;
@@ -233,34 +188,24 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                 <button
                   key={item.name}
                   onClick={() => setSidebarOpen(true)}
-                  className="flex flex-col items-center gap-1 px-3 py-2 rounded-xl text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
+                  className="flex flex-col items-center gap-0.5 px-3 py-1.5 text-[var(--text-muted)]"
                 >
                   <Icon className="h-5 w-5" />
-                  <span className="text-xs font-medium">{item.name}</span>
+                  <span className="text-[10px]">{item.name}</span>
                 </button>
               );
             }
 
-            // Special styling for Voice button - make it stand out
-            if ((item as any).isVoice) {
+            if ((item as any).highlight) {
               return (
-                <Link
-                  key={item.name}
-                  href={item.href}
-                  className="flex flex-col items-center gap-1 px-3 py-1 -mt-4"
-                >
+                <Link key={item.name} href={item.href} className="flex flex-col items-center gap-0.5 px-3 py-1 -mt-3">
                   <div className={cn(
-                    'p-3 rounded-full transition-all duration-300',
-                    active
-                      ? 'bg-gradient-to-br from-[var(--accent-blue)] to-[var(--accent-purple)] shadow-lg shadow-[var(--accent-blue-glow)]'
-                      : 'bg-gradient-to-br from-[var(--accent-purple)] to-[var(--accent-pink)] shadow-lg shadow-[var(--accent-purple-glow)]'
+                    'p-2.5 rounded-full shadow-md',
+                    active ? 'bg-[var(--primary)]' : 'bg-[var(--sidebar-bg)]'
                   )}>
-                    <Icon className="h-6 w-6 text-white" />
+                    <Icon className="h-4 w-4 text-white" />
                   </div>
-                  <span className={cn(
-                    'text-xs font-medium',
-                    active ? 'text-[var(--accent-blue)]' : 'text-[var(--text-secondary)]'
-                  )}>{item.name}</span>
+                  <span className="text-[10px] text-[var(--text-secondary)]">{item.name}</span>
                 </Link>
               );
             }
@@ -270,26 +215,17 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                 key={item.name}
                 href={item.href}
                 className={cn(
-                  'flex flex-col items-center gap-1 px-3 py-2 rounded-xl transition-colors',
-                  active
-                    ? 'text-[var(--accent-blue)]'
-                    : 'text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'
+                  'flex flex-col items-center gap-0.5 px-3 py-1.5',
+                  active ? 'text-[var(--primary)]' : 'text-[var(--text-muted)]'
                 )}
               >
-                <Icon className={cn('h-5 w-5', active && 'drop-shadow-[0_0_8px_var(--accent-blue-glow)]')} />
-                <span className="text-xs font-medium">{item.name}</span>
+                <Icon className="h-5 w-5" />
+                <span className="text-[10px]">{item.name}</span>
               </Link>
             );
           })}
         </div>
       </nav>
-
-      {/* Safe area padding for iOS */}
-      <style jsx global>{`
-        .safe-area-bottom {
-          padding-bottom: env(safe-area-inset-bottom, 0.5rem);
-        }
-      `}</style>
     </div>
   );
 }

@@ -33,24 +33,21 @@ const questionTypes = [
     label: 'Multiple Choice',
     description: 'Classic 4-option questions',
     icon: CheckSquare,
-    color: 'var(--accent-blue)',
-    gradient: 'from-blue-500 to-cyan-400',
+    color: 'var(--primary)',
   },
   {
     id: 'true_false',
     label: 'True or False',
     description: 'Binary answer format',
     icon: ToggleLeft,
-    color: 'var(--accent-green)',
-    gradient: 'from-emerald-500 to-teal-400',
+    color: 'var(--secondary)',
   },
   {
-    id: 'short_answer',
+    id: 'short',
     label: 'Short Answer',
     description: 'Open text responses',
     icon: MessageSquare,
-    color: 'var(--accent-purple)',
-    gradient: 'from-purple-500 to-pink-400',
+    color: 'var(--highlight)',
   },
 ];
 
@@ -171,41 +168,26 @@ export default function NewQuizPage() {
             <span className="text-sm font-medium">Back to Quizzes</span>
           </Link>
 
-          <div className="flex items-start gap-5">
-            <div className="relative">
-              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-500 via-orange-500 to-pink-500 flex items-center justify-center shadow-lg shadow-orange-500/25">
-                <Sparkles className="w-8 h-8 text-white" />
-              </div>
-              <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-[var(--accent-green)] flex items-center justify-center border-2 border-[var(--bg-primary)]">
-                <Plus className="w-3 h-3 text-white" />
-              </div>
-            </div>
-            <div>
-              <h1 className="font-display text-4xl font-bold text-[var(--text-primary)] tracking-tight">
-                Create Quiz
-              </h1>
-              <p className="text-[var(--text-secondary)] mt-1 text-lg">
-                AI-powered assessment from your documents
-              </p>
-            </div>
+          <div>
+            <h1 className="text-xl font-semibold text-[var(--text-primary)]">
+              Create Quiz
+            </h1>
+            <p className="text-sm text-[var(--text-tertiary)] mt-0.5">
+              AI-powered assessment from your documents
+            </p>
           </div>
         </div>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-8">
           {/* Document Selection */}
           <div className="quiz-glass-card p-8">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500/20 to-cyan-500/20 flex items-center justify-center">
-                <FileText className="w-5 h-5 text-[var(--accent-blue)]" />
-              </div>
-              <div>
-                <h2 className="font-display text-xl font-semibold text-[var(--text-primary)]">
-                  Source Document
-                </h2>
-                <p className="text-sm text-[var(--text-tertiary)]">
-                  Select the document to generate questions from
-                </p>
-              </div>
+            <div className="mb-4">
+              <h2 className="text-sm font-medium text-[var(--text-secondary)]">
+                Source Document
+              </h2>
+              <p className="text-xs text-[var(--text-muted)]">
+                Select the document to generate questions from
+              </p>
             </div>
 
             <div className="relative">
@@ -332,18 +314,13 @@ export default function NewQuizPage() {
 
           {/* Question Types */}
           <div className="quiz-glass-card p-8">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500/20 to-pink-500/20 flex items-center justify-center">
-                <CheckSquare className="w-5 h-5 text-[var(--accent-purple)]" />
-              </div>
-              <div>
-                <h2 className="font-display text-xl font-semibold text-[var(--text-primary)]">
-                  Question Types
-                </h2>
-                <p className="text-sm text-[var(--text-tertiary)]">
-                  Select one or more formats
-                </p>
-              </div>
+            <div className="mb-4">
+              <h2 className="text-sm font-medium text-[var(--text-secondary)]">
+                Question Types
+              </h2>
+              <p className="text-xs text-[var(--text-muted)]">
+                Select one or more formats
+              </p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -366,10 +343,10 @@ export default function NewQuizPage() {
                     <div className="relative z-10">
                       <div
                         className={cn(
-                          'w-12 h-12 rounded-xl mb-4 flex items-center justify-center transition-all',
+                          'w-10 h-10 rounded-lg mb-3 flex items-center justify-center transition-all',
                           isSelected
-                            ? `bg-gradient-to-br ${type.gradient}`
-                            : 'bg-[var(--bg-elevated)] group-hover:bg-[var(--bg-tertiary)]'
+                            ? 'bg-[var(--primary)]'
+                            : 'bg-[var(--bg-secondary)]'
                         )}
                       >
                         <Icon
@@ -524,8 +501,8 @@ export default function NewQuizPage() {
               className={cn(
                 'flex-[2] py-4 px-6 rounded-2xl font-semibold flex items-center justify-center gap-3 transition-all',
                 isLoading || selectedTypes.length === 0 || !selectedDoc
-                  ? 'bg-[var(--bg-elevated)] text-[var(--text-disabled)] cursor-not-allowed'
-                  : 'bg-gradient-to-r from-amber-500 via-orange-500 to-pink-500 text-white shadow-lg shadow-orange-500/25 hover:shadow-orange-500/40 hover:scale-[1.02]'
+                  ? 'bg-[var(--bg-tertiary)] text-[var(--text-muted)] cursor-not-allowed'
+                  : 'bg-[var(--primary)] text-white hover:bg-[var(--primary-hover)]'
               )}
             >
               {isLoading ? (

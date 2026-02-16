@@ -11,22 +11,22 @@ const buttonVariants = cva(
     variants: {
       variant: {
         primary:
-          'bg-gradient-to-r from-[var(--accent-blue)] to-[var(--accent-purple)] text-[var(--text-inverse)] hover:shadow-[var(--shadow-glow-blue)] focus-visible:ring-[var(--accent-blue)]',
+          'bg-[var(--primary)] text-white hover:bg-[var(--primary-hover)] shadow-sm hover:shadow-md focus-visible:ring-[var(--primary)]',
         secondary:
-          'bg-[var(--bg-elevated)] text-[var(--text-primary)] border border-[var(--card-border)] hover:bg-[var(--bg-tertiary)] hover:border-[var(--card-border-hover)] focus-visible:ring-[var(--accent-purple)]',
+          'bg-[var(--bg-elevated)] text-[var(--text-primary)] border border-[var(--card-border)] hover:bg-[var(--bg-secondary)] hover:border-[var(--card-border-hover)] focus-visible:ring-[var(--primary)]',
         outline:
-          'bg-transparent border border-[var(--accent-blue)] text-[var(--accent-blue)] hover:bg-[var(--accent-blue-subtle)] focus-visible:ring-[var(--accent-blue)]',
+          'bg-transparent border-2 border-[var(--primary)] text-[var(--primary)] hover:bg-[var(--primary-subtle)] focus-visible:ring-[var(--primary)]',
         ghost:
-          'bg-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)] focus-visible:ring-[var(--accent-blue)]',
+          'bg-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)] focus-visible:ring-[var(--primary)]',
         danger:
           'bg-[var(--error)] text-white hover:opacity-90 focus-visible:ring-[var(--error)]',
         success:
-          'bg-[var(--accent-green)] text-[var(--text-inverse)] hover:opacity-90 focus-visible:ring-[var(--accent-green)]',
+          'bg-[var(--secondary)] text-white hover:bg-[var(--secondary-hover)] focus-visible:ring-[var(--secondary)]',
       },
       size: {
         sm: 'px-3 py-1.5 text-sm rounded-lg gap-1.5',
-        md: 'px-4 py-2 text-base rounded-xl gap-2',
-        lg: 'px-6 py-3 text-lg rounded-xl gap-2',
+        md: 'px-4 py-2.5 text-sm rounded-lg gap-2',
+        lg: 'px-6 py-3 text-base rounded-xl gap-2',
         icon: 'p-2 rounded-lg',
       },
     },

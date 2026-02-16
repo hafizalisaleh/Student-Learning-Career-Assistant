@@ -71,21 +71,98 @@ export default function DocumentDetailPage() {
   }, [documentId]);
 
   useEffect(() => {
-    // Initialize mermaid
+    // Initialize mermaid with light/neutral theme for better readability
     mermaid.initialize({
       startOnLoad: false,
-      theme: 'dark',
+      theme: 'base',
       mindmap: {
         padding: 20,
         useMaxWidth: true,
       },
+      flowchart: {
+        htmlLabels: true,
+        curve: 'basis',
+      },
       themeVariables: {
-        primaryColor: '#3b82f6',
-        primaryTextColor: '#fff',
-        primaryBorderColor: '#60a5fa',
-        lineColor: '#64748b',
-        secondaryColor: '#1e293b',
-        tertiaryColor: '#0f172a',
+        // Base colors - using muted academic palette
+        primaryColor: '#4B6A9B',
+        primaryTextColor: '#FFFFFF',
+        primaryBorderColor: '#3D5A87',
+
+        // Secondary colors
+        secondaryColor: '#5C8A72',
+        secondaryTextColor: '#FFFFFF',
+        secondaryBorderColor: '#4A7560',
+
+        // Tertiary colors
+        tertiaryColor: '#8B7355',
+        tertiaryTextColor: '#FFFFFF',
+        tertiaryBorderColor: '#745F47',
+
+        // Quaternary for additional levels
+        quaternaryColor: '#7B8794',
+
+        // Line colors
+        lineColor: '#52525B',
+
+        // Background colors
+        background: '#FFFFFF',
+        mainBkg: '#FFFFFF',
+
+        // Node colors for flowcharts (light backgrounds)
+        nodeBkg: '#E8EEF4',
+        nodeBorder: '#4B6A9B',
+        nodeTextColor: '#1a1a1a',
+
+        // Cluster/group styling
+        clusterBkg: '#F5F7FA',
+        clusterBorder: '#4B6A9B',
+
+        // Default text color
+        textColor: '#1a1a1a',
+
+        // Sequence diagram
+        actorBkg: '#E8EEF4',
+        actorBorder: '#4B6A9B',
+        actorTextColor: '#1a1a1a',
+        actorLineColor: '#52525B',
+        signalColor: '#52525B',
+        signalTextColor: '#1a1a1a',
+        labelBoxBkgColor: '#FFFFFF',
+        labelBoxBorderColor: '#4B6A9B',
+        labelTextColor: '#1a1a1a',
+        loopTextColor: '#1a1a1a',
+        noteBkgColor: '#FDF8F0',
+        noteTextColor: '#1a1a1a',
+        noteBorderColor: '#B8860B',
+        activationBkgColor: '#E8EEF4',
+        activationBorderColor: '#4B6A9B',
+
+        // Class diagram
+        classText: '#1a1a1a',
+
+        // State diagram
+        labelColor: '#1a1a1a',
+        altBackground: '#F5F7FA',
+
+        // ER diagram
+        attributeBackgroundColorOdd: '#FFFFFF',
+        attributeBackgroundColorEven: '#F5F7FA',
+
+        // Pie chart
+        pie1: '#4B6A9B',
+        pie2: '#5C8A72',
+        pie3: '#8B7355',
+        pie4: '#7B8794',
+        pie5: '#6B7B8C',
+        pieTextColor: '#FFFFFF',
+        pieTitleTextColor: '#1a1a1a',
+        pieSectionTextColor: '#FFFFFF',
+        pieStrokeColor: '#FFFFFF',
+
+        // Fonts
+        fontFamily: 'Inter, -apple-system, sans-serif',
+        fontSize: '14px',
       },
     });
   }, []);

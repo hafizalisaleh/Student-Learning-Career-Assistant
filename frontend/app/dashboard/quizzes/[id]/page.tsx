@@ -117,7 +117,7 @@ export default function TakeQuizPage() {
   };
 
   const handleSubmit = async () => {
-    const unanswered = quiz?.questions.filter((q) => {
+    const unanswered = quiz?.questions?.filter((q) => {
       const answer = answers[q.id];
       return !answer?.selected_answer && !answer?.answer_text;
     });
@@ -482,7 +482,7 @@ export default function TakeQuizPage() {
   }
 
   // Quiz taking view
-  if (!quiz) return null;
+  if (!quiz || !quiz.questions) return null;
 
   const currentQ = quiz.questions[currentQuestion];
   const isLastQuestion = currentQuestion === quiz.questions.length - 1;
@@ -510,8 +510,8 @@ export default function TakeQuizPage() {
               <h1 className="font-display text-2xl font-bold text-[var(--text-primary)]">
                 {quiz.title || 'Quiz'}
               </h1>
-              {quiz.topic && (
-                <p className="text-sm text-[var(--text-tertiary)]">{quiz.topic}</p>
+              {(quiz as any).topic && (
+                <p className="text-sm text-[var(--text-tertiary)]">{(quiz as any).topic}</p>
               )}
             </div>
             <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[var(--bg-elevated)] border border-[var(--card-border)]">
@@ -568,107 +568,130 @@ export default function TakeQuizPage() {
             {currentQ.question_text}
           </p>
 
-          {/* MCQ Options */}
-          {currentQ.question_type === 'mcq' && (
-            <div className="quiz-stagger space-y-3">
-              {currentQ.options?.map((option, idx) => {
-                const isSelected = answers[currentQ.id]?.selected_answer === option;
-                const letters = ['A', 'B', 'C', 'D'];
-                return (
-                  <button
-                    key={idx}
-                    type="button"
-                    onClick={() => handleAnswerChange(currentQ.id, option, 'mcq')}
-                    className={cn('quiz-option w-full text-left', isSelected && 'quiz-option-selected')}
-                  >
-                    <div className="flex items-center gap-4">
-                      <div className="quiz-letter-badge">{letters[idx]}</div>
-                      <span className="text-[var(--text-primary)] flex-1">{option}</span>
-                      {isSelected && (
-                        <div className="w-6 h-6 rounded-full bg-[var(--accent-blue)] flex items-center justify-center">
-                          <Check className="w-4 h-4 text-white" />
+          {/* Render based on normalized question type */}
+          {(() => {
+            const qType = currentQ.question_type?.toLowerCase();
+
+            // MCQ Options
+            if (qType === 'mcq') {
+              return (
+                <div className="quiz-stagger space-y-3">
+                  {currentQ.options?.map((option, idx) => {
+                    const isSelected = answers[currentQ.id]?.selected_answer === option;
+                    const letters = ['A', 'B', 'C', 'D'];
+                    return (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => handleAnswerChange(currentQ.id, option, 'mcq')}
+                        className={cn('quiz-option w-full text-left', isSelected && 'quiz-option-selected')}
+                      >
+                        <div className="flex items-center gap-4">
+                          <div className="quiz-letter-badge">{letters[idx]}</div>
+                          <span className="text-[var(--text-primary)] flex-1">{option}</span>
+                          {isSelected && (
+                            <div className="w-6 h-6 rounded-full bg-[var(--accent-blue)] flex items-center justify-center">
+                              <Check className="w-4 h-4 text-white" />
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          )}
+                      </button>
+                    );
+                  })}
+                </div>
+              );
+            }
 
-          {/* True/False */}
-          {currentQ.question_type === 'true_false' && (
-            <div className="grid grid-cols-2 gap-4">
-              {['True', 'False'].map((value) => {
-                const isSelected = answers[currentQ.id]?.selected_answer === value;
-                return (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => handleAnswerChange(currentQ.id, value, 'true_false')}
-                    className={cn(
-                      'p-6 rounded-2xl border-2 transition-all text-center',
-                      isSelected
-                        ? value === 'True'
-                          ? 'border-[var(--accent-green)] bg-[var(--accent-green)]/10'
-                          : 'border-[var(--error)] bg-[var(--error)]/10'
-                        : 'border-[var(--card-border)] hover:border-[var(--card-border-hover)] bg-[var(--bg-elevated)]'
-                    )}
-                  >
-                    <div
-                      className={cn(
-                        'w-12 h-12 rounded-xl mx-auto mb-3 flex items-center justify-center',
-                        isSelected
-                          ? value === 'True'
-                            ? 'bg-[var(--accent-green)]'
-                            : 'bg-[var(--error)]'
-                          : 'bg-[var(--bg-tertiary)]'
-                      )}
-                    >
-                      {value === 'True' ? (
-                        <CheckCircle className={cn('w-6 h-6', isSelected ? 'text-white' : 'text-[var(--text-tertiary)]')} />
-                      ) : (
-                        <XCircle className={cn('w-6 h-6', isSelected ? 'text-white' : 'text-[var(--text-tertiary)]')} />
-                      )}
-                    </div>
-                    <span
-                      className={cn(
-                        'font-semibold',
-                        isSelected
-                          ? value === 'True'
-                            ? 'text-[var(--accent-green)]'
-                            : 'text-[var(--error)]'
-                          : 'text-[var(--text-secondary)]'
-                      )}
-                    >
-                      {value}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
+            // True/False
+            if (qType === 'true_false') {
+              return (
+                <div className="grid grid-cols-2 gap-4">
+                  {['True', 'False'].map((value) => {
+                    const isSelected = answers[currentQ.id]?.selected_answer === value;
+                    return (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => handleAnswerChange(currentQ.id, value, 'true_false')}
+                        className={cn(
+                          'p-6 rounded-2xl border-2 transition-all text-center',
+                          isSelected
+                            ? value === 'True'
+                              ? 'border-[var(--accent-green)] bg-[var(--accent-green)]/10'
+                              : 'border-[var(--error)] bg-[var(--error)]/10'
+                            : 'border-[var(--card-border)] hover:border-[var(--card-border-hover)] bg-[var(--bg-elevated)]'
+                        )}
+                      >
+                        <div
+                          className={cn(
+                            'w-12 h-12 rounded-xl mx-auto mb-3 flex items-center justify-center',
+                            isSelected
+                              ? value === 'True'
+                                ? 'bg-[var(--accent-green)]'
+                                : 'bg-[var(--error)]'
+                              : 'bg-[var(--bg-tertiary)]'
+                          )}
+                        >
+                          {value === 'True' ? (
+                            <CheckCircle className={cn('w-6 h-6', isSelected ? 'text-white' : 'text-[var(--text-tertiary)]')} />
+                          ) : (
+                            <XCircle className={cn('w-6 h-6', isSelected ? 'text-white' : 'text-[var(--text-tertiary)]')} />
+                          )}
+                        </div>
+                        <span
+                          className={cn(
+                            'font-semibold',
+                            isSelected
+                              ? value === 'True'
+                                ? 'text-[var(--accent-green)]'
+                                : 'text-[var(--error)]'
+                              : 'text-[var(--text-secondary)]'
+                          )}
+                        >
+                          {value}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              );
+            }
 
-          {/* Short Answer */}
-          {(currentQ.question_type === 'short_answer' || currentQ.question_type === 'short') && (
-            <textarea
-              value={answers[currentQ.id]?.answer_text || ''}
-              onChange={(e) => handleAnswerChange(currentQ.id, e.target.value, 'short_answer')}
-              placeholder="Type your answer here..."
-              className="w-full p-5 rounded-2xl bg-[var(--bg-elevated)] border border-[var(--card-border)] focus:border-[var(--accent-blue)] focus:ring-2 focus:ring-[var(--accent-blue)]/20 text-[var(--text-primary)] placeholder-[var(--text-tertiary)] min-h-[150px] transition-all resize-none"
-            />
-          )}
+            // Short Answer
+            if (qType === 'short' || qType === 'short_answer') {
+              return (
+                <textarea
+                  value={answers[currentQ.id]?.answer_text || ''}
+                  onChange={(e) => handleAnswerChange(currentQ.id, e.target.value, 'short_answer')}
+                  placeholder="Type your answer here..."
+                  className="w-full p-5 rounded-2xl bg-[var(--bg-elevated)] border border-[var(--card-border)] focus:border-[var(--accent-blue)] focus:ring-2 focus:ring-[var(--accent-blue)]/20 text-[var(--text-primary)] placeholder-[var(--text-tertiary)] min-h-[150px] transition-all resize-none"
+                />
+              );
+            }
 
-          {/* Fill in blank */}
-          {currentQ.question_type === 'fill_blank' && (
-            <input
-              type="text"
-              value={answers[currentQ.id]?.answer_text || ''}
-              onChange={(e) => handleAnswerChange(currentQ.id, e.target.value, 'short_answer')}
-              placeholder="Fill in the blank..."
-              className="w-full p-5 rounded-2xl bg-[var(--bg-elevated)] border border-[var(--card-border)] focus:border-[var(--accent-blue)] focus:ring-2 focus:ring-[var(--accent-blue)]/20 text-[var(--text-primary)] placeholder-[var(--text-tertiary)] transition-all"
-            />
-          )}
+            // Fill in blank
+            if (qType === 'fill_blank') {
+              return (
+                <input
+                  type="text"
+                  value={answers[currentQ.id]?.answer_text || ''}
+                  onChange={(e) => handleAnswerChange(currentQ.id, e.target.value, 'short_answer')}
+                  placeholder="Fill in the blank..."
+                  className="w-full p-5 rounded-2xl bg-[var(--bg-elevated)] border border-[var(--card-border)] focus:border-[var(--accent-blue)] focus:ring-2 focus:ring-[var(--accent-blue)]/20 text-[var(--text-primary)] placeholder-[var(--text-tertiary)] transition-all"
+                />
+              );
+            }
+
+            // Fallback - show textarea for unknown types
+            return (
+              <textarea
+                value={answers[currentQ.id]?.answer_text || ''}
+                onChange={(e) => handleAnswerChange(currentQ.id, e.target.value, 'short_answer')}
+                placeholder="Type your answer here..."
+                className="w-full p-5 rounded-2xl bg-[var(--bg-elevated)] border border-[var(--card-border)] focus:border-[var(--accent-blue)] focus:ring-2 focus:ring-[var(--accent-blue)]/20 text-[var(--text-primary)] placeholder-[var(--text-tertiary)] min-h-[150px] transition-all resize-none"
+              />
+            );
+          })()}
         </div>
 
         {/* Navigation */}
@@ -715,7 +738,7 @@ export default function TakeQuizPage() {
           ) : (
             <button
               type="button"
-              onClick={() => setCurrentQuestion(Math.min(quiz.questions.length - 1, currentQuestion + 1))}
+              onClick={() => setCurrentQuestion(Math.min((quiz.questions?.length || 1) - 1, currentQuestion + 1))}
               className={cn(
                 'px-6 py-3 rounded-xl font-medium flex items-center gap-2 transition-all',
                 isCurrentAnswered

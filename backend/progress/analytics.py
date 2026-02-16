@@ -140,21 +140,23 @@ class ProgressAnalytics:
     
     @staticmethod
     def get_quiz_performance_trend(
-        db: Session, 
+        db: Session,
         user_id: uuid.UUID
     ) -> List[Dict[str, Any]]:
         """Get quiz performance trend over time"""
         attempts = db.query(QuizAttempt).filter(
-            QuizAttempt.user_id == user_id
+            QuizAttempt.user_id == user_id,
+            QuizAttempt.completed_at.isnot(None)
         ).order_by(QuizAttempt.completed_at).all()
-        
+
         return [
             {
-                'date': attempt.completed_at.strftime('%Y-%m-%d'),
-                'score': attempt.score,
+                'date': attempt.completed_at.strftime('%Y-%m-%d') if attempt.completed_at else None,
+                'score': attempt.score or 0,
                 'quiz_id': str(attempt.quiz_id)
             }
             for attempt in attempts
+            if attempt.completed_at is not None
         ]
     
     @staticmethod
@@ -201,14 +203,16 @@ class ProgressAnalytics:
     
     @staticmethod
     def get_performance_metrics(
-        db: Session, 
+        db: Session,
         user_id: uuid.UUID
     ) -> Dict[str, Any]:
         """Get detailed performance metrics"""
         attempts = db.query(QuizAttempt).filter(
-            QuizAttempt.user_id == user_id
+            QuizAttempt.user_id == user_id,
+            QuizAttempt.completed_at.isnot(None),
+            QuizAttempt.score.isnot(None)
         ).all()
-        
+
         if not attempts:
             return {
                 'best_score': 0.0,
@@ -219,8 +223,19 @@ class ProgressAnalytics:
                 'strong_topics': [],
                 'weak_topics': []
             }
-        
-        scores = [attempt.score for attempt in attempts]
+
+        scores = [attempt.score for attempt in attempts if attempt.score is not None]
+
+        if not scores:
+            return {
+                'best_score': 0.0,
+                'worst_score': 0.0,
+                'average_score': 0.0,
+                'total_attempts': len(attempts),
+                'improvement_rate': 0.0,
+                'strong_topics': [],
+                'weak_topics': []
+            }
         
         # Calculate improvement rate (last 5 vs first 5)
         improvement_rate = 0.0
@@ -411,11 +426,14 @@ class ProgressAnalytics:
         
         # Get quiz performance by topic with trends
         attempts = db.query(QuizAttempt).filter(
-            QuizAttempt.user_id == user_id
+            QuizAttempt.user_id == user_id,
+            QuizAttempt.completed_at.isnot(None)
         ).order_by(QuizAttempt.completed_at).all()
-        
+
         topic_data = {}
         for attempt in attempts:
+            if attempt.completed_at is None or attempt.score is None:
+                continue
             quiz = db.query(Quiz).filter(Quiz.id == attempt.quiz_id).first()
             if quiz and quiz.title:
                 topic = quiz.title

@@ -2,6 +2,7 @@
 Resume parser for PDF and DOCX files with AI-powered extraction
 """
 import PyPDF2
+import pdfplumber
 from docx import Document
 from typing import Dict, Any, List
 import re
@@ -17,68 +18,180 @@ class ResumeParser:
     def parse_pdf(self, file_path: str) -> Dict[str, Any]:
         """
         Parse PDF resume with AI enhancement
-        
+        Uses PyPDF2 first, falls back to pdfplumber if that fails
+
         Args:
             file_path: Path to PDF file
-            
+
         Returns:
             Parsed resume data with AI extraction
         """
         text = ""
-        
+
+        # Try PyPDF2 first
         try:
-            with open(file_path, 'rb') as file:
-                pdf_reader = PyPDF2.PdfReader(file)
-                for page in pdf_reader.pages:
-                    text += page.extract_text()
+            text = self._parse_pdf_pypdf2(file_path)
         except Exception as e:
-            raise ValueError(f"Error parsing PDF: {str(e)}")
-        
+            print(f"PyPDF2 failed: {e}, trying pdfplumber...")
+            # Fallback to pdfplumber
+            try:
+                text = self._parse_pdf_pdfplumber(file_path)
+            except Exception as e2:
+                raise ValueError(f"Could not read PDF file. The file may be corrupted or in an unsupported format. Please try converting to DOCX or a different PDF.")
+
+        # Check if we extracted any text
+        if not text or len(text.strip()) < 50:
+            raise ValueError("Could not extract text from PDF. The PDF may be scanned/image-based. Please upload a text-based PDF or DOCX file.")
+
         return self._extract_structured_data(text)
+
+    def _parse_pdf_pypdf2(self, file_path: str) -> str:
+        """Parse PDF using PyPDF2"""
+        text = ""
+        with open(file_path, 'rb') as file:
+            pdf_reader = PyPDF2.PdfReader(file)
+
+            # Check if PDF is encrypted
+            if pdf_reader.is_encrypted:
+                try:
+                    pdf_reader.decrypt('')  # Try empty password
+                except Exception:
+                    raise ValueError("PDF is password protected. Please upload an unprotected PDF.")
+
+            for page in pdf_reader.pages:
+                page_text = page.extract_text()
+                if page_text:
+                    text += page_text + "\n"
+
+        return text
+
+    def _parse_pdf_pdfplumber(self, file_path: str) -> str:
+        """Parse PDF using pdfplumber (fallback parser)"""
+        text = ""
+        with pdfplumber.open(file_path) as pdf:
+            for page in pdf.pages:
+                page_text = page.extract_text()
+                if page_text:
+                    text += page_text + "\n"
+
+                # Also try to extract text from tables
+                tables = page.extract_tables()
+                for table in tables:
+                    for row in table:
+                        if row:
+                            row_text = ' '.join([cell or '' for cell in row])
+                            if row_text.strip():
+                                text += row_text + "\n"
+
+        return text
     
     def parse_docx(self, file_path: str) -> Dict[str, Any]:
         """
         Parse DOCX resume with AI enhancement
-        
+
         Args:
             file_path: Path to DOCX file
-            
+
         Returns:
             Parsed resume data with AI extraction
         """
         text = ""
-        
+
         try:
             doc = Document(file_path)
             for paragraph in doc.paragraphs:
-                text += paragraph.text + "\n"
+                if paragraph.text.strip():
+                    text += paragraph.text + "\n"
+
+            # Also extract text from tables (common in resumes)
+            for table in doc.tables:
+                for row in table.rows:
+                    for cell in row.cells:
+                        if cell.text.strip():
+                            text += cell.text + " "
+                    text += "\n"
+
         except Exception as e:
-            raise ValueError(f"Error parsing DOCX: {str(e)}")
-        
+            error_msg = str(e).lower()
+            if 'not a valid docx' in error_msg or 'package not found' in error_msg:
+                raise ValueError("Invalid DOCX file. Please ensure you're uploading a valid Word document (.docx format).")
+            raise ValueError(f"Error reading DOCX file: {str(e)}")
+
+        # Check if we extracted any text
+        if not text or len(text.strip()) < 50:
+            raise ValueError("Could not extract text from document. The file may be empty or corrupted.")
+
         return self._extract_structured_data(text)
     
     def _extract_structured_data(self, text: str) -> Dict[str, Any]:
         """
         Extract structured data from resume text using AI
-        
+
         Args:
             text: Raw resume text
-            
+
         Returns:
             Comprehensive structured resume data
         """
         # First do rule-based extraction for basic info
         basic_info = self._rule_based_extraction(text)
-        
+
         # Then enhance with AI extraction
         try:
             ai_data = self._ai_powered_extraction(text)
             # Merge AI results with rule-based
-            basic_info.update(ai_data)
+            if ai_data:
+                basic_info.update(ai_data)
         except Exception as e:
             print(f"AI extraction failed, using rule-based only: {e}")
-        
+            # Add fallback skills extraction
+            basic_info['skills'] = self._extract_skills_fallback(text)
+            basic_info['name'] = self._extract_name_fallback(text)
+
+        # Ensure required fields exist
+        if 'skills' not in basic_info or not basic_info['skills']:
+            basic_info['skills'] = self._extract_skills_fallback(text)
+        if 'education' not in basic_info:
+            basic_info['education'] = []
+        if 'experience' not in basic_info:
+            basic_info['experience'] = []
+        if 'projects' not in basic_info:
+            basic_info['projects'] = []
+
         return basic_info
+
+    def _extract_skills_fallback(self, text: str) -> List[str]:
+        """Fallback skill extraction using keyword matching"""
+        common_skills = [
+            'python', 'java', 'javascript', 'typescript', 'c++', 'c#', 'ruby', 'php',
+            'html', 'css', 'react', 'angular', 'vue', 'node.js', 'express', 'django',
+            'flask', 'spring', 'sql', 'mysql', 'postgresql', 'mongodb', 'redis',
+            'aws', 'azure', 'gcp', 'docker', 'kubernetes', 'git', 'linux',
+            'machine learning', 'deep learning', 'tensorflow', 'pytorch', 'pandas',
+            'numpy', 'data analysis', 'excel', 'tableau', 'power bi',
+            'agile', 'scrum', 'jira', 'communication', 'leadership', 'problem solving'
+        ]
+
+        text_lower = text.lower()
+        found_skills = []
+
+        for skill in common_skills:
+            if skill in text_lower:
+                found_skills.append(skill.title() if len(skill) > 3 else skill.upper())
+
+        return found_skills[:20]  # Limit to 20 skills
+
+    def _extract_name_fallback(self, text: str) -> str:
+        """Fallback name extraction - first line usually contains name"""
+        lines = text.strip().split('\n')
+        for line in lines[:5]:  # Check first 5 lines
+            line = line.strip()
+            # Name is usually short and contains only letters/spaces
+            if line and len(line) < 50 and re.match(r'^[A-Za-z\s\.\-]+$', line):
+                # Skip common section headers
+                if line.lower() not in ['resume', 'cv', 'curriculum vitae', 'summary', 'objective']:
+                    return line
+        return "Unknown"
     
     def _rule_based_extraction(self, text: str) -> Dict[str, Any]:
         """Basic rule-based extraction for contact info"""

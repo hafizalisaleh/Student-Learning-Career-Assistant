@@ -50,7 +50,7 @@ export const quizSchema = z.object({
   document_id: z.string().min(1, 'Please select a document'),
   num_questions: z.number().min(1).max(50),
   difficulty: z.enum(['easy', 'medium', 'hard']),
-  question_types: z.array(z.enum(['mcq', 'true_false', 'short_answer'])).min(1, 'Select at least one question type'),
+  question_types: z.array(z.enum(['mcq', 'true_false', 'short'])).min(1, 'Select at least one question type'),
   topic: z.string().optional(),
 });
 

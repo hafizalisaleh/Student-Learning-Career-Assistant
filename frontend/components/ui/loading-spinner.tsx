@@ -1,6 +1,6 @@
 'use client';
 
-import { Loader2 } from 'lucide-react';
+import { Loader2, GraduationCap } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface LoadingSpinnerProps {
@@ -17,7 +17,7 @@ export function LoadingSpinner({ size = 'md', className, fullScreen = false }: L
   };
 
   const spinner = (
-    <Loader2 className={cn('animate-spin text-[var(--accent-blue)]', sizes[size], className)} />
+    <Loader2 className={cn('animate-spin text-[var(--primary)]', sizes[size], className)} />
   );
 
   if (fullScreen) {
@@ -40,7 +40,7 @@ export function Skeleton({ className }: SkeletonProps) {
   return (
     <div
       className={cn(
-        'animate-pulse bg-[var(--bg-elevated)] rounded-lg',
+        'skeleton',
         className
       )}
     />
@@ -51,8 +51,15 @@ export function Skeleton({ className }: SkeletonProps) {
 export function PageLoader() {
   return (
     <div className="flex flex-col items-center justify-center min-h-[400px] gap-4">
-      <LoadingSpinner size="lg" />
-      <p className="text-[var(--text-secondary)] text-sm">Loading...</p>
+      <div className="relative">
+        <div className="w-16 h-16 rounded-2xl bg-[var(--primary-light)] flex items-center justify-center animate-pulse">
+          <GraduationCap className="h-8 w-8 text-[var(--primary)]" />
+        </div>
+        <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-[var(--bg-elevated)] rounded-full flex items-center justify-center border-2 border-[var(--bg-primary)]">
+          <Loader2 className="h-3 w-3 animate-spin text-[var(--primary)]" />
+        </div>
+      </div>
+      <p className="text-[var(--text-secondary)] text-sm font-medium">Loading your content...</p>
     </div>
   );
 }

@@ -1,8 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Mic, MicOff, Volume2, VolumeX, Phone, PhoneOff } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Mic, MicOff, PhoneOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import toast from 'react-hot-toast';
 
@@ -66,7 +65,6 @@ export function VoiceChat({ documentId, onTranscript, onResponse }: VoiceChatPro
 
       ws.onopen = () => {
         console.log('Voice WebSocket connected');
-        // Send start message with optional document context
         ws.send(JSON.stringify({
           type: 'start',
           document_id: documentId || null,
@@ -90,13 +88,11 @@ export function VoiceChat({ documentId, onTranscript, onResponse }: VoiceChatPro
             break;
 
           case 'audio':
-            // Queue audio for playback
             await playAudioChunk(data.data);
             setStatus('speaking');
             break;
 
           case 'text':
-            // Display transcript
             setTranscript(data.data);
             onResponse?.(data.data);
             break;
@@ -143,7 +139,6 @@ export function VoiceChat({ documentId, onTranscript, onResponse }: VoiceChatPro
 
       mediaRecorder.ondataavailable = async (event) => {
         if (event.data.size > 0 && wsRef.current?.readyState === WebSocket.OPEN && !isMuted) {
-          // Convert to base64 and send
           const reader = new FileReader();
           reader.onloadend = () => {
             const base64 = (reader.result as string).split(',')[1];
@@ -156,7 +151,6 @@ export function VoiceChat({ documentId, onTranscript, onResponse }: VoiceChatPro
         }
       };
 
-      // Send audio chunks every 250ms
       mediaRecorder.start(250);
       setIsRecording(true);
       setStatus('listening');
@@ -175,18 +169,15 @@ export function VoiceChat({ documentId, onTranscript, onResponse }: VoiceChatPro
 
       const audioData = Uint8Array.from(atob(base64Audio), c => c.charCodeAt(0));
 
-      // Convert raw PCM to AudioBuffer
       const audioBuffer = audioContextRef.current.createBuffer(1, audioData.length / 2, 24000);
       const channelData = audioBuffer.getChannelData(0);
 
-      // Convert 16-bit PCM to float
       for (let i = 0; i < audioData.length; i += 2) {
         const sample = (audioData[i] | (audioData[i + 1] << 8));
         const signedSample = sample > 32767 ? sample - 65536 : sample;
         channelData[i / 2] = signedSample / 32768;
       }
 
-      // Queue for playback
       audioQueueRef.current.push(audioBuffer);
       playNextInQueue();
 
@@ -215,26 +206,22 @@ export function VoiceChat({ documentId, onTranscript, onResponse }: VoiceChatPro
 
   // Disconnect voice chat
   const disconnect = useCallback(() => {
-    // Stop recording
     if (mediaRecorderRef.current) {
       mediaRecorderRef.current.stop();
       mediaRecorderRef.current = null;
     }
 
-    // Stop audio stream
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
     }
 
-    // Close WebSocket
     if (wsRef.current) {
       wsRef.current.send(JSON.stringify({ type: 'end' }));
       wsRef.current.close();
       wsRef.current = null;
     }
 
-    // Close audio context
     if (audioContextRef.current) {
       audioContextRef.current.close();
       audioContextRef.current = null;
@@ -251,7 +238,7 @@ export function VoiceChat({ documentId, onTranscript, onResponse }: VoiceChatPro
     setIsMuted(!isMuted);
     if (streamRef.current) {
       streamRef.current.getAudioTracks().forEach(track => {
-        track.enabled = isMuted; // Toggle opposite
+        track.enabled = isMuted;
       });
     }
   };
@@ -263,106 +250,70 @@ export function VoiceChat({ documentId, onTranscript, onResponse }: VoiceChatPro
     };
   }, [disconnect]);
 
-  // Status indicator colors
-  const statusColors = {
-    idle: 'bg-gray-500',
-    connecting: 'bg-yellow-500 animate-pulse',
-    connected: 'bg-green-500',
-    speaking: 'bg-blue-500 animate-pulse',
-    listening: 'bg-green-500 animate-pulse',
-  };
-
   return (
-    <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[var(--bg-tertiary)] to-[var(--bg-secondary)] border border-[var(--card-border)]">
-      {/* Animated background gradient */}
-      <div className="absolute inset-0 opacity-30">
+    <div className="card p-6">
+      <div className="flex flex-col items-center gap-4">
+        {/* Status */}
         <div className={cn(
-          'absolute top-0 left-1/4 w-64 h-64 rounded-full blur-3xl transition-all duration-1000',
-          isConnected ? 'bg-[var(--accent-green)]' : 'bg-[var(--accent-purple)]'
-        )} />
-        <div className={cn(
-          'absolute bottom-0 right-1/4 w-48 h-48 rounded-full blur-3xl transition-all duration-1000',
-          isConnected ? 'bg-[var(--accent-blue)]' : 'bg-[var(--accent-pink)]'
-        )} />
-      </div>
-
-      <div className="relative flex flex-col items-center gap-5 p-6">
-        {/* Header */}
-        <div className="flex items-center gap-3">
+          'flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium',
+          status === 'idle' && 'bg-[var(--bg-secondary)] text-[var(--text-secondary)]',
+          status === 'connecting' && 'bg-[var(--warning-bg)] text-[var(--warning)]',
+          status === 'connected' && 'bg-[var(--success-bg)] text-[var(--success)]',
+          status === 'speaking' && 'bg-[var(--info-bg)] text-[var(--info)]',
+          status === 'listening' && 'bg-[var(--success-bg)] text-[var(--success)]'
+        )}>
           <div className={cn(
-            'flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium',
-            status === 'idle' && 'bg-[var(--bg-elevated)] text-[var(--text-secondary)]',
-            status === 'connecting' && 'bg-[var(--warning-subtle)] text-[var(--warning)] animate-pulse',
-            status === 'connected' && 'bg-[var(--success-subtle)] text-[var(--success)]',
-            status === 'speaking' && 'bg-[var(--accent-blue-subtle)] text-[var(--accent-blue)] animate-pulse',
-            status === 'listening' && 'bg-[var(--accent-green-subtle)] text-[var(--accent-green)] animate-pulse'
-          )}>
-            <div className={cn(
-              'w-2 h-2 rounded-full',
-              status === 'idle' && 'bg-[var(--text-tertiary)]',
-              status === 'connecting' && 'bg-[var(--warning)]',
-              status === 'connected' && 'bg-[var(--success)]',
-              status === 'speaking' && 'bg-[var(--accent-blue)]',
-              status === 'listening' && 'bg-[var(--accent-green)]'
-            )} />
-            {status === 'idle' && 'Ready to connect'}
-            {status === 'connecting' && 'Connecting...'}
-            {status === 'connected' && 'Connected'}
-            {status === 'speaking' && 'AI Speaking...'}
-            {status === 'listening' && 'Listening...'}
-          </div>
+            'w-2 h-2 rounded-full',
+            status === 'idle' && 'bg-[var(--text-muted)]',
+            status === 'connecting' && 'bg-[var(--warning)] animate-pulse',
+            status === 'connected' && 'bg-[var(--success)]',
+            status === 'speaking' && 'bg-[var(--info)] animate-pulse',
+            status === 'listening' && 'bg-[var(--success)] animate-pulse'
+          )} />
+          {status === 'idle' && 'Ready to connect'}
+          {status === 'connecting' && 'Connecting...'}
+          {status === 'connected' && 'Connected'}
+          {status === 'speaking' && 'AI Speaking...'}
+          {status === 'listening' && 'Listening...'}
         </div>
 
-        {/* Main control button with audio visualization */}
+        {/* Main Button */}
         <div className="relative">
-          {/* Outer rings animation */}
           {isConnected && (
-            <>
-              <div className={cn(
-                'absolute inset-0 rounded-full border-2 animate-ping',
-                status === 'listening' ? 'border-[var(--accent-green)]' : 'border-[var(--accent-blue)]',
-                'opacity-20'
-              )} style={{ animationDuration: '2s' }} />
-              <div className={cn(
-                'absolute -inset-2 rounded-full border',
-                status === 'listening' ? 'border-[var(--accent-green)]' : 'border-[var(--accent-blue)]',
-                'opacity-30 animate-pulse'
-              )} />
-              <div className={cn(
-                'absolute -inset-4 rounded-full border',
-                status === 'listening' ? 'border-[var(--accent-green)]' : 'border-[var(--accent-blue)]',
-                'opacity-10'
-              )} />
-            </>
+            <div className={cn(
+              'absolute -inset-2 rounded-full border-2 animate-pulse',
+              status === 'listening' ? 'border-[var(--success)]' : 'border-[var(--info)]',
+              'opacity-30'
+            )} />
           )}
 
           <button
             onClick={isConnected ? disconnect : connect}
             className={cn(
-              'relative p-8 rounded-full transition-all duration-300 transform hover:scale-105',
+              'relative p-6 rounded-full transition-all',
               isConnected
-                ? 'bg-gradient-to-br from-red-500 to-red-600 shadow-xl shadow-red-500/40 hover:shadow-red-500/60'
-                : 'bg-gradient-to-br from-[var(--accent-purple)] to-[var(--accent-pink)] shadow-xl shadow-[var(--accent-purple-glow)] hover:shadow-[var(--accent-pink-glow)]'
+                ? 'bg-[var(--error)] hover:bg-[var(--error)]/90'
+                : 'bg-[var(--primary)] hover:bg-[var(--primary-hover)]'
             )}
           >
             {isConnected ? (
-              <PhoneOff className="h-10 w-10 text-white" />
+              <PhoneOff className="h-8 w-8 text-white" />
             ) : (
-              <Mic className="h-10 w-10 text-white" />
+              <Mic className="h-8 w-8 text-white" />
             )}
           </button>
         </div>
 
-        {/* Secondary controls */}
+        {/* Controls */}
         {isConnected && (
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <button
               onClick={toggleMute}
               className={cn(
-                'flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all',
+                'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all',
                 isMuted
-                  ? 'bg-[var(--error-subtle)] text-[var(--error)]'
-                  : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                  ? 'bg-[var(--error-bg)] text-[var(--error)]'
+                  : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
               )}
             >
               {isMuted ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
@@ -370,30 +321,30 @@ export function VoiceChat({ documentId, onTranscript, onResponse }: VoiceChatPro
             </button>
             <button
               onClick={disconnect}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-[var(--error-subtle)] text-[var(--error)] hover:bg-[var(--error)]/20 transition-all"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium bg-[var(--error-bg)] text-[var(--error)] hover:bg-[var(--error)]/10 transition-all"
             >
               <PhoneOff className="h-4 w-4" />
-              End Call
+              End
             </button>
           </div>
         )}
 
-        {/* Transcript display */}
+        {/* Transcript */}
         {transcript && (
-          <div className="w-full mt-2 p-4 rounded-xl bg-[var(--bg-elevated)]/50 backdrop-blur border border-[var(--card-border)]">
-            <p className="text-xs text-[var(--text-tertiary)] mb-1">AI Response:</p>
+          <div className="w-full mt-2 p-3 rounded-md bg-[var(--bg-secondary)] border border-[var(--card-border)]">
+            <p className="text-xs text-[var(--text-muted)] mb-1">AI Response:</p>
             <p className="text-sm text-[var(--text-primary)]">{transcript}</p>
           </div>
         )}
 
         {/* Instructions */}
         {!isConnected && (
-          <div className="text-center space-y-2">
+          <div className="text-center">
             <p className="text-sm text-[var(--text-secondary)]">
               Click to start voice conversation
             </p>
-            <p className="text-xs text-[var(--text-tertiary)] max-w-xs">
-              Ask questions about your documents using natural speech. The AI will respond with voice.
+            <p className="text-xs text-[var(--text-muted)] mt-1 max-w-xs">
+              Ask questions about your documents using natural speech.
             </p>
           </div>
         )}
