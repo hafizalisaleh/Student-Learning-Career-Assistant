@@ -2,11 +2,18 @@ node_modules/
 
 # Backend
 backend/uploads/
-backend/__pycache__/
-backend/**/__pycache__/
-backend/*.pyc
+# Python Caches
+__pycache__/
+**/*/__pycache__/
+*.py[cod]
+*$py.class
 backend/.env
 backend/vector_store/
+**/venv/
+.venv/
+env/
+venv/
+ENV/
 
 # Logs
 *.log
@@ -15,3 +22,4 @@ backend/logs/
 # Environment
 .env
 .env.local
+.agents/skills/

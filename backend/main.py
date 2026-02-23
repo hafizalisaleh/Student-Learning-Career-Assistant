@@ -19,11 +19,56 @@ from voice.views import router as voice_router
 from utils.logger import logger
 import traceback
 
+from contextlib import asynccontextmanager
+
+# Define lifespan
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifecycle events for the FastAPI application"""
+    logger.info("=" * 50)
+    logger.info("Starting SLCA Backend Server")
+    logger.info("=" * 50)
+    
+    # Initialize database
+    try:
+        init_db()
+        logger.info("[OK] Database initialized successfully")
+    except Exception as e:
+        logger.error(f"[ERROR] Database initialization failed: {str(e)}")
+        # We don't raise here to allow the server to start even if DB is down (for health checks)
+        # but in production you might want to stop startup
+    
+    # Create upload directories
+    from pathlib import Path
+    directories = ['uploads/documents', 'uploads/resumes', 'vector_store', 'logs']
+    for directory in directories:
+        Path(directory).mkdir(parents=True, exist_ok=True)
+    logger.info("[OK] Upload directories created")
+
+    # Initialize vector store
+    try:
+        from core.vector_store import vector_store
+        stats = vector_store.get_collection_stats()
+        logger.info(f"[OK] Vector store initialized - {stats.get('total_chunks', 0)} chunks in store")
+    except Exception as e:
+        logger.warning(f"[WARN] Vector store initialization: {str(e)}")
+    
+    logger.info(f"[OK] Server started on {settings.HOST}:{settings.PORT}")
+    logger.info(f"[INFO] API Documentation: http://{settings.HOST}:{settings.PORT}/docs")
+    logger.info("=" * 50)
+
+    yield  # Application runs here
+
+    # Cleanup on shutdown
+    logger.info("Shutting down SLCA Backend Server...")
+    logger.info("[OK] Cleanup completed")
+
 # Create FastAPI app
 app = FastAPI(
     title=settings.APP_NAME,
     version=settings.VERSION,
-    description="Student Learning & Career Assistant API"
+    description="Student Learning & Career Assistant API",
+    lifespan=lifespan
 )
 
 # Configure CORS
@@ -74,46 +119,6 @@ app.include_router(progress_router)
 app.include_router(career_router)
 app.include_router(vectors_router)
 app.include_router(voice_router)
-
-@app.on_event("startup")
-async def startup_event():
-    """Initialize application on startup"""
-    logger.info("=" * 50)
-    logger.info("Starting SLCA Backend Server")
-    logger.info("=" * 50)
-    
-    # Initialize database
-    try:
-        init_db()
-        logger.info("[OK] Database initialized successfully")
-    except Exception as e:
-        logger.error(f"[ERROR] Database initialization failed: {str(e)}")
-        raise
-    
-    # Create upload directories
-    from pathlib import Path
-    directories = ['uploads/documents', 'uploads/resumes', 'vector_store', 'logs']
-    for directory in directories:
-        Path(directory).mkdir(parents=True, exist_ok=True)
-    logger.info("[OK] Upload directories created")
-
-    # Initialize vector store
-    try:
-        from core.vector_store import vector_store
-        stats = vector_store.get_collection_stats()
-        logger.info(f"[OK] Vector store initialized - {stats.get('total_chunks', 0)} chunks in store")
-    except Exception as e:
-        logger.warning(f"[WARN] Vector store initialization: {str(e)}")
-    
-    logger.info(f"[OK] Server started on {settings.HOST}:{settings.PORT}")
-    logger.info(f"[INFO] API Documentation: http://{settings.HOST}:{settings.PORT}/docs")
-    logger.info("=" * 50)
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Cleanup on shutdown"""
-    logger.info("Shutting down SLCA Backend Server...")
-    logger.info("[OK] Cleanup completed")
 
 @app.get("/")
 def read_root():

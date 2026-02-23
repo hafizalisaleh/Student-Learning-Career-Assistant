@@ -4,7 +4,8 @@ Vector store operations using ChromaDB - Full RAG Implementation
 import os
 import uuid
 from typing import List, Dict, Any, Optional
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 import chromadb
 from chromadb.config import Settings
 from config.settings import settings
@@ -19,10 +20,12 @@ class VectorStore:
         # Configure Gemini
         self.api_key = os.getenv('GOOGLE_API_KEY')
         if self.api_key:
-            genai.configure(api_key=self.api_key)
+            self.client = genai.Client(api_key=self.api_key)
+        else:
+            self.client = None
 
-        self.model = genai.GenerativeModel(settings.GEMINI_MODEL)
-        self.embedding_model = "models/text-embedding-004"
+        self.model_id = settings.GEMINI_MODEL
+        self.embedding_model = "text-embedding-004"
 
         # Initialize ChromaDB persistent client
         self.chroma_client = chromadb.PersistentClient(
@@ -58,13 +61,16 @@ class VectorStore:
         Returns:
             Embedding vector as list of floats
         """
+        if not self.client:
+            raise ValueError("Google API Key not configured")
+
         try:
-            result = genai.embed_content(
+            result = self.client.models.embed_content(
                 model=self.embedding_model,
-                content=text,
-                task_type="retrieval_document"
+                contents=text,
+                config=types.EmbedContentConfig(task_type="RETRIEVAL_DOCUMENT")
             )
-            return result['embedding']
+            return result.embeddings[0].values
         except Exception as e:
             logger.error(f"Error generating embedding: {e}")
             raise
@@ -79,13 +85,16 @@ class VectorStore:
         Returns:
             Embedding vector as list of floats
         """
+        if not self.client:
+            raise ValueError("Google API Key not configured")
+
         try:
-            result = genai.embed_content(
+            result = self.client.models.embed_content(
                 model=self.embedding_model,
-                content=text,
-                task_type="retrieval_query"
+                contents=text,
+                config=types.EmbedContentConfig(task_type="RETRIEVAL_QUERY")
             )
-            return result['embedding']
+            return result.embeddings[0].values
         except Exception as e:
             logger.error(f"Error generating query embedding: {e}")
             raise
@@ -400,7 +409,13 @@ Question: {question}
 
 Answer:"""
 
-            response = self.model.generate_content(prompt)
+            if not self.client:
+                raise ValueError("Google API Key not configured")
+
+            response = self.client.models.generate_content(
+                model=self.model_id,
+                contents=prompt
+            )
 
             # Get the chunks used
             query_results = self.query(question, n_results, document_id)
