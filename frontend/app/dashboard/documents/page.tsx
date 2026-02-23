@@ -22,6 +22,7 @@ import {
   CheckCircle2,
   AlertCircle,
   CloudUpload,
+  Sparkles,
 } from 'lucide-react';
 import type { Document } from '@/lib/types';
 import { formatDate, formatFileSize } from '@/lib/utils';
@@ -420,11 +421,16 @@ export default function DocumentsPage() {
               </div>
 
               {/* Actions */}
-              <div className="flex gap-2 pt-3 border-t border-[var(--card-border)]">
-                <Link href={`/dashboard/documents/${doc.id}`} className="flex-1">
-                  <Button variant="secondary" size="sm" className="w-full">
-                    <FileText className="h-4 w-4 mr-2" />
-                    View Details
+              <div className="flex flex-wrap gap-2 pt-3 border-t border-[var(--card-border)]">
+                <Link href={`/dashboard/workspace?id=${doc.id}`} className="flex-1">
+                  <Button variant="primary" size="sm" className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 border-0">
+                    <Sparkles className="h-4 w-4 mr-2" />
+                    Open Workspace
+                  </Button>
+                </Link>
+                <Link href={`/dashboard/documents/${doc.id}`} title="View Details">
+                  <Button variant="secondary" size="sm">
+                    <FileText className="h-4 w-4" />
                   </Button>
                 </Link>
                 {doc.file_url && (

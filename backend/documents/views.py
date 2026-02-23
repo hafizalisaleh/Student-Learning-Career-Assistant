@@ -2,6 +2,7 @@
 Document API endpoints
 """
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, BackgroundTasks
+from fastapi.responses import JSONResponse, FileResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional
 import validators
@@ -622,6 +623,42 @@ async def generate_document_mindmap(
         )
 
 
+@router.get("/{document_id}/file")
+def get_document_file(
+    document_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Get the actual file for a document
+    Returns the file as a stream for the PDF viewer
+    """
+    import os
+    doc = db.query(Document).filter(Document.id == document_id).first()
+    
+    if not doc or not doc.file_path:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document or file not found"
+        )
+    
+    if not os.path.exists(doc.file_path):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Physical file not found on server"
+        )
+    
+    # Detemine media type
+    media_type = "application/pdf"
+    if doc.content_type == ContentType.IMAGE:
+        media_type = "image/auto"
+    elif doc.content_type == ContentType.DOCX:
+        media_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    
+    return FileResponse(
+        path=doc.file_path,
+        media_type=media_type,
+        filename=doc.original_filename
+    )
 @router.get("/{document_id}/diagram")
 async def generate_document_diagram(
     document_id: str,

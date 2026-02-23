@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     # AI Services
     GOOGLE_API_KEY: str = ""
     GEMINI_MODEL: str = "gemini-2.5-flash"
-    GEMINI_EMBEDDING_MODEL: str = "models/text-embedding-004"
+    GEMINI_EMBEDDING_MODEL: str = "models/gemini-embedding-001"
     
     # External APIs (Optional - will use defaults if not in .env)
     SUPADATA_API_KEY: str = ""

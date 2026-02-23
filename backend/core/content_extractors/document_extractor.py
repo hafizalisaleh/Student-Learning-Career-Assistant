@@ -5,7 +5,7 @@ import os
 import base64
 import json
 import requests
-from typing import Optional
+from typing import Optional, List, Dict
 from pathlib import Path
 import PyPDF2
 from docx import Document as DocxDocument
@@ -22,31 +22,37 @@ class DocumentExtractor:
         self.ocr_api_secret = settings.OCR_API_SECRET
         self.ocr_api_url = settings.OCR_API_URL
     
-    def extract_from_pdf(self, file_path: str) -> Optional[str]:
+    def extract_from_pdf(self, file_path: str) -> Optional[List[dict]]:
         """
-        Extract text from PDF file
+        Extract text from PDF file page by page
 
         Args:
             file_path: Path to PDF file
 
         Returns:
-            Extracted text
+            List of dictionaries containing text and page_number
         """
         from utils.logger import logger
         try:
-            text = ""
+            pages = []
             with open(file_path, 'rb') as file:
                 pdf_reader = PyPDF2.PdfReader(file)
-                for page in pdf_reader.pages:
+                for i, page in enumerate(pdf_reader.pages):
                     page_text = page.extract_text()
                     if page_text:
-                        text += page_text + "\n"
+                        pages.append({
+                            "text": page_text,
+                            "metadata": {
+                                "page_number": i + 1,
+                                "source": "pdf"
+                            }
+                        })
 
-            if not text.strip():
-                logger.warning(f"PDF extraction returned empty text: {file_path}")
+            if not pages:
+                logger.warning(f"PDF extraction returned no text: {file_path}")
                 return None
 
-            return text
+            return pages
         except KeyError as e:
             logger.error(f"PDF is corrupted or malformed ({file_path}): {e}")
             return None
@@ -185,15 +191,15 @@ class DocumentExtractor:
         # Return special marker that will be detected by Gemini client
         return f"__GEMINI_IMAGE__{file_path}__"
     
-    def extract_text(self, file_path: str) -> Optional[str]:
+    def extract_text(self, file_path: str) -> Optional[List[dict]]:
         """
-        Extract text from file based on extension
+        Extract text from file based on extension as segments/pages
         
         Args:
             file_path: Path to file
             
         Returns:
-            Extracted text
+            List of dictionaries containing 'text' and 'metadata'
         """
         ext = Path(file_path).suffix.lower()
         
@@ -217,8 +223,19 @@ class DocumentExtractor:
         }
         
         extractor = extractors.get(ext)
-        if extractor:
-            return extractor(file_path)
-        else:
+        if not extractor:
             print(f"Unsupported file type: {ext}")
+            return None
+            
+        result = extractor(file_path)
+        if result is None:
+            return None
+            
+        # Standardize output to List[dict]
+        if isinstance(result, str):
+            return [{"text": result, "metadata": {"source": ext[1:]}}]
+        elif isinstance(result, list):
+            # Already standardized or List[dict]
+            return result
+        else:
             return None

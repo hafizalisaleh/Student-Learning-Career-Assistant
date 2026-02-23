@@ -203,77 +203,74 @@ class RAGPipeline:
         store_embeddings: bool = True
     ) -> Dict[str, Any]:
         """
-        Process document file - extracts text and creates embeddings
-
-        Args:
-            file_path: Path to document
-            document_id: Optional document ID for storage
-            store_embeddings: Whether to store in vector DB
-
-        Returns:
-            Processed data dictionary
+        Process document file - extracts text segments and creates embeddings with metadata
         """
         try:
             logger.info(f"RAG Pipeline: Processing document: {file_path}")
-            logger.info(f"RAG Pipeline: document_id={document_id}, store_embeddings={store_embeddings}")
 
-            # Extract text
-            text = self.document_extractor.extract_text(file_path)
-            if not text:
+            # Extract segments
+            segments = self.document_extractor.extract_text(file_path)
+            if not segments:
                 ext = file_path.split('.')[-1].lower() if '.' in file_path else 'unknown'
-                raise ValueError(f"Could not extract text from document. The {ext.upper()} file may be corrupted, scanned, or empty.")
+                raise ValueError(f"Could not extract text from document {ext.upper()}.")
 
-            # Check if this is an image file
-            if text.startswith("__GEMINI_IMAGE__") and text.endswith("__"):
-                image_path = text.replace("__GEMINI_IMAGE__", "").replace("__", "")
-                logger.info(f"Detected image file, processing with Gemini Vision: {image_path}")
-                text = self.gemini_client.process_image_content(image_path)
-                logger.info(f"Image processed successfully, extracted {len(text)} characters")
-            else:
-                # Regular text document - ensure English
-                try:
-                    text = self.gemini_client.ensure_english(text)
-                except Exception as e:
-                    logger.warning(f"Could not ensure English: {e}")
+            all_text = ""
+            all_chunks = []
+            all_embeddings = []
+            all_metadatas = []
+            
+            # Process each segment (e.g., page)
+            for i, segment in enumerate(segments):
+                text = segment.get("text", "")
+                metadata = segment.get("metadata", {})
+                
+                # If segment is image, process with Vision
+                if text.startswith("__GEMINI_IMAGE__"):
+                    image_path = text.replace("__GEMINI_IMAGE__", "").replace("__", "")
+                    text = self.gemini_client.process_image_content(image_path)
+                    metadata["processed_by"] = "gemini_vision"
 
-            # Chunk text
-            chunks = self.vector_store.chunk_text(text)
-            logger.info(f"RAG Pipeline: Created {len(chunks)} chunks from document")
+                all_text += text + "\n\n"
+                
+                # Chunk this segment
+                segment_chunks = self.vector_store.chunk_text(text)
+                
+                if store_embeddings and document_id and segment_chunks:
+                    for j, chunk in enumerate(segment_chunks):
+                        # Generate embedding for this chunk
+                        embedding = self.vector_store._generate_embedding(chunk)
+                        
+                        # Prepare metadata for this chunk
+                        chunk_meta = metadata.copy()
+                        chunk_meta.update({
+                            "document_id": document_id,
+                            "file_path": file_path,
+                            "source": "file",
+                            "chunk_index": len(all_chunks)
+                        })
+                        
+                        all_chunks.append(chunk)
+                        all_embeddings.append(embedding)
+                        all_metadatas.append(chunk_meta)
 
-            # Store embeddings
-            doc_id = None
-            chunk_count = len(chunks)
+            # Bulk add to vector store if we have chunks
+            if all_chunks and store_embeddings and document_id:
+                chunk_ids = [f"{document_id}_chunk_{i}" for i in range(len(all_chunks))]
+                self.vector_store.collection.add(
+                    ids=chunk_ids,
+                    embeddings=all_embeddings,
+                    documents=all_chunks,
+                    metadatas=all_metadatas
+                )
+                logger.info(f"RAG Pipeline: Indexed {len(all_chunks)} total chunks for document {document_id}")
 
-            if store_embeddings and document_id:
-                try:
-                    logger.info(f"RAG Pipeline: Creating embeddings for document {document_id}...")
-                    logger.info(f"RAG Pipeline: Text length for embedding: {len(text)} chars")
-                    result = self.vector_store.add_document(
-                        document_id=document_id,
-                        text=text,
-                        metadata={"source": "file", "file_path": file_path}
-                    )
-                    logger.info(f"RAG Pipeline: add_document result: {result}")
-                    if result.get("success"):
-                        doc_id = document_id
-                        chunk_count = result.get("chunk_count", len(chunks))
-                        logger.info(f"RAG Pipeline: Embeddings created - {chunk_count} chunks indexed for {document_id}")
-                    else:
-                        logger.error(f"RAG Pipeline: Embedding storage failed: {result.get('error')}")
-                except Exception as e:
-                    import traceback
-                    logger.error(f"RAG Pipeline: Could not store embeddings: {e}")
-                    logger.error(f"RAG Pipeline: Traceback: {traceback.format_exc()}")
-            else:
-                logger.info(f"RAG Pipeline: Skipping embeddings - store_embeddings={store_embeddings}, document_id={document_id}")
-
+            total_chunks = len(all_chunks)
             return {
-                "text": text,
-                "chunks": chunks,
-                "chunk_count": chunk_count,
+                "text": all_text,
+                "chunk_count": total_chunks,
                 "metadata": {"file_path": file_path},
-                "doc_id": doc_id,
-                "embeddings_stored": doc_id is not None,
+                "doc_id": document_id if total_chunks > 0 else None,
+                "embeddings_stored": total_chunks > 0 and store_embeddings,
                 "success": True
             }
 

@@ -25,7 +25,7 @@ class VectorStore:
             self.client = None
 
         self.model_id = settings.GEMINI_MODEL
-        self.embedding_model = "text-embedding-004"
+        self.embedding_model = settings.GEMINI_EMBEDDING_MODEL
 
         # Initialize ChromaDB persistent client
         self.chroma_client = chromadb.PersistentClient(
@@ -68,7 +68,10 @@ class VectorStore:
             result = self.client.models.embed_content(
                 model=self.embedding_model,
                 contents=text,
-                config=types.EmbedContentConfig(task_type="RETRIEVAL_DOCUMENT")
+                config=types.EmbedContentConfig(
+                    task_type="RETRIEVAL_DOCUMENT",
+                    output_dimensionality=768
+                )
             )
             return result.embeddings[0].values
         except Exception as e:
@@ -92,7 +95,10 @@ class VectorStore:
             result = self.client.models.embed_content(
                 model=self.embedding_model,
                 contents=text,
-                config=types.EmbedContentConfig(task_type="RETRIEVAL_QUERY")
+                config=types.EmbedContentConfig(
+                    task_type="RETRIEVAL_QUERY",
+                    output_dimensionality=768
+                )
             )
             return result.embeddings[0].values
         except Exception as e:
@@ -348,25 +354,19 @@ class VectorStore:
         document_id: Optional[str] = None
     ) -> str:
         """
-        Query and return combined context for RAG
-
-        Args:
-            query_text: Query text
-            n_results: Number of chunks to retrieve
-            document_id: Optional - filter to specific document
-
-        Returns:
-            Combined context string from relevant chunks
+        Query and return combined context for RAG with metadata references
         """
         results = self.query(query_text, n_results, document_id)
 
         if not results.get("success") or not results.get("results"):
             return ""
 
-        # Combine relevant chunks
+        # Combine relevant chunks with metadata info for Gemini
         context_parts = []
         for i, result in enumerate(results["results"]):
-            context_parts.append(f"[Chunk {i+1}]: {result['text']}")
+            meta = result.get("metadata", {})
+            page = meta.get("page_number", "Unknown")
+            context_parts.append(f"[Source {i+1}, Page {page}]: {result['text']}")
 
         return "\n\n".join(context_parts)
 
@@ -377,15 +377,7 @@ class VectorStore:
         document_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        Full RAG query: retrieve relevant chunks and generate answer
-
-        Args:
-            question: User question
-            n_results: Number of chunks to retrieve
-            document_id: Optional - filter to specific document
-
-        Returns:
-            Dict with answer and source chunks
+        Full RAG query with page-level citations
         """
         try:
             # Get relevant context
@@ -395,12 +387,15 @@ class VectorStore:
                 return {
                     "success": False,
                     "error": "No relevant context found",
-                    "answer": "I couldn't find relevant information to answer your question."
+                    "answer": "I couldn't find relevant information in your documents to answer this question."
                 }
 
-            # Generate answer using Gemini with context
-            prompt = f"""Based on the following context, answer the question.
-If the answer cannot be found in the context, say so.
+            # Generate answer using Gemini with context and citation instructions
+            prompt = f"""You are a helpful study assistant. Using ONLY the provided context, answer the user's question accurately.
+            
+ALWAYS include page-level citations like [Page X] or [Source Y, Page X] when you use information from a specific part of the context.
+If multiple sources confirm a fact, cite them all.
+If the answer is not in the context, clearly state that you don't have enough information from the documents.
 
 Context:
 {context}

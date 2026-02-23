@@ -7,6 +7,7 @@ from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 import uuid
 import enum
+from typing import Optional
 from config.database import Base
 
 class ContentType(str, enum.Enum):
@@ -51,5 +52,13 @@ class Document(Base):
     
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
+    @property
+    def unique_filename(self) -> Optional[str]:
+        """Extract unique filename from file_path"""
+        if self.file_path:
+            from pathlib import Path
+            return Path(self.file_path).name
+        return None
+
     def __repr__(self):
         return f"<Document {self.title} - {self.content_type}>"

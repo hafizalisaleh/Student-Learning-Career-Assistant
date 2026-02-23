@@ -1,10 +1,7 @@
-"""
-Gemini API client for AI operations
-"""
-import os
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Union
 from pathlib import Path
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from langdetect import detect, LangDetectException
 from config.settings import settings
 from PIL import Image
@@ -14,8 +11,13 @@ class GeminiClient:
     
     def __init__(self):
         """Initialize Gemini client"""
-        genai.configure(api_key=settings.GOOGLE_API_KEY)
-        self.model = genai.GenerativeModel(settings.GEMINI_MODEL)
+        self.api_key = settings.GOOGLE_API_KEY
+        if self.api_key:
+            self.client = genai.Client(api_key=self.api_key)
+        else:
+            self.client = None
+            
+        self.model_id = settings.GEMINI_MODEL
         self.embedding_model_name = settings.GEMINI_EMBEDDING_MODEL
     
     def generate_text(self, prompt: str, temperature: float = 0.3, image_path: Optional[str] = None) -> str:
@@ -30,49 +32,47 @@ class GeminiClient:
         Returns:
             Generated text
         """
+        if not self.client:
+            raise Exception("Google API Key not configured")
+
         try:
-            generation_config = genai.GenerationConfig(
+            # Configure generation and safety
+            config = types.GenerateContentConfig(
                 temperature=temperature,
-                max_output_tokens=8000,  # Increase token limit for long notes
+                max_output_tokens=8000,
+                safety_settings=[
+                    types.SafetySetting(category="HARM_CATEGORY_HARASSMENT", threshold="BLOCK_ONLY_HIGH"),
+                    types.SafetySetting(category="HARM_CATEGORY_HATE_SPEECH", threshold="BLOCK_ONLY_HIGH"),
+                    types.SafetySetting(category="HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold="BLOCK_ONLY_HIGH"),
+                    types.SafetySetting(category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="BLOCK_ONLY_HIGH"),
+                ]
             )
             
-            # Configure safety settings to be more lenient for educational content
-            safety_settings = [
-                {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_ONLY_HIGH"},
-                {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_ONLY_HIGH"},
-                {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_ONLY_HIGH"},
-                {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_ONLY_HIGH"},
-            ]
+            # Prepare contents for API call
+            contents: List[Union[str, types.Part]] = []
             
-            # Prepare content for API call
-            content = []
-            
-            # If image path is provided, use Gemini Vision
+            # If image path is provided, use multimodal features
             if image_path:
                 try:
-                    # Load image
+                    # Load and pass image via PIL
                     image = Image.open(image_path)
-                    content.append(prompt)
-                    content.append(image)
-                    print(f"Processing image with Gemini Vision: {image_path}")
+                    contents.append(prompt)
+                    contents.append(image)
+                    print(f"Processing image with Gemini: {image_path}")
                 except Exception as img_error:
                     print(f"Error loading image: {img_error}")
-                    raise Exception(f"Failed to load image for Gemini Vision: {str(img_error)}")
+                    raise Exception(f"Failed to load image for Gemini: {str(img_error)}")
             else:
-                content = prompt
+                contents = [prompt]
             
-            response = self.model.generate_content(
-                content, 
-                generation_config=generation_config,
-                safety_settings=safety_settings
+            response = self.client.models.generate_content(
+                model=self.model_id,
+                contents=contents,
+                config=config
             )
             
-            # Check if response was blocked
-            if not response.text:
-                # Try to get the reason if blocked
-                if hasattr(response, 'prompt_feedback'):
-                    raise Exception(f"Content generation blocked: {response.prompt_feedback}")
-                raise Exception("Content generation returned empty response")
+            if not response or not response.text:
+                raise Exception("Content generation returned empty response or was blocked")
             
             return response.text
         except Exception as e:
@@ -88,13 +88,19 @@ class GeminiClient:
         Returns:
             List of embedding values
         """
+        if not self.client:
+            raise Exception("Google API Key not configured")
+
         try:
-            result = genai.embed_content(
+            result = self.client.models.embed_content(
                 model=self.embedding_model_name,
-                content=text,
-                task_type="retrieval_document"
+                contents=text,
+                config=types.EmbedContentConfig(
+                    task_type="RETRIEVAL_DOCUMENT",
+                    output_dimensionality=768
+                )
             )
-            return result['embedding']
+            return result.embeddings[0].values
         except Exception as e:
             raise Exception(f"Error generating embeddings: {str(e)}")
     

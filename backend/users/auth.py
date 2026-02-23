@@ -14,7 +14,9 @@ from config.database import get_db
 from users.models import User
 
 # Password hashing
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Note: Using direct bcrypt library instead of passlib to avoid compatibility issues 
+# with bcrypt 4.0+ on modern Python environments.
+import bcrypt
 
 # HTTP Bearer token
 security = HTTPBearer()
@@ -27,18 +29,28 @@ def _normalize_password(password: str) -> str:
     password_bytes = password.encode('utf-8')
     if len(password_bytes) > 72:
         # Hash long passwords with SHA-256 first
+        # SHA-256 provides a 32-byte hash (64 hex chars), well within bcrypt limit
         return hashlib.sha256(password_bytes).hexdigest()
     return password
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a password against its hash"""
-    normalized_password = _normalize_password(plain_password)
-    return pwd_context.verify(normalized_password, hashed_password)
+    try:
+        normalized_password = _normalize_password(plain_password)
+        return bcrypt.checkpw(
+            normalized_password.encode('utf-8'), 
+            hashed_password.encode('utf-8')
+        )
+    except Exception:
+        return False
 
 def get_password_hash(password: str) -> str:
     """Hash a password"""
     normalized_password = _normalize_password(password)
-    return pwd_context.hash(normalized_password)
+    # Generate salt and hash the password
+    salt = bcrypt.gensalt()
+    hashed = bcrypt.hashpw(normalized_password.encode('utf-8'), salt)
+    return hashed.decode('utf-8')
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     """

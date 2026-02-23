@@ -4,8 +4,10 @@ Gemini Live API Integration for Real-Time Voice
 import asyncio
 import json
 import base64
-from typing import Optional, Callable, Any
+from typing import Optional, Callable, Any, List, Dict, Union
 import websockets
+from google import genai
+from google.genai import types
 from config.settings import settings
 from utils.logger import logger
 
@@ -221,9 +223,12 @@ class GeminiVoiceSimple:
     """
 
     def __init__(self):
-        import google.generativeai as genai
-        genai.configure(api_key=settings.GOOGLE_API_KEY)
-        self.model = genai.GenerativeModel("gemini-2.0-flash-exp")
+        self.api_key = settings.GOOGLE_API_KEY
+        if self.api_key:
+            self.client = genai.Client(api_key=self.api_key)
+        else:
+            self.client = None
+        self.model_id = "gemini-2.0-flash-exp"
 
     async def process_audio_query(
         self,
@@ -242,26 +247,28 @@ class GeminiVoiceSimple:
         Returns:
             Dict with text response and audio (if available)
         """
-        try:
-            import google.generativeai as genai
+        if not self.client:
+            return {"success": False, "error": "Google API Key not configured"}
 
+        try:
             # Create content parts
-            parts = []
+            contents: List[Union[str, types.Part]] = []
 
             # Add context if provided
             if context:
-                parts.append(f"[DOCUMENT CONTEXT]\n{context}\n[END CONTEXT]\n\nAnswer based on this context:")
+                contents.append(f"[DOCUMENT CONTEXT]\n{context}\n[END CONTEXT]\n\nAnswer based on this context:")
 
             # Add audio
-            parts.append({
-                "inline_data": {
-                    "mime_type": mime_type,
-                    "data": base64.b64encode(audio_data).decode("utf-8")
-                }
-            })
+            contents.append(types.Part.from_bytes(
+                data=audio_data,
+                mime_type=mime_type
+            ))
 
             # Generate response
-            response = self.model.generate_content(parts)
+            response = self.client.models.generate_content(
+                model=self.model_id,
+                contents=contents
+            )
 
             return {
                 "success": True,
