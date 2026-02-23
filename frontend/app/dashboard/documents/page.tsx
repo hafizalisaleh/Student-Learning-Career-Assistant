@@ -19,11 +19,16 @@ import {
   FileSpreadsheet,
   FileType,
   X,
+  CheckCircle2,
+  AlertCircle,
+  CloudUpload,
 } from 'lucide-react';
 import type { Document } from '@/lib/types';
 import { formatDate, formatFileSize } from '@/lib/utils';
 import toast from 'react-hot-toast';
 import { cn } from '@/lib/utils';
+
+type UploadStatus = 'idle' | 'uploading' | 'processing' | 'success' | 'error';
 
 export default function DocumentsPage() {
   const [documents, setDocuments] = useState<Document[]>([]);
@@ -34,9 +39,19 @@ export default function DocumentsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Upload modal state
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState<UploadStatus>('idle');
+  const [uploadFileName, setUploadFileName] = useState('');
+  const [uploadFileSize, setUploadFileSize] = useState(0);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadError, setUploadError] = useState('');
+
+
   useEffect(() => {
     fetchDocuments();
   }, []);
+
 
   async function fetchDocuments() {
     try {
@@ -61,36 +76,115 @@ export default function DocumentsPage() {
       return;
     }
 
+    // Show upload modal
+    setUploadFileName(file.name);
+    setUploadFileSize(file.size);
+    setUploadStatus('uploading');
+    setUploadProgress(0);
+    setUploadError('');
+    setShowUploadModal(true);
+
+    // Simulate progress
+    const progressInterval = setInterval(() => {
+      setUploadProgress((prev) => {
+        if (prev >= 90) {
+          clearInterval(progressInterval);
+          return 90;
+        }
+        return prev + Math.random() * 15;
+      });
+    }, 200);
+
     try {
       setIsUploading(true);
       const formData = new FormData();
       formData.append('file', file);
+
+      // Upload
       await api.uploadDocument(formData);
-      toast.success('Document uploaded successfully!');
+
+      clearInterval(progressInterval);
+      setUploadProgress(100);
+      setUploadStatus('processing');
+
+      // Brief processing state
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      setUploadStatus('success');
       await fetchDocuments();
       event.target.value = '';
+
+      // Auto close after success
+      setTimeout(() => {
+        setShowUploadModal(false);
+        setUploadStatus('idle');
+      }, 2000);
     } catch (error: any) {
+      clearInterval(progressInterval);
       console.error('Upload error:', error);
-      toast.error(error.response?.data?.detail || 'Failed to upload document');
+      setUploadStatus('error');
+      setUploadError(error.response?.data?.detail || 'Failed to upload document');
     } finally {
       setIsUploading(false);
     }
   }
 
+  const closeUploadModal = () => {
+    if (uploadStatus !== 'uploading' && uploadStatus !== 'processing') {
+      setShowUploadModal(false);
+      setUploadStatus('idle');
+      setUploadError('');
+    }
+  };
+
   async function handleUrlSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!url.trim()) return;
 
+    // Show upload modal for URL processing
+    setUploadFileName(url);
+    setUploadFileSize(0);
+    setUploadStatus('uploading');
+    setUploadProgress(0);
+    setUploadError('');
+    setShowUploadModal(true);
+
+    // Simulate progress
+    const progressInterval = setInterval(() => {
+      setUploadProgress((prev) => {
+        if (prev >= 85) {
+          clearInterval(progressInterval);
+          return 85;
+        }
+        return prev + Math.random() * 10;
+      });
+    }, 300);
+
     try {
       setIsUploading(true);
       await api.processUrl(url);
-      toast.success('URL content processed successfully!');
+
+      clearInterval(progressInterval);
+      setUploadProgress(100);
+      setUploadStatus('processing');
+
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      setUploadStatus('success');
       setUrl('');
       setShowUrlInput(false);
       await fetchDocuments();
+
+      // Auto close after success
+      setTimeout(() => {
+        setShowUploadModal(false);
+        setUploadStatus('idle');
+      }, 2000);
     } catch (error: any) {
+      clearInterval(progressInterval);
       console.error('URL processing error:', error);
-      toast.error(error.response?.data?.detail || 'Failed to process URL');
+      setUploadStatus('error');
+      setUploadError(error.response?.data?.detail || 'Failed to process URL');
     } finally {
       setIsUploading(false);
     }
@@ -357,6 +451,152 @@ export default function DocumentsPage() {
           ))}
         </div>
       )}
+
+      {/* Upload Modal */}
+      {showUploadModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={closeUploadModal}
+          />
+
+          {/* Modal */}
+          <div className="relative w-full max-w-md overflow-hidden rounded-3xl shadow-2xl zoom-in-95">
+            {/* Gradient Header */}
+            <div className="relative bg-gradient-to-r from-blue-500 via-violet-500 to-purple-500 p-6">
+              <div className="absolute inset-0 bg-gradient-to-b from-white/10 to-transparent" />
+              <div className="relative flex items-center gap-4">
+                <div className="p-3 bg-white/20 rounded-2xl backdrop-blur-sm">
+                  {uploadStatus === 'success' ? (
+                    <CheckCircle2 className="h-8 w-8 text-white" />
+                  ) : uploadStatus === 'error' ? (
+                    <AlertCircle className="h-8 w-8 text-white" />
+                  ) : (
+                    <CloudUpload className="h-8 w-8 text-white" />
+                  )}
+                </div>
+                <div className="flex-1">
+                  <h2 className="text-xl font-bold text-white">
+                    {uploadStatus === 'uploading' && 'Uploading Document'}
+                    {uploadStatus === 'processing' && 'Processing Document'}
+                    {uploadStatus === 'success' && 'Upload Complete!'}
+                    {uploadStatus === 'error' && 'Upload Failed'}
+                  </h2>
+                  <p className="text-sm text-white/80 truncate max-w-[250px]">
+                    {uploadFileName}
+                  </p>
+                </div>
+                {(uploadStatus === 'success' || uploadStatus === 'error') && (
+                  <button
+                    onClick={closeUploadModal}
+                    className="p-2 hover:bg-white/20 rounded-xl transition-colors"
+                  >
+                    <X className="h-5 w-5 text-white" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Content */}
+            <div className="bg-[var(--card-bg)] p-6">
+              {/* File Info */}
+              <div className="flex items-center gap-3 p-4 bg-[var(--bg-secondary)] rounded-xl mb-4">
+                <div className="p-2 bg-[var(--bg-tertiary)] rounded-lg">
+                  {uploadFileName.startsWith('http') ? (
+                    <LinkIcon className="h-5 w-5 text-[var(--text-secondary)]" />
+                  ) : (
+                    <FileText className="h-5 w-5 text-[var(--text-secondary)]" />
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-[var(--text-primary)] truncate">
+                    {uploadFileName}
+                  </p>
+                  {uploadFileSize > 0 && (
+                    <p className="text-xs text-[var(--text-tertiary)]">
+                      {formatFileSize(uploadFileSize)}
+                    </p>
+                  )}
+                  {uploadFileName.startsWith('http') && (
+                    <p className="text-xs text-[var(--text-tertiary)]">
+                      Web content
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Progress Bar */}
+              {(uploadStatus === 'uploading' || uploadStatus === 'processing') && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-[var(--text-secondary)]">
+                      {uploadStatus === 'uploading' ? 'Uploading...' : 'Processing...'}
+                    </span>
+                    <span className="text-[var(--text-primary)] font-medium">
+                      {Math.round(uploadProgress)}%
+                    </span>
+                  </div>
+                  <div className="h-2 bg-[var(--bg-tertiary)] rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-blue-500 to-violet-500 rounded-full transition-all duration-300 ease-out"
+                      style={{ width: `${uploadProgress}%` }}
+                    />
+                  </div>
+                  {uploadStatus === 'processing' && (
+                    <p className="text-xs text-[var(--text-tertiary)] text-center mt-2">
+                      Extracting content and creating embeddings...
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Success State */}
+              {uploadStatus === 'success' && (
+                <div className="text-center py-4">
+                  <div className="w-16 h-16 mx-auto mb-3 rounded-full bg-green-500/10 flex items-center justify-center">
+                    <CheckCircle2 className="h-8 w-8 text-green-500" />
+                  </div>
+                  <p className="text-[var(--text-primary)] font-medium">
+                    Document uploaded successfully!
+                  </p>
+                  <p className="text-sm text-[var(--text-tertiary)] mt-1">
+                    Your document is ready to use
+                  </p>
+                </div>
+              )}
+
+              {/* Error State */}
+              {uploadStatus === 'error' && (
+                <div className="text-center py-4">
+                  <div className="w-16 h-16 mx-auto mb-3 rounded-full bg-red-500/10 flex items-center justify-center">
+                    <AlertCircle className="h-8 w-8 text-red-500" />
+                  </div>
+                  <p className="text-[var(--text-primary)] font-medium">
+                    Upload failed
+                  </p>
+                  <p className="text-sm text-red-400 mt-1">
+                    {uploadError}
+                  </p>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="mt-4"
+                    onClick={() => {
+                      setShowUploadModal(false);
+                      setUploadStatus('idle');
+                      fileInputRef.current?.click();
+                    }}
+                  >
+                    Try Again
+                  </Button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

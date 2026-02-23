@@ -1,25 +1,26 @@
 'use client';
 
-import { ReactNode, useEffect, useState } from 'react';
+import { ReactNode, useEffect, useState, useRef } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuthStore } from '@/lib/store';
 import {
   LayoutDashboard,
   FileText,
-  BookOpen,
-  Brain,
-  ClipboardCheck,
   TrendingUp,
   Briefcase,
   User,
   LogOut,
   Menu,
   X,
-  GraduationCap,
   Mic,
+  ChevronDown,
+  Settings,
+  Camera,
+  UserPlus,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { ThemeToggle, ThemeToggleCompact } from '@/components/ui/theme-toggle';
 import toast from 'react-hot-toast';
 import { cn } from '@/lib/utils';
 
@@ -27,13 +28,11 @@ interface DashboardLayoutProps {
   children: ReactNode;
 }
 
+// Consolidated navigation - removed Notes, Summaries, Quizzes (available in Documents)
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Documents', href: '/dashboard/documents', icon: FileText },
-  { name: 'AI Assistant', href: '/dashboard/ask', icon: Mic },
-  { name: 'Notes', href: '/dashboard/notes', icon: BookOpen },
-  { name: 'Summaries', href: '/dashboard/summaries', icon: Brain },
-  { name: 'Quizzes', href: '/dashboard/quizzes', icon: ClipboardCheck },
+  { name: 'Voice Control', href: '/dashboard/ask', icon: Mic },
   { name: 'Progress', href: '/dashboard/progress', icon: TrendingUp },
   { name: 'Career', href: '/dashboard/career', icon: Briefcase },
 ];
@@ -41,9 +40,9 @@ const navigation = [
 const bottomNavItems = [
   { name: 'Home', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Docs', href: '/dashboard/documents', icon: FileText },
-  { name: 'AI', href: '/dashboard/ask', icon: Mic, highlight: true },
-  { name: 'Quiz', href: '/dashboard/quizzes', icon: ClipboardCheck },
-  { name: 'More', href: '#more', icon: Menu },
+  { name: 'Voice', href: '/dashboard/ask', icon: Mic, highlight: true },
+  { name: 'Progress', href: '/dashboard/progress', icon: TrendingUp },
+  { name: 'Career', href: '/dashboard/career', icon: Briefcase },
 ];
 
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
@@ -52,9 +51,23 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const { user, logout } = useAuthStore();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const profileRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setMounted(true);
+  }, []);
+
+  // Close profile dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (profileRef.current && !profileRef.current.contains(event.target as Node)) {
+        setProfileOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   const handleLogout = () => {
@@ -66,6 +79,16 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const isActive = (href: string) => {
     if (href === '/dashboard') return pathname === '/dashboard';
     return pathname?.startsWith(href);
+  };
+
+  const getUserInitials = () => {
+    if (!user) return 'U';
+    if (user.first_name && user.last_name) {
+      return `${user.first_name[0]}${user.last_name[0]}`.toUpperCase();
+    }
+    if (user.first_name) return user.first_name[0].toUpperCase();
+    if (user.email) return user.email[0].toUpperCase();
+    return 'U';
   };
 
   return (
@@ -90,9 +113,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         {/* Logo */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--sidebar-border)]">
           <Link href="/dashboard" className="flex items-center gap-2">
-            <div className="p-1.5 rounded-md bg-white/10">
-              <GraduationCap className="h-5 w-5 text-white" />
-            </div>
+            <img src="/logo.png" alt="SLCA" className="h-8 w-8 object-contain bg-white rounded-md p-0.5" />
             <span className="text-base font-semibold text-white">SLCA</span>
           </Link>
           <button
@@ -123,22 +144,9 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           })}
         </nav>
 
-        {/* User */}
-        <div className="border-t border-[var(--sidebar-border)] p-3">
-          <div className="flex items-center gap-2 mb-2">
-            <div className="h-8 w-8 rounded-md bg-white/10 flex items-center justify-center flex-shrink-0">
-              <User className="h-4 w-4 text-white" />
-            </div>
-            <div className="flex-1 min-w-0">
-              {mounted && user ? (
-                <p className="text-sm font-medium text-white truncate">
-                  {user.first_name || user.email?.split('@')[0]}
-                </p>
-              ) : (
-                <div className="h-4 w-20 bg-white/10 rounded animate-pulse" />
-              )}
-            </div>
-          </div>
+        {/* Sidebar footer */}
+        <div className="border-t border-[var(--sidebar-border)] p-3 space-y-1">
+          <ThemeToggleCompact />
           <Button
             variant="ghost"
             size="sm"
@@ -153,8 +161,124 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
       {/* Main */}
       <div className="lg:pl-56 pb-16 lg:pb-0">
+        {/* Desktop header with profile */}
+        <header className="hidden lg:flex sticky top-0 z-30 bg-[var(--bg-primary)] border-b border-[var(--card-border)] items-center justify-end px-6 py-2 gap-3">
+          {/* Theme toggle */}
+          <ThemeToggle />
+
+          {/* Profile dropdown */}
+          <div className="relative" ref={profileRef}>
+            <button
+              onClick={() => setProfileOpen(!profileOpen)}
+              className={cn(
+                "flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all",
+                "hover:bg-[var(--bg-secondary)]",
+                profileOpen && "bg-[var(--bg-secondary)]"
+              )}
+            >
+              {/* Profile avatar */}
+              <div className="relative">
+                <div className="h-8 w-8 rounded-full bg-gradient-to-br from-[var(--primary)] to-[var(--secondary)] flex items-center justify-center text-white text-sm font-medium">
+                  {mounted && user ? getUserInitials() : '...'}
+                </div>
+                {/* Online indicator */}
+                <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 rounded-full border-2 border-white" />
+              </div>
+
+              {mounted && user && (
+                <div className="text-left hidden sm:block">
+                  <p className="text-sm font-medium text-[var(--text-primary)]">
+                    {user.first_name || user.email?.split('@')[0]}
+                  </p>
+                  <p className="text-xs text-[var(--text-muted)] truncate max-w-[120px]">
+                    {user.email}
+                  </p>
+                </div>
+              )}
+
+              <ChevronDown className={cn(
+                "h-4 w-4 text-[var(--text-muted)] transition-transform",
+                profileOpen && "rotate-180"
+              )} />
+            </button>
+
+            {/* Dropdown menu */}
+            {profileOpen && (
+              <div className="absolute right-0 mt-2 w-64 bg-[var(--card-bg)] rounded-xl shadow-lg border border-[var(--card-border)] py-2 animate-in fade-in slide-in-from-top-2 duration-200">
+                {/* User info header */}
+                <div className="px-4 py-3 border-b border-[var(--card-border)]">
+                  <div className="flex items-center gap-3">
+                    <div className="relative group">
+                      <div className="h-12 w-12 rounded-full bg-gradient-to-br from-[var(--primary)] to-[var(--secondary)] flex items-center justify-center text-white text-lg font-medium">
+                        {mounted && user ? getUserInitials() : '...'}
+                      </div>
+                      {/* Upload photo overlay */}
+                      <button className="absolute inset-0 rounded-full bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                        <Camera className="h-4 w-4 text-white" />
+                      </button>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      {mounted && user && (
+                        <>
+                          <p className="text-sm font-medium text-[var(--text-primary)] truncate">
+                            {user.first_name} {user.last_name}
+                          </p>
+                          <p className="text-xs text-[var(--text-muted)] truncate">
+                            {user.email}
+                          </p>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Menu items */}
+                <div className="py-1">
+                  <button className="w-full flex items-center gap-3 px-4 py-2 text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] transition-colors">
+                    <User className="h-4 w-4" />
+                    View Profile
+                  </button>
+                  <button className="w-full flex items-center gap-3 px-4 py-2 text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] transition-colors">
+                    <Camera className="h-4 w-4" />
+                    Change Photo
+                  </button>
+                  <button className="w-full flex items-center gap-3 px-4 py-2 text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] transition-colors">
+                    <Settings className="h-4 w-4" />
+                    Settings
+                  </button>
+                </div>
+
+                {/* Divider */}
+                <div className="border-t border-[var(--card-border)] my-1" />
+
+                {/* Switch account */}
+                <div className="py-1">
+                  <button className="w-full flex items-center gap-3 px-4 py-2 text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] transition-colors">
+                    <UserPlus className="h-4 w-4" />
+                    Add Another Account
+                  </button>
+                </div>
+
+                {/* Divider */}
+                <div className="border-t border-[var(--card-border)] my-1" />
+
+                {/* Sign out */}
+                <div className="py-1">
+                  <button
+                    onClick={handleLogout}
+                    className="w-full flex items-center gap-3 px-4 py-2 text-sm text-[var(--error)] hover:bg-[var(--error-bg)] transition-colors"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    Sign Out
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </header>
+
         {/* Mobile header */}
-        <header className="lg:hidden sticky top-0 z-30 bg-white border-b border-[var(--card-border)]">
+        <header className="lg:hidden sticky top-0 z-30 bg-[var(--bg-primary)] border-b border-[var(--card-border)]">
           <div className="flex items-center justify-between px-3 py-2">
             <button
               onClick={() => setSidebarOpen(true)}
@@ -163,38 +287,75 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               <Menu className="h-5 w-5" />
             </button>
             <Link href="/dashboard" className="flex items-center gap-2">
-              <div className="p-1 rounded-md bg-[var(--sidebar-bg)]">
-                <GraduationCap className="h-4 w-4 text-white" />
-              </div>
+              <img src="/logo.png" alt="SLCA" className="h-7 w-7 object-contain" />
               <span className="text-base font-semibold text-[var(--text-primary)]">SLCA</span>
             </Link>
-            <div className="w-8" />
+            {/* Mobile profile button */}
+            <button
+              onClick={() => setProfileOpen(!profileOpen)}
+              className="relative"
+            >
+              <div className="h-8 w-8 rounded-full bg-gradient-to-br from-[var(--primary)] to-[var(--secondary)] flex items-center justify-center text-white text-sm font-medium">
+                {mounted && user ? getUserInitials() : '...'}
+              </div>
+              <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-white" />
+            </button>
           </div>
+
+          {/* Mobile profile dropdown */}
+          {profileOpen && (
+            <div className="absolute right-3 top-14 w-64 bg-[var(--card-bg)] rounded-xl shadow-lg border border-[var(--card-border)] py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+              <div className="px-4 py-3 border-b border-[var(--card-border)]">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-full bg-gradient-to-br from-[var(--primary)] to-[var(--secondary)] flex items-center justify-center text-white font-medium">
+                    {mounted && user ? getUserInitials() : '...'}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    {mounted && user && (
+                      <>
+                        <p className="text-sm font-medium text-[var(--text-primary)] truncate">
+                          {user.first_name} {user.last_name}
+                        </p>
+                        <p className="text-xs text-[var(--text-muted)] truncate">
+                          {user.email}
+                        </p>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <div className="py-1">
+                <button className="w-full flex items-center gap-3 px-4 py-2 text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)]">
+                  <Camera className="h-4 w-4" />
+                  Change Photo
+                </button>
+                <button className="w-full flex items-center gap-3 px-4 py-2 text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)]">
+                  <UserPlus className="h-4 w-4" />
+                  Add Account
+                </button>
+              </div>
+              <div className="border-t border-[var(--card-border)] my-1" />
+              <button
+                onClick={handleLogout}
+                className="w-full flex items-center gap-3 px-4 py-2 text-sm text-[var(--error)] hover:bg-[var(--error-bg)]"
+              >
+                <LogOut className="h-4 w-4" />
+                Sign Out
+              </button>
+            </div>
+          )}
         </header>
 
         {/* Content */}
         <main className="p-4 lg:p-6">{children}</main>
       </div>
 
-      {/* Mobile bottom nav */}
-      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-[var(--card-border)]">
+      {/* Mobile bottom nav - consolidated */}
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-30 bg-[var(--bg-primary)] border-t border-[var(--card-border)]">
         <div className="flex items-center justify-around py-1.5">
           {bottomNavItems.map((item) => {
-            const active = item.href === '#more' ? false : isActive(item.href);
+            const active = isActive(item.href);
             const Icon = item.icon;
-
-            if (item.href === '#more') {
-              return (
-                <button
-                  key={item.name}
-                  onClick={() => setSidebarOpen(true)}
-                  className="flex flex-col items-center gap-0.5 px-3 py-1.5 text-[var(--text-muted)]"
-                >
-                  <Icon className="h-5 w-5" />
-                  <span className="text-[10px]">{item.name}</span>
-                </button>
-              );
-            }
 
             if ((item as any).highlight) {
               return (

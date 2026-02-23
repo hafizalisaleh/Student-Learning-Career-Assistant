@@ -9,7 +9,8 @@ import { useAuthStore } from '@/lib/store';
 import { loginSchema, type LoginFormData } from '@/lib/validations';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { GraduationCap, ArrowLeft } from 'lucide-react';
+import { ThemeToggle } from '@/components/ui/theme-toggle';
+import { ArrowLeft } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function LoginPage() {
@@ -42,13 +43,16 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[var(--bg-primary)] px-4 py-8">
+    <div className="min-h-screen flex items-center justify-center bg-[var(--bg-primary)] px-4 py-8 relative">
+      {/* Theme toggle */}
+      <div className="absolute top-4 right-4">
+        <ThemeToggle />
+      </div>
+
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="flex items-center justify-center gap-2 mb-6">
-          <div className="p-2 rounded-lg bg-[var(--primary)]">
-            <GraduationCap className="h-5 w-5 text-white" />
-          </div>
+          <img src="/logo.png" alt="SLCA" className="h-10 w-10 object-contain" />
           <span className="text-lg font-semibold text-[var(--text-primary)]">SLCA</span>
         </div>
 

@@ -5,9 +5,7 @@ Supports: flowchart, sequence, entity-relationship, state diagrams
 from typing import Dict, Any, Literal
 from utils.gemini_client import gemini_client
 from utils.logger import logger
-
 DiagramType = Literal["flowchart", "sequence", "er", "state", "class"]
-
 
 class DiagramGenerator:
     """Generate various Mermaid diagrams from document content"""

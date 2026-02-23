@@ -220,7 +220,8 @@ class RAGPipeline:
             # Extract text
             text = self.document_extractor.extract_text(file_path)
             if not text:
-                raise ValueError("Failed to extract document content")
+                ext = file_path.split('.')[-1].lower() if '.' in file_path else 'unknown'
+                raise ValueError(f"Could not extract text from document. The {ext.upper()} file may be corrupted, scanned, or empty.")
 
             # Check if this is an image file
             if text.startswith("__GEMINI_IMAGE__") and text.endswith("__"):

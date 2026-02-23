@@ -25,22 +25,33 @@ class DocumentExtractor:
     def extract_from_pdf(self, file_path: str) -> Optional[str]:
         """
         Extract text from PDF file
-        
+
         Args:
             file_path: Path to PDF file
-            
+
         Returns:
             Extracted text
         """
+        from utils.logger import logger
         try:
             text = ""
             with open(file_path, 'rb') as file:
                 pdf_reader = PyPDF2.PdfReader(file)
                 for page in pdf_reader.pages:
-                    text += page.extract_text() + "\n"
+                    page_text = page.extract_text()
+                    if page_text:
+                        text += page_text + "\n"
+
+            if not text.strip():
+                logger.warning(f"PDF extraction returned empty text: {file_path}")
+                return None
+
             return text
+        except KeyError as e:
+            logger.error(f"PDF is corrupted or malformed ({file_path}): {e}")
+            return None
         except Exception as e:
-            print(f"Error reading PDF: {e}")
+            logger.error(f"Error reading PDF ({file_path}): {e}")
             return None
     
     def extract_from_docx(self, file_path: str) -> Optional[str]:

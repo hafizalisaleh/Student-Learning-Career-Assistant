@@ -24,14 +24,29 @@ import {
   Database,
   Circle,
   Boxes,
+  X,
+  Edit3,
+  Check,
+  Copy,
+  RotateCcw,
 } from 'lucide-react';
 import type { Document } from '@/lib/types';
 import { formatDate, formatFileSize } from '@/lib/utils';
 import toast from 'react-hot-toast';
 import { cn } from '@/lib/utils';
-import mermaid from 'mermaid';
+// Dynamic import - mermaid is 66MB, only load when needed
+let mermaidInstance: typeof import('mermaid').default | null = null;
+const getMermaid = async () => {
+  if (!mermaidInstance) {
+    const m = await import('mermaid');
+    mermaidInstance = m.default;
+  }
+  return mermaidInstance;
+};
+import ReactMarkdown from 'react-markdown';
 
 type TabType = 'info' | 'mindmap' | 'diagrams';
+type SummaryLength = 'short' | 'medium' | 'detailed';
 type DiagramType = 'flowchart' | 'sequence' | 'er' | 'state' | 'class';
 
 const DIAGRAM_TYPES: { type: DiagramType; label: string; icon: any; description: string }[] = [
@@ -66,12 +81,22 @@ export default function DocumentDetailPage() {
   const diagramRef = useRef<HTMLDivElement>(null);
   const [generatedDiagrams, setGeneratedDiagrams] = useState<Record<DiagramType, string>>({} as any);
 
+  // Summary modal state
+  const [showSummaryModal, setShowSummaryModal] = useState(false);
+  const [summaryLength, setSummaryLength] = useState<SummaryLength>('short');
+  const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
+  const [summaryText, setSummaryText] = useState('');
+  const [isEditingSummary, setIsEditingSummary] = useState(false);
+  const [editedSummary, setEditedSummary] = useState('');
+  const [summaryGenerated, setSummaryGenerated] = useState(false);
+
   useEffect(() => {
     fetchDocument();
   }, [documentId]);
 
-  useEffect(() => {
-    // Initialize mermaid with light/neutral theme for better readability
+  // Initialize mermaid lazily when needed
+  const initMermaid = async () => {
+    const mermaid = await getMermaid();
     mermaid.initialize({
       startOnLoad: false,
       theme: 'base',
@@ -84,44 +109,25 @@ export default function DocumentDetailPage() {
         curve: 'basis',
       },
       themeVariables: {
-        // Base colors - using muted academic palette
         primaryColor: '#4B6A9B',
         primaryTextColor: '#FFFFFF',
         primaryBorderColor: '#3D5A87',
-
-        // Secondary colors
         secondaryColor: '#5C8A72',
         secondaryTextColor: '#FFFFFF',
         secondaryBorderColor: '#4A7560',
-
-        // Tertiary colors
         tertiaryColor: '#8B7355',
         tertiaryTextColor: '#FFFFFF',
         tertiaryBorderColor: '#745F47',
-
-        // Quaternary for additional levels
         quaternaryColor: '#7B8794',
-
-        // Line colors
         lineColor: '#52525B',
-
-        // Background colors
         background: '#FFFFFF',
         mainBkg: '#FFFFFF',
-
-        // Node colors for flowcharts (light backgrounds)
         nodeBkg: '#E8EEF4',
         nodeBorder: '#4B6A9B',
         nodeTextColor: '#1a1a1a',
-
-        // Cluster/group styling
         clusterBkg: '#F5F7FA',
         clusterBorder: '#4B6A9B',
-
-        // Default text color
         textColor: '#1a1a1a',
-
-        // Sequence diagram
         actorBkg: '#E8EEF4',
         actorBorder: '#4B6A9B',
         actorTextColor: '#1a1a1a',
@@ -137,19 +143,11 @@ export default function DocumentDetailPage() {
         noteBorderColor: '#B8860B',
         activationBkgColor: '#E8EEF4',
         activationBorderColor: '#4B6A9B',
-
-        // Class diagram
         classText: '#1a1a1a',
-
-        // State diagram
         labelColor: '#1a1a1a',
         altBackground: '#F5F7FA',
-
-        // ER diagram
         attributeBackgroundColorOdd: '#FFFFFF',
         attributeBackgroundColorEven: '#F5F7FA',
-
-        // Pie chart
         pie1: '#4B6A9B',
         pie2: '#5C8A72',
         pie3: '#8B7355',
@@ -159,13 +157,11 @@ export default function DocumentDetailPage() {
         pieTitleTextColor: '#1a1a1a',
         pieSectionTextColor: '#FFFFFF',
         pieStrokeColor: '#FFFFFF',
-
-        // Fonts
         fontFamily: 'Inter, -apple-system, sans-serif',
         fontSize: '14px',
       },
     });
-  }, []);
+  };
 
   useEffect(() => {
     if (mindmapCode && mindmapRef.current) {
@@ -218,6 +214,10 @@ export default function DocumentDetailPage() {
     try {
       // Clear previous content
       mindmapRef.current.innerHTML = '';
+
+      // Initialize and get mermaid instance
+      await initMermaid();
+      const mermaid = await getMermaid();
 
       // Generate unique ID for this render
       const id = `mindmap-${Date.now()}`;
@@ -293,6 +293,11 @@ export default function DocumentDetailPage() {
 
     try {
       diagramRef.current.innerHTML = '';
+
+      // Initialize and get mermaid instance
+      await initMermaid();
+      const mermaid = await getMermaid();
+
       const id = `diagram-${Date.now()}`;
       const { svg } = await mermaid.render(id, diagramCode);
       diagramRef.current.innerHTML = svg;
@@ -337,6 +342,85 @@ export default function DocumentDetailPage() {
     });
     setDiagramCode('');
     await generateDiagram(selectedDiagramType);
+  };
+
+  // Summary functions
+  const openSummaryModal = () => {
+    setShowSummaryModal(true);
+    setSummaryText('');
+    setSummaryGenerated(false);
+    setIsEditingSummary(false);
+  };
+
+  const closeSummaryModal = () => {
+    setShowSummaryModal(false);
+    setSummaryText('');
+    setSummaryGenerated(false);
+    setIsEditingSummary(false);
+  };
+
+  const generateSummary = async () => {
+    try {
+      setIsGeneratingSummary(true);
+      setSummaryText('');
+      setSummaryGenerated(false);
+
+      const result = await api.generateSummary({
+        document_id: documentId,
+        summary_length: summaryLength,
+      });
+
+      // Simulate typing effect for the summary
+      const fullText = result.summary_text;
+      let currentIndex = 0;
+      const chunkSize = 3;
+
+      const typeText = () => {
+        if (currentIndex < fullText.length) {
+          const nextChunk = fullText.slice(currentIndex, currentIndex + chunkSize);
+          setSummaryText(prev => prev + nextChunk);
+          currentIndex += chunkSize;
+          setTimeout(typeText, 10);
+        } else {
+          setSummaryGenerated(true);
+          setIsGeneratingSummary(false);
+        }
+      };
+
+      typeText();
+    } catch (error: any) {
+      console.error('Summary generation error:', error);
+      const errorMessage = error.response?.data?.detail || error.message || 'Failed to generate summary';
+      toast.error(errorMessage);
+      setIsGeneratingSummary(false);
+    }
+  };
+
+  const startEditSummary = () => {
+    setEditedSummary(summaryText);
+    setIsEditingSummary(true);
+  };
+
+  const saveEditedSummary = () => {
+    setSummaryText(editedSummary);
+    setIsEditingSummary(false);
+    toast.success('Summary updated!');
+  };
+
+  const cancelEditSummary = () => {
+    setIsEditingSummary(false);
+    setEditedSummary('');
+  };
+
+  const copySummary = () => {
+    navigator.clipboard.writeText(summaryText);
+    toast.success('Summary copied to clipboard!');
+  };
+
+  const regenerateSummary = () => {
+    setSummaryText('');
+    setSummaryGenerated(false);
+    generateSummary();
   };
 
   if (isLoading) {
@@ -450,12 +534,10 @@ export default function DocumentDetailPage() {
           <div className="p-6 rounded-2xl bg-[var(--card-bg)] border border-[var(--card-border)]">
             <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-4">Quick Actions</h3>
             <div className="grid grid-cols-2 gap-3">
-              <Link href={`/dashboard/summaries/new?document=${documentId}`}>
-                <Button variant="secondary" className="w-full">
-                  <Brain className="h-4 w-4 mr-2" />
-                  Summary
-                </Button>
-              </Link>
+              <Button variant="secondary" className="w-full" onClick={openSummaryModal}>
+                <Brain className="h-4 w-4 mr-2" />
+                Summary
+              </Button>
               <Link href={`/dashboard/notes/new?document=${documentId}`}>
                 <Button variant="secondary" className="w-full">
                   <BookOpen className="h-4 w-4 mr-2" />
@@ -710,6 +792,179 @@ export default function DocumentDetailPage() {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Summary Modal */}
+      {showSummaryModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={closeSummaryModal}
+          />
+
+          {/* Modal */}
+          <div className="relative w-full max-w-2xl max-h-[85vh] overflow-hidden rounded-3xl shadow-2xl zoom-in-95">
+            {/* Gradient Header */}
+            <div className="relative bg-gradient-to-r from-[#4B6A9B] via-[#5C8A72] to-[#7C6B8E] p-6">
+              <div className="absolute inset-0 bg-gradient-to-b from-white/10 to-transparent" />
+              <div className="relative flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-white/20 rounded-xl backdrop-blur-sm">
+                    <Brain className="h-6 w-6 text-white" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold text-white">AI Summary</h2>
+                    <p className="text-sm text-white/80">{document?.title}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={closeSummaryModal}
+                  className="p-2 hover:bg-white/20 rounded-xl transition-colors"
+                >
+                  <X className="h-5 w-5 text-white" />
+                </button>
+              </div>
+            </div>
+
+            {/* Content */}
+            <div className="bg-[var(--card-bg)] p-6 overflow-y-auto max-h-[calc(85vh-180px)]">
+              {/* Length Selector - Only show before generation starts */}
+              {!summaryText && !isGeneratingSummary && (
+                <div className="mb-6">
+                  <label className="block text-sm font-medium text-[var(--text-primary)] mb-3">
+                    Summary Length
+                  </label>
+                  <div className="grid grid-cols-3 gap-3">
+                    {[
+                      { value: 'short', label: 'Concise', desc: '2-3 key points' },
+                      { value: 'medium', label: 'Standard', desc: '5-7 points' },
+                      { value: 'detailed', label: 'In-depth', desc: 'Full coverage' },
+                    ].map((option) => (
+                      <button
+                        key={option.value}
+                        onClick={() => setSummaryLength(option.value as SummaryLength)}
+                        className={cn(
+                          'p-4 rounded-xl border-2 transition-all text-center',
+                          summaryLength === option.value
+                            ? 'border-[var(--accent-blue)] bg-[var(--accent-blue)]/10'
+                            : 'border-[var(--card-border)] hover:border-[var(--accent-blue)]/50'
+                        )}
+                      >
+                        <p className="font-medium text-[var(--text-primary)]">{option.label}</p>
+                        <p className="text-xs text-[var(--text-secondary)] mt-1">{option.desc}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Summary Display */}
+              {(summaryText || isGeneratingSummary) && (
+                <div className="relative">
+                  {/* Edit Mode */}
+                  {isEditingSummary ? (
+                    <textarea
+                      value={editedSummary}
+                      onChange={(e) => setEditedSummary(e.target.value)}
+                      className="w-full min-h-[300px] p-4 bg-[var(--bg-elevated)] border border-[var(--card-border)] rounded-xl text-[var(--text-primary)] resize-none focus:outline-none focus:ring-2 focus:ring-[var(--accent-blue)]"
+                      autoFocus
+                    />
+                  ) : (
+                    <div className="relative p-4 bg-gradient-to-br from-[var(--bg-elevated)] to-[var(--card-bg)] border border-[var(--card-border)] rounded-xl min-h-[200px]">
+                      {/* Generating indicator */}
+                      {isGeneratingSummary && (
+                        <div className="absolute top-3 right-3 flex items-center gap-2 text-xs text-[var(--accent-blue)]">
+                          <div className="w-2 h-2 bg-[var(--accent-blue)] rounded-full animate-pulse" />
+                          Generating...
+                        </div>
+                      )}
+
+                      {/* Summary content with markdown */}
+                      <div className="prose prose-sm max-w-none text-[var(--text-primary)]">
+                        <ReactMarkdown>
+                          {summaryText || ''}
+                        </ReactMarkdown>
+                      </div>
+
+                      {/* Typing cursor */}
+                      {isGeneratingSummary && (
+                        <span className="inline-block w-2 h-5 bg-[var(--accent-blue)] animate-pulse ml-1" />
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Empty State */}
+              {!summaryText && !isGeneratingSummary && (
+                <div className="text-center py-8">
+                  <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-[#4B6A9B]/20 to-[#5C8A72]/20 flex items-center justify-center">
+                    <Sparkles className="h-8 w-8 text-[var(--accent-blue)]" />
+                  </div>
+                  <p className="text-[var(--text-secondary)]">
+                    Select a length and click generate to create an AI summary
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Footer Actions */}
+            <div className="bg-[var(--card-bg)] border-t border-[var(--card-border)] p-4">
+              <div className="flex items-center justify-between gap-3">
+                {/* Left side actions */}
+                <div className="flex items-center gap-2">
+                  {summaryGenerated && !isEditingSummary && (
+                    <>
+                      <Button variant="ghost" size="sm" onClick={copySummary}>
+                        <Copy className="h-4 w-4 mr-1" />
+                        Copy
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={startEditSummary}>
+                        <Edit3 className="h-4 w-4 mr-1" />
+                        Edit
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={regenerateSummary}>
+                        <RotateCcw className="h-4 w-4 mr-1" />
+                        Regenerate
+                      </Button>
+                    </>
+                  )}
+                  {isEditingSummary && (
+                    <>
+                      <Button variant="ghost" size="sm" onClick={cancelEditSummary}>
+                        Cancel
+                      </Button>
+                      <Button variant="primary" size="sm" onClick={saveEditedSummary}>
+                        <Check className="h-4 w-4 mr-1" />
+                        Save Changes
+                      </Button>
+                    </>
+                  )}
+                </div>
+
+                {/* Right side actions */}
+                <div className="flex items-center gap-2">
+                  {!summaryText && !isGeneratingSummary && (
+                    <Button
+                      variant="primary"
+                      onClick={generateSummary}
+                      className="bg-gradient-to-r from-[#4B6A9B] to-[#5C8A72] hover:opacity-90"
+                    >
+                      <Sparkles className="h-4 w-4 mr-2" />
+                      Generate Summary
+                    </Button>
+                  )}
+                  {summaryGenerated && !isEditingSummary && (
+                    <Button variant="secondary" onClick={closeSummaryModal}>
+                      Done
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}
