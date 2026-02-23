@@ -1,1 +1,17 @@
 node_modules/
+
+# Backend
+backend/uploads/
+backend/__pycache__/
+backend/**/__pycache__/
+backend/*.pyc
+backend/.env
+backend/vector_store/
+
+# Logs
+*.log
+backend/logs/
+
+# Environment
+.env
+.env.local
