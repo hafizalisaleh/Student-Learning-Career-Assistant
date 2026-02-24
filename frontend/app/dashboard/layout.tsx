@@ -18,6 +18,10 @@ import {
   Settings,
   Camera,
   UserPlus,
+  ChevronsLeft,
+  ChevronsRight,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ThemeToggle, ThemeToggleCompact } from '@/components/ui/theme-toggle';
@@ -50,13 +54,36 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const router = useRouter();
   const { user, logout } = useAuthStore();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isHoveringEdge, setIsHoveringEdge] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const profileRef = useRef<HTMLDivElement>(null);
 
+  // Initialize collapse state from localStorage
   useEffect(() => {
     setMounted(true);
+    const saved = localStorage.getItem('sidebar-collapsed');
+    if (saved === 'true') setIsSidebarCollapsed(true);
   }, []);
+
+  // Keyboard shortcut Cmd+\ or Ctrl+\
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === '\\') {
+        e.preventDefault();
+        toggleSidebar();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isSidebarCollapsed]);
+
+  const toggleSidebar = () => {
+    const newState = !isSidebarCollapsed;
+    setIsSidebarCollapsed(newState);
+    localStorage.setItem('sidebar-collapsed', String(newState));
+  };
 
   // Close profile dropdown when clicking outside
   useEffect(() => {
@@ -91,8 +118,10 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     return 'U';
   };
 
+  const isMounted = mounted; // Alias for clarity
+
   return (
-    <div className="min-h-screen bg-[var(--bg-primary)]" suppressHydrationWarning>
+    <div className="min-h-screen bg-[var(--bg-primary)] overflow-x-hidden" suppressHydrationWarning>
       {/* Mobile backdrop */}
       {sidebarOpen && (
         <div
@@ -101,27 +130,59 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         />
       )}
 
+      {/* Sidebar Edge Trigger (Notion-style hover to reveal) */}
+      {isSidebarCollapsed && !isHoveringEdge && (
+        <div
+          className="fixed top-0 left-0 z-[60] h-full w-4 cursor-pointer hidden lg:block group"
+          onMouseEnter={() => setIsHoveringEdge(true)}
+        >
+          <div className="absolute top-4 left-4 p-2 bg-[var(--sidebar-bg)] border border-[var(--sidebar-border)] rounded-md shadow-lg opacity-0 group-hover:opacity-100 transition-opacity">
+            <ChevronsRight className="h-4 w-4 text-white" />
+          </div>
+        </div>
+      )}
+
       {/* Sidebar */}
       <aside
+        onMouseLeave={() => isSidebarCollapsed && setIsHoveringEdge(false)}
         className={cn(
           'fixed top-0 left-0 z-50 h-full w-56 sidebar flex flex-col',
-          'transform transition-transform duration-200',
-          'lg:translate-x-0',
-          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+          'transform transition-all duration-300 ease-in-out',
+          // Desktop collapse logic
+          isSidebarCollapsed
+            ? isHoveringEdge
+              ? 'translate-x-0 shadow-2xl'
+              : '-translate-x-full lg:translate-x-[-100%]'
+            : 'translate-x-0',
+          // Mobile logic
+          sidebarOpen ? 'translate-x-0' : 'max-lg:-translate-x-full',
+          // Overlay when hovering collapsed sidebar
+          isSidebarCollapsed && isHoveringEdge && 'z-[70]'
         )}
       >
-        {/* Logo */}
+        {/* Logo & Toggle */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--sidebar-border)]">
           <Link href="/dashboard" className="flex items-center gap-2">
             <img src="/logo.png" alt="SLCA" className="h-8 w-8 object-contain bg-white rounded-md p-0.5" />
             <span className="text-base font-semibold text-white">SLCA</span>
           </Link>
-          <button
-            className="lg:hidden p-1.5 rounded-md hover:bg-white/10 text-[var(--sidebar-text-muted)]"
-            onClick={() => setSidebarOpen(false)}
-          >
-            <X className="h-4 w-4" />
-          </button>
+          <div className="flex items-center gap-1">
+            {/* Desktop Collapse Button */}
+            <button
+              onClick={toggleSidebar}
+              className="hidden lg:flex p-1.5 rounded-md hover:bg-white/10 text-[var(--sidebar-text-muted)] group"
+              title="Collapse Sidebar (Cmd+\)"
+            >
+              <ChevronsLeft className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
+            </button>
+            {/* Mobile Close Button */}
+            <button
+              className="lg:hidden p-1.5 rounded-md hover:bg-white/10 text-[var(--sidebar-text-muted)]"
+              onClick={() => setSidebarOpen(false)}
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         </div>
 
         {/* Navigation */}
@@ -159,8 +220,24 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         </div>
       </aside>
 
-      {/* Main */}
-      <div className="lg:pl-56 pb-16 lg:pb-0">
+      {/* Main Container */}
+      <div
+        className={cn(
+          "transition-all duration-300 ease-in-out pb-16 lg:pb-0",
+          isSidebarCollapsed ? "lg:pl-0" : "lg:pl-56"
+        )}
+      >
+        {/* Expand Sidebar Toggle (Floating) */}
+        {isSidebarCollapsed && !isHoveringEdge && (
+          <button
+            onClick={toggleSidebar}
+            className="fixed top-4 left-4 z-[45] p-2 hover:bg-[var(--bg-secondary)] rounded-md border border-[var(--card-border)] bg-[var(--bg-primary)] shadow-sm hidden lg:flex items-center gap-2 group animate-in fade-in slide-in-from-left-4 duration-300"
+            title="Expand Sidebar (Cmd+\)"
+          >
+            <ChevronsRight className="h-4 w-4 text-[var(--text-secondary)] group-hover:translate-x-0.5 transition-transform" />
+          </button>
+        )}
+
         {/* Desktop header with profile */}
         <header className="hidden lg:flex sticky top-0 z-30 bg-[var(--bg-primary)] border-b border-[var(--card-border)] items-center justify-end px-6 py-2 gap-3">
           {/* Theme toggle */}

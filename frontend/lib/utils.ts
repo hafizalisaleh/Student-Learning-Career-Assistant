@@ -120,25 +120,41 @@ export function truncateText(text: string, maxLength: number = 100): string {
 }
 
 export function getDifficultyBadgeClass(difficulty: string): string {
-  const classes = {
-    EASY: 'bg-green-100 text-green-800 border-green-300',
-    MEDIUM: 'bg-yellow-100 text-yellow-800 border-yellow-300',
-    HARD: 'bg-red-100 text-red-800 border-red-300',
-    easy: 'bg-green-100 text-green-800 border-green-300',
-    medium: 'bg-yellow-100 text-yellow-800 border-yellow-300',
-    hard: 'bg-red-100 text-red-800 border-red-300',
+  const normalized = difficulty.toLowerCase();
+  const classes: Record<string, string> = {
+    easy: 'bg-[var(--success-bg)] text-[var(--success)] border-[var(--success-border)]',
+    medium: 'bg-[var(--warning-bg)] text-[var(--warning)] border-[var(--warning-border)]',
+    hard: 'bg-[var(--error-bg)] text-[var(--error)] border-[var(--error-border)]',
   };
-  return classes[difficulty as keyof typeof classes] || 'bg-gray-100 text-gray-800 border-gray-300';
+  return classes[normalized] || 'bg-[var(--bg-tertiary)] text-[var(--text-tertiary)] border-[var(--card-border)]';
 }
 
 export function getScoreColor(score: number): string {
-  if (score >= 80) return 'text-green-600';
-  if (score >= 60) return 'text-yellow-600';
-  return 'text-red-600';
+  if (score >= 80) return 'text-[var(--success)]';
+  if (score >= 60) return 'text-[var(--warning)]';
+  return 'text-[var(--error)]';
 }
 
 export function getScoreBadgeClass(score: number): string {
-  if (score >= 80) return 'bg-green-100 text-green-800 border-green-300';
-  if (score >= 60) return 'bg-yellow-100 text-yellow-800 border-yellow-300';
-  return 'bg-red-100 text-red-800 border-red-300';
+  if (score >= 80) return 'bg-[var(--success-bg)] text-[var(--success)] border-[var(--success-border)]';
+  if (score >= 60) return 'bg-[var(--warning-bg)] text-[var(--warning)] border-[var(--warning-border)]';
+  return 'bg-[var(--error-bg)] text-[var(--error)] border-[var(--error-border)]';
+}
+
+export function extractTextFromBlockNote(jsonStr: string): string {
+  try {
+    const blocks = JSON.parse(jsonStr);
+    return blocks
+      .map((block: any) => {
+        if (typeof block.content === 'string') return block.content;
+        if (Array.isArray(block.content)) {
+          return block.content.map((c: any) => c.text || '').join('');
+        }
+        return '';
+      })
+      .filter(Boolean)
+      .join(' ');
+  } catch {
+    return jsonStr.substring(0, 200);
+  }
 }

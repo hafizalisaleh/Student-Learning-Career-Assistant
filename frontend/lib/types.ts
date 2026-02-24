@@ -54,6 +54,7 @@ export interface Note {
   title: string;
   note_type?: string;
   content: string;
+  content_format?: 'markdown' | 'blocknote';
   tags?: string[];
   generated_at: string;
   created_at?: string;

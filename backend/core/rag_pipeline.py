@@ -285,7 +285,8 @@ class RAGPipeline:
         self,
         question: str,
         document_id: Optional[str] = None,
-        n_results: int = 5
+        n_results: int = 5,
+        mode: str = "structured_output"
     ) -> Dict[str, Any]:
         """
         Query documents using RAG - retrieves relevant chunks and generates answer
@@ -294,6 +295,7 @@ class RAGPipeline:
             question: User question
             document_id: Optional - filter to specific document
             n_results: Number of chunks to retrieve
+            mode: RAG mode - structured_output, file_search, or nli_verification
 
         Returns:
             Dict with answer and sources
@@ -301,7 +303,8 @@ class RAGPipeline:
         return self.vector_store.rag_query(
             question=question,
             n_results=n_results,
-            document_id=document_id
+            document_id=document_id,
+            mode=mode
         )
 
     def search_similar(

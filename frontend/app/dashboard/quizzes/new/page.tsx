@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { api } from '@/lib/api';
@@ -58,7 +58,17 @@ const difficulties = [
 ];
 
 export default function NewQuizPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center min-h-[60vh]"><LoadingSpinner size="lg" /></div>}>
+      <NewQuizContent />
+    </Suspense>
+  );
+}
+
+function NewQuizContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const docIdFromQuery = searchParams.get('document');
   const [isLoading, setIsLoading] = useState(false);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [selectedTypes, setSelectedTypes] = useState<string[]>(['mcq']);
@@ -90,13 +100,22 @@ export default function NewQuizPage() {
           (doc) => doc.processing_status?.toLowerCase() === 'completed'
         );
         setDocuments(completedDocs);
+
+        // Pre-select document from query param
+        if (docIdFromQuery) {
+          const doc = completedDocs.find((d: Document) => d.id === docIdFromQuery);
+          if (doc) {
+            setSelectedDoc(doc);
+            setValue('document_id', doc.id);
+          }
+        }
       } catch (error) {
         console.error('Failed to load documents:', error);
         toast.error('Failed to load documents');
       }
     }
     fetchDocuments();
-  }, []);
+  }, [docIdFromQuery, setValue]);
 
   const handleTypeToggle = (typeId: string) => {
     const newTypes = selectedTypes.includes(typeId)

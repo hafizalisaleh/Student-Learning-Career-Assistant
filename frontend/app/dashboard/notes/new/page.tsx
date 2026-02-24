@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -14,20 +14,37 @@ import toast from 'react-hot-toast';
 import Link from 'next/link';
 import type { Document } from '@/lib/types';
 import { cn } from '@/lib/utils';
+import { Breadcrumb, BreadcrumbItem } from '@/components/ui/breadcrumb';
+import { useSearchParams } from 'next/navigation';
 
 export default function NewNotePage() {
+  return (
+    <Suspense fallback={<PageLoader />}>
+      <NewNoteContent />
+    </Suspense>
+  );
+}
+
+function NewNoteContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const docIdFromQuery = searchParams.get('document');
+  const isStudyMode = searchParams.get('type') === 'study';
+
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingDocs, setIsLoadingDocs] = useState(true);
   const [documents, setDocuments] = useState<Document[]>([]);
+  const [selectedDoc, setSelectedDoc] = useState<Document | null>(null);
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState('');
   const [noteType, setNoteType] = useState<'structured' | 'bullet' | 'detailed'>('structured');
+  const [studyTitle, setStudyTitle] = useState('');
   const [additionalContext, setAdditionalContext] = useState('');
 
   const {
     register,
     handleSubmit,
+    setValue,
     formState: { errors },
   } = useForm<CreateNoteFormData>({
     resolver: zodResolver(createNoteSchema),
@@ -37,28 +54,32 @@ export default function NewNotePage() {
     async function fetchDocuments() {
       try {
         setIsLoadingDocs(true);
-        console.log('Fetching documents for notes...');
         const data = await api.getDocuments();
-        console.log('Raw documents:', data);
 
         const docsArray = Array.isArray(data) ? data : [];
-        // Filter for completed documents only
         const completedDocs = docsArray.filter((doc) =>
           doc.processing_status?.toLowerCase() === 'completed'
         );
-        console.log('Completed documents:', completedDocs);
 
         setDocuments(completedDocs);
+
+        // If doc ID in query, pre-select it
+        if (docIdFromQuery) {
+          const doc = completedDocs.find(d => d.id === docIdFromQuery);
+          if (doc) {
+            setSelectedDoc(doc);
+            setValue('document_id', doc.id);
+          }
+        }
       } catch (error) {
         console.error('Failed to load documents:', error);
         toast.error('Failed to load documents');
-        setDocuments([]);
       } finally {
         setIsLoadingDocs(false);
       }
     }
     fetchDocuments();
-  }, []);
+  }, [docIdFromQuery, setValue]);
 
   const handleAddTag = () => {
     if (tagInput.trim() && !tags.includes(tagInput.trim())) {
@@ -127,25 +148,127 @@ export default function NewNotePage() {
     },
   ];
 
+  const handleCreateStudyNote = async () => {
+    if (!selectedDoc) {
+      toast.error('Please select a document');
+      return;
+    }
+    if (!studyTitle.trim()) {
+      toast.error('Please enter a title');
+      return;
+    }
+    try {
+      setIsLoading(true);
+      const result = await api.createStudyNote({
+        title: studyTitle,
+        document_id: selectedDoc.id,
+        content: '[]',
+      });
+      toast.success('Study note created!');
+      router.push(`/dashboard/notes/${result.id}`);
+    } catch (error: any) {
+      toast.error(error.response?.data?.detail || 'Failed to create study note');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   if (isLoadingDocs) {
     return <PageLoader />;
   }
 
+  const breadcrumbItems: BreadcrumbItem[] = [
+    { label: 'Notes', href: '/dashboard/notes' }
+  ];
+
+  if (selectedDoc) {
+    breadcrumbItems.unshift({ label: 'Documents', href: '/dashboard/documents' });
+    breadcrumbItems.splice(1, 0, { label: selectedDoc.title, href: `/dashboard/documents/${selectedDoc.id}` });
+  }
+
+  breadcrumbItems.push({ label: isStudyMode ? 'New Study Note' : 'Generate AI Notes' });
+
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
+      <Breadcrumb items={breadcrumbItems} />
+
       {/* Header */}
-      <div className="flex items-center gap-4">
-        <Link href="/dashboard/notes">
-          <Button variant="ghost" size="sm">
-            <ArrowLeft className="h-4 w-4" />
+      <div className="flex flex-col md:flex-row md:items-center gap-4">
+        <div className="flex-1">
+          <h1 className="text-xl font-semibold text-[var(--text-primary)]">
+            {isStudyMode ? 'New Study Note' : 'Generate AI Notes'}
+          </h1>
+          <p className="text-[var(--text-secondary)] mt-1">
+            {isStudyMode ? 'Create a personal study note linked to a document' : 'Create comprehensive notes from your documents using AI'}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => router.push('/dashboard/notes')}
+            className="md:hidden"
+          >
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back
           </Button>
-        </Link>
-        <div>
-          <h1 className="text-3xl font-bold text-[var(--text-primary)]">Generate AI Notes</h1>
-          <p className="text-[var(--text-secondary)] mt-1">Create comprehensive notes from your documents using AI</p>
         </div>
       </div>
 
+      {/* Study Note Creation */}
+      {isStudyMode ? (
+        <div className="p-6 rounded-2xl bg-[var(--card-bg)] border border-[var(--card-border)] space-y-6">
+          <div>
+            <label className="block text-sm font-medium text-[var(--text-primary)] mb-2">
+              Select Document <span className="text-red-400">*</span>
+            </label>
+            <select
+              className="w-full px-4 py-3 bg-[var(--bg-elevated)] border border-[var(--card-border)] rounded-xl focus:outline-none focus:ring-2 focus:ring-[var(--accent-blue)] text-[var(--text-primary)]"
+              value={selectedDoc?.id || ''}
+              onChange={(e) => {
+                const doc = documents.find(d => d.id === e.target.value);
+                setSelectedDoc(doc || null);
+              }}
+            >
+              <option value="">-- Choose a document --</option>
+              {documents.map((doc) => (
+                <option key={doc.id} value={doc.id}>{doc.title}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-[var(--text-primary)] mb-2">
+              Note Title <span className="text-red-400">*</span>
+            </label>
+            <Input
+              type="text"
+              placeholder="e.g., My study notes on Chapter 3"
+              value={studyTitle}
+              onChange={(e) => setStudyTitle(e.target.value)}
+            />
+          </div>
+
+          <div className="flex gap-3">
+            <Button
+              variant="primary"
+              onClick={handleCreateStudyNote}
+              isLoading={isLoading}
+              disabled={isLoading || !selectedDoc || !studyTitle.trim()}
+              className="flex-1"
+            >
+              <Sparkles className="h-4 w-4 mr-2" />
+              Create Study Note
+            </Button>
+            <Link href="/dashboard/notes" className="flex-1">
+              <Button type="button" variant="secondary" className="w-full" disabled={isLoading}>
+                Cancel
+              </Button>
+            </Link>
+          </div>
+        </div>
+      ) : (
+      <>
       {/* Form */}
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
         <div className="p-6 rounded-2xl bg-[var(--card-bg)] backdrop-blur-xl border border-[var(--card-border)]">
@@ -353,6 +476,8 @@ export default function NewNotePage() {
           </div>
         </div>
       </form>
+      </>
+      )}
     </div>
   );
 }

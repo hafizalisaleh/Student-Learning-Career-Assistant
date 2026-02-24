@@ -1,15 +1,20 @@
 """
 Vector store operations using ChromaDB - Full RAG Implementation
+Supports 3 citation modes: Structured Output, File Search Tool, NLI Verification
 """
 import os
+import json
 import uuid
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Literal
 from google import genai
 from google.genai import types
 import chromadb
 from chromadb.config import Settings
 from config.settings import settings
 from utils.logger import logger
+
+# RAG mode type
+RAGMode = Literal["structured_output", "file_search", "nli_verification"]
 
 
 class VectorStore:
@@ -374,60 +379,347 @@ class VectorStore:
         self,
         question: str,
         n_results: int = 5,
+        document_id: Optional[str] = None,
+        mode: RAGMode = "structured_output"
+    ) -> Dict[str, Any]:
+        """
+        Full RAG query with multiple citation modes.
+
+        Modes:
+            - structured_output: ChromaDB + Gemini JSON schema for structurally enforced citations
+            - file_search: Gemini File Search API with grounding metadata (API-level citations)
+            - nli_verification: ChromaDB + structured output + NLI verification pass
+        """
+        logger.info(f"RAG query mode={mode}, question={question[:80]}")
+
+        if mode == "file_search":
+            return self._rag_file_search(question, document_id)
+        elif mode == "nli_verification":
+            return self._rag_nli_verified(question, n_results, document_id)
+        else:
+            return self._rag_structured_output(question, n_results, document_id)
+
+    def _rag_structured_output(
+        self,
+        question: str,
+        n_results: int = 5,
         document_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        Full RAG query with page-level citations
+        Structured Output mode: ChromaDB retrieval + Gemini with JSON schema.
+        Forces the model to return a structured JSON with answer and citations.
         """
         try:
-            # Get relevant context
             context = self.query_with_context(question, n_results, document_id)
 
             if not context:
                 return {
                     "success": False,
                     "error": "No relevant context found",
-                    "answer": "I couldn't find relevant information in your documents to answer this question."
+                    "answer": "I couldn't find relevant information in your documents to answer this question.",
+                    "mode": "structured_output"
                 }
-
-            # Generate answer using Gemini with context and citation instructions
-            prompt = f"""You are a helpful study assistant. Using ONLY the provided context, answer the user's question accurately.
-            
-ALWAYS include page-level citations like [Page X] or [Source Y, Page X] when you use information from a specific part of the context.
-If multiple sources confirm a fact, cite them all.
-If the answer is not in the context, clearly state that you don't have enough information from the documents.
-
-Context:
-{context}
-
-Question: {question}
-
-Answer:"""
 
             if not self.client:
                 raise ValueError("Google API Key not configured")
 
+            # Define the JSON schema for structured citations
+            citation_schema = {
+                "type": "object",
+                "properties": {
+                    "answer": {
+                        "type": "string",
+                        "description": "The full answer in Markdown format with inline [N] citations matching source numbers"
+                    },
+                    "citations": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "source_index": {
+                                    "type": "integer",
+                                    "description": "The source number (1-based) being cited"
+                                },
+                                "claim": {
+                                    "type": "string",
+                                    "description": "The specific claim or statement from the answer that this citation supports"
+                                },
+                                "source_quote": {
+                                    "type": "string",
+                                    "description": "The exact quote from the source that supports this claim"
+                                }
+                            },
+                            "required": ["source_index", "claim", "source_quote"]
+                        }
+                    }
+                },
+                "required": ["answer", "citations"]
+            }
+
+            prompt = f"""You are a helpful study assistant. Using ONLY the provided context, answer the user's question accurately.
+
+CITATION RULES (MANDATORY):
+- You MUST cite sources using numbered references [1], [2], [3] etc. that match the source numbers in the context below.
+- Place citations INLINE immediately after the claim they support, e.g. "The cell membrane is semi-permeable [1]."
+- If multiple sources support one claim, cite them all together: [1][3].
+- Every factual statement MUST have at least one citation.
+- Use Markdown formatting for your answer (bold, headers, lists).
+- If the answer is not in the context, clearly state that.
+- In the citations array, list every citation you used with the exact source quote that supports it.
+
+Context:
+{context}
+
+Question: {question}"""
+
             response = self.client.models.generate_content(
                 model=self.model_id,
-                contents=prompt
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_json_schema=citation_schema
+                )
             )
 
-            # Get the chunks used
+            # Parse the structured response
+            try:
+                structured = json.loads(response.text)
+                answer = structured.get("answer", "")
+                citations = structured.get("citations", [])
+            except json.JSONDecodeError:
+                # Fallback: use raw text if JSON parsing fails
+                answer = response.text
+                citations = []
+
             query_results = self.query(question, n_results, document_id)
 
             return {
                 "success": True,
-                "answer": response.text,
+                "answer": answer,
                 "sources": query_results.get("results", []),
-                "context_used": context[:500] + "..." if len(context) > 500 else context
+                "citations_metadata": citations,
+                "context_used": context[:500] + "..." if len(context) > 500 else context,
+                "mode": "structured_output"
             }
 
         except Exception as e:
-            logger.error(f"Error in RAG query: {e}")
+            logger.error(f"Error in structured output RAG: {e}")
             return {
                 "success": False,
                 "error": str(e),
-                "answer": f"Error generating answer: {str(e)}"
+                "answer": f"Error generating answer: {str(e)}",
+                "mode": "structured_output"
+            }
+
+    def _rag_file_search(
+        self,
+        question: str,
+        document_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        File Search Tool mode: Uses Gemini's managed RAG with grounding metadata.
+        Returns API-level structurally enforced citations (like NotebookLM).
+        """
+        try:
+            from core.file_search_manager import file_search_manager
+
+            if not document_id:
+                return {
+                    "success": False,
+                    "error": "File Search mode requires a specific document to be selected.",
+                    "answer": "Please select a specific document to use File Search mode. This mode uses Google's managed RAG which requires a document-specific search store.",
+                    "mode": "file_search"
+                }
+
+            result = file_search_manager.query_with_grounding(
+                question=question,
+                document_id=document_id
+            )
+
+            if not result.get("success"):
+                # If no store exists, try to create one
+                if "No file search store found" in result.get("error", ""):
+                    return {
+                        "success": False,
+                        "error": "This document hasn't been indexed for File Search yet. Please use 'Index for File Search' first.",
+                        "answer": "This document needs to be indexed for File Search mode first. The document must be uploaded to Google's managed RAG system. Please index it first, then try again.",
+                        "mode": "file_search"
+                    }
+                return {**result, "mode": "file_search"}
+
+            # Convert grounding chunks to source format for frontend compatibility
+            sources = []
+            for i, chunk in enumerate(result.get("grounding_chunks", [])):
+                sources.append({
+                    "text": chunk.get("title", f"Source {i+1}"),
+                    "metadata": {
+                        "uri": chunk.get("uri", ""),
+                        "title": chunk.get("title", ""),
+                        "type": chunk.get("type", "retrieved")
+                    },
+                    "similarity": None
+                })
+
+            return {
+                "success": True,
+                "answer": result.get("answer", ""),
+                "sources": sources,
+                "grounding_metadata": result.get("grounding_metadata"),
+                "mode": "file_search"
+            }
+
+        except Exception as e:
+            logger.error(f"Error in file search RAG: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return {
+                "success": False,
+                "error": str(e),
+                "answer": f"Error generating answer: {str(e)}",
+                "mode": "file_search"
+            }
+
+    def _rag_nli_verified(
+        self,
+        question: str,
+        n_results: int = 5,
+        document_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        NLI Verification mode: Structured output + second verification pass.
+        Each citation is verified by a separate Gemini call to check if the
+        source actually supports the claim.
+        """
+        try:
+            # Step 1: Get structured output response first
+            structured_result = self._rag_structured_output(question, n_results, document_id)
+
+            if not structured_result.get("success"):
+                return {**structured_result, "mode": "nli_verification"}
+
+            citations = structured_result.get("citations_metadata", [])
+            sources = structured_result.get("sources", [])
+
+            if not citations or not self.client:
+                return {
+                    **structured_result,
+                    "verified_citations": [],
+                    "mode": "nli_verification"
+                }
+
+            # Step 2: Verify each citation with NLI
+            verified_citations = []
+            nli_schema = {
+                "type": "object",
+                "properties": {
+                    "is_supported": {
+                        "type": "boolean",
+                        "description": "Whether the source text actually supports the claim"
+                    },
+                    "confidence": {
+                        "type": "number",
+                        "description": "Confidence score from 0.0 to 1.0"
+                    },
+                    "reasoning": {
+                        "type": "string",
+                        "description": "Brief explanation of why the source does or does not support the claim"
+                    }
+                },
+                "required": ["is_supported", "confidence", "reasoning"]
+            }
+
+            for citation in citations:
+                source_idx = citation.get("source_index", 0) - 1
+                claim = citation.get("claim", "")
+                source_quote = citation.get("source_quote", "")
+
+                # Get full source text if available
+                source_text = source_quote
+                if 0 <= source_idx < len(sources):
+                    source_text = sources[source_idx].get("text", source_quote)
+
+                if not claim or not source_text:
+                    continue
+
+                try:
+                    nli_prompt = f"""You are a fact-checking assistant. Determine if the following source passage actually supports the given claim. Be strict - the source must contain information that directly supports the claim.
+
+Claim: "{claim}"
+
+Source passage: "{source_text}"
+
+Does the source passage support this claim?"""
+
+                    nli_response = self.client.models.generate_content(
+                        model=self.model_id,
+                        contents=nli_prompt,
+                        config=types.GenerateContentConfig(
+                            response_mime_type="application/json",
+                            response_json_schema=nli_schema
+                        )
+                    )
+
+                    nli_result = json.loads(nli_response.text)
+                    verified_citations.append({
+                        "source_index": citation.get("source_index"),
+                        "claim": claim,
+                        "source_quote": source_quote,
+                        "is_supported": nli_result.get("is_supported", False),
+                        "confidence": nli_result.get("confidence", 0.0),
+                        "reasoning": nli_result.get("reasoning", "")
+                    })
+
+                except Exception as nli_err:
+                    logger.warning(f"NLI verification failed for citation: {nli_err}")
+                    verified_citations.append({
+                        "source_index": citation.get("source_index"),
+                        "claim": claim,
+                        "source_quote": source_quote,
+                        "is_supported": None,
+                        "confidence": 0.0,
+                        "reasoning": f"Verification failed: {str(nli_err)}"
+                    })
+
+            # Filter answer: remove citations that failed verification
+            answer = structured_result.get("answer", "")
+            failed_indices = set()
+            for vc in verified_citations:
+                if vc.get("is_supported") is False and vc.get("confidence", 0) < 0.5:
+                    failed_indices.add(vc.get("source_index"))
+
+            # Mark failed citations in the answer
+            import re
+            if failed_indices:
+                for idx in failed_indices:
+                    # Add strikethrough marker for failed citations
+                    answer = answer.replace(f"[{idx}]", f"[~~{idx}~~]")
+
+            verified_count = sum(1 for vc in verified_citations if vc.get("is_supported"))
+            total_count = len(verified_citations)
+
+            return {
+                "success": True,
+                "answer": answer,
+                "sources": sources,
+                "citations_metadata": citations,
+                "verified_citations": verified_citations,
+                "verification_summary": {
+                    "total": total_count,
+                    "verified": verified_count,
+                    "failed": total_count - verified_count,
+                    "score": round(verified_count / max(total_count, 1), 2)
+                },
+                "context_used": structured_result.get("context_used"),
+                "mode": "nli_verification"
+            }
+
+        except Exception as e:
+            logger.error(f"Error in NLI verified RAG: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "answer": f"Error generating answer: {str(e)}",
+                "mode": "nli_verification"
             }
 
     def get_document_chunks(self, document_id: str) -> Dict[str, Any]:

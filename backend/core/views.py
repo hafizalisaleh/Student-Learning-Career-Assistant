@@ -18,6 +18,7 @@ class QueryRequest(BaseModel):
     question: str
     document_id: Optional[str] = None
     n_results: int = 5
+    mode: str = "structured_output"  # structured_output | file_search | nli_verification
 
 
 class SearchRequest(BaseModel):
@@ -34,6 +35,11 @@ class QueryResponse(BaseModel):
     sources: Optional[List[Any]] = None
     context_used: Optional[str] = None
     error: Optional[str] = None
+    mode: Optional[str] = None
+    grounding_metadata: Optional[Any] = None
+    citations_metadata: Optional[List[Any]] = None
+    verified_citations: Optional[List[Any]] = None
+    verification_summary: Optional[Any] = None
 
 
 class SearchResponse(BaseModel):
@@ -116,12 +122,13 @@ def query_documents(
         Generated answer with source chunks
     """
     try:
-        logger.info(f"RAG Query from user {current_user.email}: {request.question[:100]}")
+        logger.info(f"RAG Query from user {current_user.email} [mode={request.mode}]: {request.question[:100]}")
 
         result = rag_pipeline.query_documents(
             question=request.question,
             document_id=request.document_id,
-            n_results=request.n_results
+            n_results=request.n_results,
+            mode=request.mode
         )
 
         return QueryResponse(
@@ -129,7 +136,12 @@ def query_documents(
             answer=result.get("answer"),
             sources=result.get("sources"),
             context_used=result.get("context_used"),
-            error=result.get("error")
+            error=result.get("error"),
+            mode=result.get("mode"),
+            grounding_metadata=result.get("grounding_metadata"),
+            citations_metadata=result.get("citations_metadata"),
+            verified_citations=result.get("verified_citations"),
+            verification_summary=result.get("verification_summary")
         )
     except Exception as e:
         logger.error(f"Error in RAG query: {e}")
@@ -347,3 +359,85 @@ def reprocess_document_embeddings(
         return {"success": False, "error": str(e)}
     finally:
         db.close()
+
+
+@router.post("/file-search/index/{document_id}")
+def index_for_file_search(
+    document_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Index a document for Gemini File Search mode.
+    Creates a File Search store and uploads the document.
+    """
+    from config.database import SessionLocal
+    from documents.models import Document
+    from core.file_search_manager import file_search_manager
+
+    db = SessionLocal()
+    try:
+        doc = db.query(Document).filter(Document.id == document_id).first()
+        if not doc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Document not found"
+            )
+
+        if not doc.file_path:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Document has no file path"
+            )
+
+        # Check if file exists
+        import os
+        if not os.path.exists(doc.file_path):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"File not found at path: {doc.file_path}"
+            )
+
+        logger.info(f"Indexing document {document_id} for file search: {doc.file_path}")
+
+        result = file_search_manager.create_store_and_upload(
+            document_id=document_id,
+            file_path=doc.file_path,
+            display_name=doc.title
+        )
+
+        if result.get("success"):
+            # Update document metadata
+            doc.doc_metadata = doc.doc_metadata or {}
+            doc.doc_metadata["file_search_indexed"] = True
+            doc.doc_metadata["file_search_store"] = result.get("store_name")
+            db.commit()
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"File search indexing failed: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+    finally:
+        db.close()
+
+
+@router.get("/file-search/status/{document_id}")
+def file_search_status(
+    document_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Check if a document has been indexed for File Search"""
+    from core.file_search_manager import file_search_manager
+
+    store_name = file_search_manager.get_or_create_store(document_id)
+    return {
+        "indexed": store_name is not None,
+        "store_name": store_name
+    }

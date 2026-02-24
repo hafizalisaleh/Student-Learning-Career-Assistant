@@ -15,8 +15,11 @@ interface ApiInstance extends AxiosInstance {
 
   // Notes
   getNotes: () => Promise<any>;
+  getNotesByDocument: (id: string) => Promise<any>;
   getNote: (id: string) => Promise<any>;
   createNote: (data: any) => Promise<any>;
+  updateNote: (id: string, data: any) => Promise<any>;
+  createStudyNote: (data: { title: string; document_id: string; content: string; tags?: string[] }) => Promise<any>;
   deleteNote: (id: string) => Promise<any>;
   downloadNote: (id: string) => Promise<Blob>;
   exportNoteDocx: (id: string) => Promise<Blob>;
@@ -24,6 +27,7 @@ interface ApiInstance extends AxiosInstance {
 
   // Summaries
   getSummaries: () => Promise<any>;
+  getSummariesByDocument: (id: string) => Promise<any>;
   generateSummary: (data: any) => Promise<any>;
   deleteSummary: (id: string) => Promise<any>;
 
@@ -52,10 +56,12 @@ interface ApiInstance extends AxiosInstance {
   getLatestResume: () => Promise<any>;
 
   // RAG / Vector Store
-  ragQuery: (question: string, documentId?: string, nResults?: number) => Promise<any>;
+  ragQuery: (question: string, documentId?: string, nResults?: number, mode?: string) => Promise<any>;
   ragSearch: (query: string, documentId?: string, nResults?: number) => Promise<any>;
   getVectorStats: () => Promise<any>;
   getDocumentEmbeddings: (documentId: string) => Promise<any>;
+  indexForFileSearch: (documentId: string) => Promise<any>;
+  getFileSearchStatus: (documentId: string) => Promise<any>;
 }
 
 const axiosInstance = axios.create({
@@ -141,8 +147,23 @@ axiosInstance.getNotes = async () => {
   return response.data;
 };
 
+axiosInstance.getNotesByDocument = async (id: string) => {
+  const response = await axiosInstance.get(`/api/notes/document/${id}`);
+  return response.data;
+};
+
 axiosInstance.getNote = async (id: string) => {
   const response = await axiosInstance.get(`/api/notes/${id}`);
+  return response.data;
+};
+
+axiosInstance.updateNote = async (id: string, data: any) => {
+  const response = await axiosInstance.put(`/api/notes/${id}`, data);
+  return response.data;
+};
+
+axiosInstance.createStudyNote = async (data: { title: string; document_id: string; content: string; tags?: string[] }) => {
+  const response = await axiosInstance.post('/api/notes/study', data);
   return response.data;
 };
 
@@ -180,6 +201,11 @@ axiosInstance.exportNoteMarkdown = async (id: string) => {
 // ===== Summaries =====
 axiosInstance.getSummaries = async () => {
   const response = await axiosInstance.get('/api/summaries/');
+  return response.data;
+};
+
+axiosInstance.getSummariesByDocument = async (id: string) => {
+  const response = await axiosInstance.get(`/api/summaries/document/${id}`);
   return response.data;
 };
 
@@ -292,11 +318,12 @@ axiosInstance.getLatestResume = async () => {
 };
 
 // ===== RAG / Vector Store =====
-axiosInstance.ragQuery = async (question: string, documentId?: string, nResults: number = 5) => {
+axiosInstance.ragQuery = async (question: string, documentId?: string, nResults: number = 5, mode: string = 'structured_output') => {
   const response = await axiosInstance.post('/api/vectors/query', {
     question,
     document_id: documentId,
     n_results: nResults,
+    mode,
   });
   return response.data;
 };
@@ -317,6 +344,16 @@ axiosInstance.getVectorStats = async () => {
 
 axiosInstance.getDocumentEmbeddings = async (documentId: string) => {
   const response = await axiosInstance.get(`/api/vectors/documents/${documentId}/embeddings`);
+  return response.data;
+};
+
+axiosInstance.indexForFileSearch = async (documentId: string) => {
+  const response = await axiosInstance.post(`/api/vectors/file-search/index/${documentId}`);
+  return response.data;
+};
+
+axiosInstance.getFileSearchStatus = async (documentId: string) => {
+  const response = await axiosInstance.get(`/api/vectors/file-search/status/${documentId}`);
   return response.data;
 };
 

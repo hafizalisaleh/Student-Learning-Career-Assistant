@@ -6,7 +6,7 @@ from fastapi.responses import Response, StreamingResponse
 from sqlalchemy.orm import Session
 from config.database import get_db
 from notes.models import Note
-from notes.schemas import NoteCreate, NoteResponse
+from notes.schemas import NoteCreate, StudyNoteCreate, NoteUpdate, NoteResponse
 from documents.models import Document, ProcessingStatus
 from users.auth import get_current_user
 from users.models import User
@@ -120,6 +120,42 @@ async def generate_notes(
             detail=f"An unexpected error occurred: {str(e)}"
         )
 
+@router.post("/study", response_model=NoteResponse, status_code=status.HTTP_201_CREATED)
+async def create_study_note(
+    note_data: StudyNoteCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Create a manual study note with BlockNote JSON content"""
+    document = db.query(Document).filter(
+        Document.id == note_data.document_id,
+        Document.user_id == current_user.id
+    ).first()
+
+    if not document:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found"
+        )
+
+    new_note = Note(
+        user_id=current_user.id,
+        document_id=note_data.document_id,
+        title=note_data.title,
+        note_type='study',
+        content=note_data.content,
+        content_format='blocknote',
+        tags=note_data.tags
+    )
+
+    db.add(new_note)
+    db.commit()
+    db.refresh(new_note)
+
+    logger.info(f"Study note created: {new_note.id} for document {document.id}")
+
+    return NoteResponse.from_orm(new_note)
+
 @router.get("/", response_model=list[NoteResponse])
 def get_all_notes(
     current_user: User = Depends(get_current_user),
@@ -164,6 +200,72 @@ def get_notes_by_document(
     ).all()
     
     return [NoteResponse.from_orm(note) for note in notes]
+
+@router.get("/{note_id}", response_model=NoteResponse)
+def get_note(
+    note_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get a single note by ID"""
+    note = db.query(Note).filter(
+        Note.id == note_id,
+        Note.user_id == current_user.id
+    ).first()
+
+    if not note:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Note not found"
+        )
+
+    return NoteResponse.from_orm(note)
+
+@router.put("/{note_id}", response_model=NoteResponse)
+def update_note(
+    note_id: str,
+    note_data: NoteUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Update a note's title, content, or tags.
+
+    Args:
+        note_id: Note ID (UUID)
+        note_data: Fields to update
+        current_user: Current authenticated user
+        db: Database session
+
+    Returns:
+        Updated note
+    """
+    note = db.query(Note).filter(
+        Note.id == note_id,
+        Note.user_id == current_user.id
+    ).first()
+
+    if not note:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Note not found"
+        )
+
+    if note_data.title is not None:
+        note.title = note_data.title
+    if note_data.content is not None:
+        note.content = note_data.content
+    if note_data.tags is not None:
+        note.tags = note_data.tags
+    if note_data.content_format is not None:
+        note.content_format = note_data.content_format
+
+    db.commit()
+    db.refresh(note)
+
+    logger.info(f"Note {note_id} updated by user {current_user.email}")
+
+    return NoteResponse.from_orm(note)
 
 @router.delete("/{note_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_note(
