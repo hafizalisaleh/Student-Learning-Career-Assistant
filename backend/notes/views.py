@@ -194,6 +194,80 @@ def delete_note(
     db.commit()
     return {"message": "Note deleted successfully"}
 
+@router.get("/{note_id}/export/markdown")
+async def export_note_to_markdown(
+    note_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Export note to Markdown format (.md file) for download
+    Preserves all formatting including LaTeX formulas, tables, etc.
+
+    Args:
+        note_id: Note ID (UUID)
+        current_user: Current authenticated user
+        db: Database session
+
+    Returns:
+        Markdown file response
+    """
+    try:
+        logger.info(f"Markdown export requested for note {note_id} by user {current_user.email}")
+
+        # Get the note
+        note = db.query(Note).filter(
+            Note.id == note_id,
+            Note.user_id == current_user.id
+        ).first()
+
+        if not note:
+            logger.warning(f"Note {note_id} not found for user {current_user.email}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Note not found"
+            )
+
+        # Build markdown content with metadata header
+        created_date = note.generated_at.strftime('%Y-%m-%d %H:%M') if note.generated_at else 'N/A'
+
+        markdown_content = f"""# {note.title}
+
+> **Note Type:** {note.note_type.capitalize()} | **Generated:** {created_date}
+
+---
+
+{note.content}
+"""
+
+        # Generate filename
+        filename = f"{note.title.replace(' ', '_')}.md"
+
+        # Create buffer
+        buffer = io.BytesIO(markdown_content.encode('utf-8'))
+        buffer.seek(0)
+
+        logger.info(f"Markdown generated successfully for note {note_id}, size: {len(markdown_content)} bytes")
+
+        # Return Markdown response
+        return StreamingResponse(
+            buffer,
+            media_type="text/markdown; charset=utf-8",
+            headers={
+                "Content-Disposition": f"attachment; filename={filename}"
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Markdown export error for note {note_id}: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to export Markdown: {str(e)}"
+        )
+
+
 @router.get("/{note_id}/export/docx")
 async def export_note_to_docx(
     note_id: str,

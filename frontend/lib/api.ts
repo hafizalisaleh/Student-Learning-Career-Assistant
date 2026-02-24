@@ -20,6 +20,7 @@ interface ApiInstance extends AxiosInstance {
   deleteNote: (id: string) => Promise<any>;
   downloadNote: (id: string) => Promise<Blob>;
   exportNoteDocx: (id: string) => Promise<Blob>;
+  exportNoteMarkdown: (id: string) => Promise<Blob>;
 
   // Summaries
   getSummaries: () => Promise<any>;
@@ -164,6 +165,13 @@ axiosInstance.downloadNote = async (id: string) => {
 
 axiosInstance.exportNoteDocx = async (id: string) => {
   const response = await axiosInstance.get(`/api/notes/${id}/export/docx`, {
+    responseType: 'blob',
+  });
+  return response.data;
+};
+
+axiosInstance.exportNoteMarkdown = async (id: string) => {
+  const response = await axiosInstance.get(`/api/notes/${id}/export/markdown`, {
     responseType: 'blob',
   });
   return response.data;

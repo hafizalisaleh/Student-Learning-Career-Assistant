@@ -44,11 +44,11 @@ class NotesGenerator:
         
         prompts = {
             "structured": f"""
-                You are an expert educational content creator and note-taker. Create EXCEPTIONAL, 
+                You are an expert educational content creator and note-taker. Create EXCEPTIONAL,
                 professionally structured study notes from the following content.
-                
+
                 TITLE: {title}
-                
+
                 REQUIREMENTS:
                 1. Use clear hierarchical structure with # headings, ## subheadings, ### sub-sections
                 2. Create well-organized sections covering all major topics
@@ -60,20 +60,25 @@ class NotesGenerator:
                 8. Make notes comprehensive yet easy to understand
                 9. Ensure all figures, charts, and tables mentioned in content are properly referenced
                 10. Structure for easy review and retention
+                11. For mathematical formulas and equations:
+                    - Use inline LaTeX with single dollar signs: $E = mc^2$
+                    - Use block LaTeX with double dollar signs for larger equations:
+                      $$\\int_a^b f(x)dx = F(b) - F(a)$$
+                    - Ensure all mathematical notation is properly formatted in LaTeX
                 {context_section}
-                
+
                 DOCUMENT CONTENT:
                 {content}
-                
+
                 Generate comprehensive, well-structured notes in markdown format:
             """,
             
             "bullet": f"""
-                You are an expert at creating concise, actionable study materials. Create 
+                You are an expert at creating concise, actionable study materials. Create
                 EXCELLENT bullet-point notes from the following content.
-                
+
                 TITLE: {title}
-                
+
                 REQUIREMENTS:
                 1. Use ## for main sections
                 2. Use clear, concise bullet points (• and ○ for sub-points)
@@ -84,20 +89,21 @@ class NotesGenerator:
                 7. Highlight critical information with **bold**
                 8. Keep it concise but comprehensive
                 9. Perfect for quick review and memorization
+                10. For mathematical formulas: use inline LaTeX ($formula$) or block LaTeX ($$formula$$)
                 {context_section}
-                
+
                 DOCUMENT CONTENT:
                 {content}
-                
+
                 Generate concise, well-organized bullet-point notes in markdown format:
             """,
             
             "detailed": f"""
-                You are a university professor creating detailed lecture notes. Create 
+                You are a university professor creating detailed lecture notes. Create
                 COMPREHENSIVE, in-depth explanatory notes from the following content.
-                
+
                 TITLE: {title}
-                
+
                 REQUIREMENTS:
                 1. Use clear hierarchical structure (# ## ### headings)
                 2. Provide detailed explanations for all concepts
@@ -109,11 +115,16 @@ class NotesGenerator:
                 8. Include practice questions or discussion points
                 9. Make connections between different concepts
                 10. Perfect for deep understanding and exam preparation
+                11. For mathematical formulas and equations:
+                    - Use inline LaTeX with single dollar signs: $E = mc^2$
+                    - Use block LaTeX with double dollar signs for complex equations:
+                      $$\\sum_{{i=1}}^n x_i = x_1 + x_2 + ... + x_n$$
+                    - Ensure all mathematical notation is properly formatted in LaTeX
                 {context_section}
-                
+
                 DOCUMENT CONTENT:
                 {content}
-                
+
                 Generate detailed, comprehensive explanatory notes in markdown format:
             """
         }
