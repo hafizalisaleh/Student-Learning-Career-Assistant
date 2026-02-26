@@ -211,7 +211,7 @@ export default function ViewNotePage() {
         filename: `${note.title.replace(/[^a-z0-9]/gi, '_')}.pdf`,
         image: { type: 'jpeg', quality: 0.98 },
         html2canvas: { scale: 2, useCORS: true, letterRendering: true },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const },
       };
 
       await html2pdf().set(opt).from(exportContentRef.current).save();
@@ -296,7 +296,7 @@ export default function ViewNotePage() {
     ol: ({ ...props }) => <ol className="list-decimal list-inside mb-4 space-y-2 text-[var(--text-secondary)]" {...props} />,
     li: ({ ...props }) => <li className="ml-4" {...props} />,
     strong: ({ ...props }) => <strong className="font-bold text-[var(--text-primary)]" {...props} />,
-    code: ({ className, ...props }) =>
+    code: ({ className, ...props }: { className?: string; [key: string]: any }) =>
       className
         ? <code className={`block bg-[var(--bg-primary)] text-[var(--text-primary)] p-4 rounded-lg overflow-x-auto text-sm font-mono my-4 border border-[var(--card-border)] ${className}`} {...props} />
         : <code className="bg-[var(--bg-elevated)] text-[var(--accent-amber)] px-1.5 py-0.5 rounded text-sm font-mono" {...props} />,

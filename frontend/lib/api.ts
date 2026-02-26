@@ -10,6 +10,7 @@ interface ApiInstance extends AxiosInstance {
   uploadDocument: (formData: FormData) => Promise<any>;
   deleteDocument: (id: string) => Promise<any>;
   processUrl: (url: string) => Promise<any>;
+  getDocumentThumbnailUrl: (id: string) => string;
   getDocumentMindmap: (id: string, style?: string) => Promise<any>;
   getDocumentDiagram: (id: string, diagramType?: string) => Promise<any>;
 
@@ -121,6 +122,10 @@ axiosInstance.uploadDocument = async (formData: FormData) => {
 axiosInstance.deleteDocument = async (id: string) => {
   const response = await axiosInstance.delete(`/api/documents/${id}`);
   return response.data;
+};
+
+axiosInstance.getDocumentThumbnailUrl = (id: string) => {
+  return `${API_URL}/api/documents/${id}/thumbnail`;
 };
 
 axiosInstance.getDocumentMindmap = async (id: string, style: string = 'default') => {

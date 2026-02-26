@@ -11,12 +11,47 @@ from config.settings import settings
 
 class UploadHandler:
     """Handle file uploads"""
-    
+
     def __init__(self):
         """Initialize upload handler"""
         self.upload_folder = settings.upload_folder_path
         self.upload_folder.mkdir(parents=True, exist_ok=True)
-    
+        self.thumbnails_folder = self.upload_folder / "thumbnails"
+        self.thumbnails_folder.mkdir(parents=True, exist_ok=True)
+
+    def generate_thumbnail(self, file_path: str, document_id: str) -> Optional[str]:
+        """
+        Generate a thumbnail image from page 1 of a PDF.
+
+        Args:
+            file_path: Path to the PDF file
+            document_id: Document ID for naming
+
+        Returns:
+            Path to generated thumbnail, or None on failure
+        """
+        try:
+            import fitz  # PyMuPDF
+
+            doc = fitz.open(file_path)
+            if len(doc) == 0:
+                doc.close()
+                return None
+
+            page = doc[0]
+            # Render at 1.5x zoom for decent quality thumbnails
+            mat = fitz.Matrix(1.5, 1.5)
+            pix = page.get_pixmap(matrix=mat)
+
+            thumbnail_path = self.thumbnails_folder / f"{document_id}.png"
+            pix.save(str(thumbnail_path))
+
+            doc.close()
+            return str(thumbnail_path)
+        except Exception as e:
+            print(f"Thumbnail generation failed for {file_path}: {e}")
+            return None
+
     def save_file(self, file: UploadFile, user_id: uuid.UUID) -> dict:
         """
         Save uploaded file

@@ -53,6 +53,13 @@ def process_document_background(document_id: str):
             db.commit()
             return
         
+        # Generate thumbnail for PDFs
+        if doc.content_type == ContentType.PDF and doc.file_path:
+            thumbnail_path = upload_handler.generate_thumbnail(doc.file_path, document_id)
+            if thumbnail_path:
+                doc.thumbnail_path = thumbnail_path
+                logger.info(f"Thumbnail generated for document {document_id}")
+
         # For file uploads, update status to processing
         doc.processing_status = ProcessingStatus.PROCESSING
         db.commit()
@@ -659,6 +666,47 @@ def get_document_file(
         media_type=media_type,
         filename=doc.original_filename
     )
+@router.get("/{document_id}/thumbnail")
+def get_document_thumbnail(
+    document_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Get the thumbnail image for a document.
+    Returns the thumbnail PNG as a file response.
+    """
+    import os
+
+    doc = db.query(Document).filter(Document.id == document_id).first()
+
+    if not doc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found"
+        )
+
+    # Check if thumbnail exists on disk
+    thumbnail_path = getattr(doc, 'thumbnail_path', None)
+
+    # Fallback: check if thumbnail file exists by convention
+    if not thumbnail_path:
+        from pathlib import Path
+        fallback_path = Path(upload_handler.upload_folder) / "thumbnails" / f"{document_id}.png"
+        if fallback_path.exists():
+            thumbnail_path = str(fallback_path)
+
+    if not thumbnail_path or not os.path.exists(thumbnail_path):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Thumbnail not available"
+        )
+
+    return FileResponse(
+        path=thumbnail_path,
+        media_type="image/png",
+        filename=f"{document_id}_thumbnail.png"
+    )
+
 @router.get("/{document_id}/diagram")
 async def generate_document_diagram(
     document_id: str,

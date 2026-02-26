@@ -40,6 +40,7 @@ export interface Document {
   upload_date: string;
   file_size?: number;
   processing_status: 'pending' | 'processing' | 'completed' | 'failed';
+  thumbnail_path?: string;
   extracted_text?: string;
   topics?: string[];
   keywords?: string[];

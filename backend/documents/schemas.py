@@ -45,6 +45,7 @@ class DocumentResponse(BaseModel):
     file_size: Optional[int]
     processing_status: ProcessingStatusEnum
     doc_metadata: Optional[Dict[str, Any]] = None  # Match model field name
+    thumbnail_path: Optional[str] = None
     unique_filename: Optional[str] = None
     created_at: datetime
     

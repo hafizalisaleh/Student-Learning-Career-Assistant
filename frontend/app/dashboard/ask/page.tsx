@@ -26,6 +26,7 @@ import {
   XCircle,
   AlertCircle,
   Info,
+  Download,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import type { Document } from '@/lib/types';
@@ -299,6 +300,99 @@ export default function AskDocumentsPage() {
     toast.success('Copied to clipboard');
   };
 
+  const exportChatAsMarkdown = () => {
+    if (messages.length === 0) {
+      toast.error('No messages to export');
+      return;
+    }
+
+    const docName = getSelectedDocName();
+    const header = `# AI Assistant Chat${docName ? ` — ${docName}` : ''}\n\n_Exported on ${new Date().toLocaleString()}_\n\n---\n\n`;
+
+    const body = messages.map((msg) => {
+      const time = msg.timestamp.toLocaleTimeString();
+      if (msg.type === 'user') {
+        return `**You** _(${time})_\n\n${msg.content}\n`;
+      }
+      let text = `**AI Assistant** _(${time})_`;
+      if (msg.mode) {
+        text += ` \`${MODE_CONFIG[msg.mode]?.label || msg.mode}\``;
+      }
+      text += `\n\n${msg.content}\n`;
+      if (msg.sources && msg.sources.length > 0) {
+        text += `\n<details><summary>Sources (${msg.sources.length})</summary>\n\n`;
+        msg.sources.forEach((src, i) => {
+          const page = src.metadata?.page_number || src.metadata?.page;
+          text += `${i + 1}. ${src.metadata?.document_title || 'Source'}${page ? ` — Page ${page}` : ''}\n   > ${src.text.slice(0, 200)}...\n\n`;
+        });
+        text += `</details>\n`;
+      }
+      if (msg.verificationSummary) {
+        text += `\n> Verification: ${msg.verificationSummary.verified}/${msg.verificationSummary.total} verified (${Math.round(msg.verificationSummary.score * 100)}%)\n`;
+      }
+      return text;
+    }).join('\n---\n\n');
+
+    const markdown = header + body;
+    const blob = new Blob([markdown], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `chat-export-${new Date().toISOString().slice(0, 10)}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success('Chat exported as Markdown');
+  };
+
+  const exportChatAsPDF = async () => {
+    if (messages.length === 0) {
+      toast.error('No messages to export');
+      return;
+    }
+
+    const html2pdf = (await import('html2pdf.js')).default;
+
+    const docName = getSelectedDocName();
+    const html = `
+      <div style="font-family: system-ui, -apple-system, sans-serif; padding: 20px; max-width: 700px; margin: 0 auto;">
+        <h1 style="font-size: 20px; margin-bottom: 4px;">AI Assistant Chat</h1>
+        ${docName ? `<p style="font-size: 13px; color: #666; margin-bottom: 4px;">Document: ${docName}</p>` : ''}
+        <p style="font-size: 11px; color: #999; margin-bottom: 16px;">Exported on ${new Date().toLocaleString()}</p>
+        <hr style="border: none; border-top: 1px solid #e5e7eb; margin-bottom: 16px;" />
+        ${messages.map((msg) => {
+          const time = msg.timestamp.toLocaleTimeString();
+          if (msg.type === 'user') {
+            return `
+              <div style="background: #3b82f6; color: white; padding: 12px 16px; border-radius: 12px; margin: 8px 0 8px 40px;">
+                <p style="font-size: 10px; opacity: 0.7; margin-bottom: 4px;">You &bull; ${time}</p>
+                <p style="font-size: 13px; margin: 0; white-space: pre-wrap;">${msg.content}</p>
+              </div>`;
+          }
+          const modeLabel = msg.mode ? MODE_CONFIG[msg.mode]?.label || '' : '';
+          return `
+            <div style="background: #f3f4f6; padding: 12px 16px; border-radius: 12px; margin: 8px 40px 8px 0; border: 1px solid #e5e7eb;">
+              <p style="font-size: 10px; color: #6b7280; margin-bottom: 4px;">AI Assistant &bull; ${time}${modeLabel ? ` &bull; ${modeLabel}` : ''}</p>
+              <div style="font-size: 13px; margin: 0; white-space: pre-wrap;">${msg.content}</div>
+              ${msg.sources && msg.sources.length > 0 ? `<p style="font-size: 10px; color: #9ca3af; margin-top: 8px;">${msg.sources.length} source(s) referenced</p>` : ''}
+              ${msg.verificationSummary ? `<p style="font-size: 10px; color: #22c55e; margin-top: 4px;">Verified: ${msg.verificationSummary.verified}/${msg.verificationSummary.total} (${Math.round(msg.verificationSummary.score * 100)}%)</p>` : ''}
+            </div>`;
+        }).join('')}
+      </div>`;
+
+    const container = document.createElement('div');
+    container.innerHTML = html;
+
+    html2pdf().set({
+      margin: [10, 10],
+      filename: `chat-export-${new Date().toISOString().slice(0, 10)}.pdf`,
+      image: { type: 'jpeg', quality: 0.95 },
+      html2canvas: { scale: 2 },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const },
+    }).from(container).save();
+
+    toast.success('Chat exported as PDF');
+  };
+
   return (
     <div className="h-[calc(100vh-140px)] lg:h-[calc(100vh-100px)] flex flex-col">
       {/* Header */}
@@ -384,15 +478,34 @@ export default function AskDocumentsPage() {
               )}
             </div>
             {messages.length > 0 && activeMode === 'text' && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={clearConversation}
-                className="sm:mt-5"
-              >
-                <Trash2 className="h-3.5 w-3.5 mr-1.5" />
-                Clear
-              </Button>
+              <div className="flex items-center gap-1.5 sm:mt-5">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={exportChatAsMarkdown}
+                  title="Export as Markdown"
+                >
+                  <Download className="h-3.5 w-3.5 mr-1" />
+                  <span className="hidden sm:inline">.md</span>
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={exportChatAsPDF}
+                  title="Export as PDF"
+                >
+                  <Download className="h-3.5 w-3.5 mr-1" />
+                  <span className="hidden sm:inline">.pdf</span>
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={clearConversation}
+                >
+                  <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+                  Clear
+                </Button>
+              </div>
             )}
           </div>
 

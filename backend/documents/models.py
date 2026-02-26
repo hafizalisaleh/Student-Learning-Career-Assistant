@@ -42,6 +42,7 @@ class Document(Base):
     vector_db_reference_id = Column(String(255))
     doc_metadata = Column(JSONB)  # Renamed from metadata to avoid SQLAlchemy conflict
     extracted_text = Column(Text)  # Store extracted content
+    thumbnail_path = Column(String(1000))  # Path to generated thumbnail image
     
     # Topic and domain tracking for career recommendations
     topics = Column(JSONB)  # List of extracted topics/subjects

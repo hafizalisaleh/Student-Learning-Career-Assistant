@@ -376,8 +376,24 @@ export default function DocumentsPage() {
           {filteredDocuments.map((doc) => (
             <div
               key={doc.id}
-              className="group p-5 rounded-2xl bg-[var(--card-bg)] backdrop-blur-xl border border-[var(--card-border)] hover:border-[var(--card-border-hover)] transition-all duration-200"
+              className="group rounded-2xl bg-[var(--card-bg)] backdrop-blur-xl border border-[var(--card-border)] hover:border-[var(--card-border-hover)] transition-all duration-200 overflow-hidden"
             >
+              {/* Thumbnail Preview */}
+              {doc.thumbnail_path && (
+                <div className="relative w-full h-40 bg-[var(--bg-secondary)] border-b border-[var(--card-border)] overflow-hidden">
+                  <img
+                    src={api.getDocumentThumbnailUrl(doc.id)}
+                    alt={`Preview of ${doc.title}`}
+                    className="w-full h-full object-cover object-top"
+                    loading="lazy"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).style.display = 'none';
+                    }}
+                  />
+                </div>
+              )}
+
+              <div className="p-5">
               {/* Header */}
               <div className="flex items-start gap-3 mb-4">
                 <div className={cn('p-2.5 rounded-xl', getTypeColor(doc.content_type))}>
@@ -452,6 +468,7 @@ export default function DocumentsPage() {
                 >
                   <Trash2 className="h-4 w-4" />
                 </Button>
+              </div>
               </div>
             </div>
           ))}
