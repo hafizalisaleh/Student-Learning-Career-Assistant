@@ -243,7 +243,7 @@ export default function ViewNotePage() {
       <div className="text-center py-16">
         <p className="text-[var(--text-secondary)]">Note not found</p>
         <Link href="/dashboard/notes">
-          <Button variant="primary" className="mt-4">Back to Notes</Button>
+          <Button variant="default" className="mt-4">Back to Notes</Button>
         </Link>
       </div>
     );
@@ -296,7 +296,7 @@ export default function ViewNotePage() {
     ol: ({ ...props }) => <ol className="list-decimal list-inside mb-4 space-y-2 text-[var(--text-secondary)]" {...props} />,
     li: ({ ...props }) => <li className="ml-4" {...props} />,
     strong: ({ ...props }) => <strong className="font-bold text-[var(--text-primary)]" {...props} />,
-    code: ({ className, ...props }: { className?: string; [key: string]: any }) =>
+    code: ({ className, ...props }: { className?: string;[key: string]: any }) =>
       className
         ? <code className={`block bg-[var(--bg-primary)] text-[var(--text-primary)] p-4 rounded-lg overflow-x-auto text-sm font-mono my-4 border border-[var(--card-border)] ${className}`} {...props} />
         : <code className="bg-[var(--bg-elevated)] text-[var(--accent-amber)] px-1.5 py-0.5 rounded text-sm font-mono" {...props} />,
@@ -347,7 +347,7 @@ export default function ViewNotePage() {
         <div className="flex gap-2">
           {!isStudyNote && (
             <Button
-              variant={isEditing ? 'primary' : 'secondary'}
+              variant={isEditing ? 'default' : 'secondary'}
               size="sm"
               onClick={isEditing ? exitEditMode : enterEditMode}
             >
@@ -378,7 +378,7 @@ export default function ViewNotePage() {
               {isDownloadingDocx ? <LoadingSpinner size="sm" /> : <Download className="h-4 w-4" />}
             </Button>
           )}
-          <Button variant="danger" size="sm" onClick={handleDelete}>
+          <Button variant="destructive" size="sm" onClick={handleDelete}>
             <Trash2 className="h-4 w-4" />
           </Button>
         </div>
@@ -453,7 +453,7 @@ export default function ViewNotePage() {
             </>
           )}
           {!isStudyNote && (
-            <Button variant="primary" onClick={handleDownloadDocx} disabled={isDownloadingDocx}>
+            <Button variant="default" onClick={handleDownloadDocx} disabled={isDownloadingDocx}>
               {isDownloadingDocx ? (
                 <><LoadingSpinner size="sm" className="mr-2" />Downloading...</>
               ) : (

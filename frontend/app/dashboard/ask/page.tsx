@@ -27,11 +27,21 @@ import {
   AlertCircle,
   Info,
   Download,
+  ArrowUp,
+  Square,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import type { Document } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { CitedMarkdown, SourceCard } from '@/components/ui/cited-markdown';
+import { PromptInput, PromptInputTextarea, PromptInputActions, PromptInputAction } from "@/components/ui/prompt-input";
+import { ScrollButton } from "@/components/ui/scroll-button";
+import { ChatContainerRoot, ChatContainerContent, ChatContainerScrollAnchor } from "@/components/ui/chat-container";
+import { Markdown } from "@/components/ui/markdown";
+import { Message, MessageContent } from "@/components/ui/message";
+import { Tool } from "@/components/ui/tool";
+import { Reasoning, ReasoningTrigger, ReasoningContent } from "@/components/ui/reasoning";
+import { Bot } from 'lucide-react';
 
 type RAGMode = 'structured_output' | 'file_search' | 'nli_verification';
 
@@ -104,16 +114,13 @@ export default function AskDocumentsPage() {
   const [fileSearchIndexing, setFileSearchIndexing] = useState(false);
   const [fileSearchStatus, setFileSearchStatus] = useState<Record<string, boolean>>({});
   const [expandedVerifications, setExpandedVerifications] = useState<Set<string>>(new Set());
-  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetchDocuments();
     fetchVectorStats();
   }, []);
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  // Auto-scroll handled by prompt-kit ChatContainer
 
   // Check file search status when document changes
   useEffect(() => {
@@ -212,8 +219,8 @@ export default function AskDocumentsPage() {
     ];
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (e?: React.FormEvent) => {
+    e?.preventDefault();
     if (!question.trim()) return;
 
     const userMessage: Message = {
@@ -252,14 +259,22 @@ export default function AskDocumentsPage() {
       setMessages((prev) => [...prev, assistantMessage]);
     } catch (error: any) {
       console.error('RAG query error:', error);
+      const isQuotaError = error?.message?.includes("quota") || error?.message?.includes("429") || error?.message?.includes("RESOURCE_EXHAUSTED") || error.response?.data?.detail?.includes("quota");
+
+      if (isQuotaError) {
+        toast.error("Gemini API limit reached. Please wait a moment.", { id: 'ask-quota-error' });
+      }
+
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         type: 'assistant',
-        content: error.response?.data?.detail || 'Failed to process your question. Please try again.',
+        content: isQuotaError
+          ? "I've reached my current API quota limit. Please wait a few seconds and try again. If you're using the free tier, there are daily and per-minute limits."
+          : error.response?.data?.detail || 'Failed to process your question. Please try again.',
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, errorMessage]);
-      toast.error('Failed to get answer');
+      if (!isQuotaError) toast.error('Failed to get answer');
     } finally {
       setIsLoading(false);
     }
@@ -360,23 +375,23 @@ export default function AskDocumentsPage() {
         <p style="font-size: 11px; color: #999; margin-bottom: 16px;">Exported on ${new Date().toLocaleString()}</p>
         <hr style="border: none; border-top: 1px solid #e5e7eb; margin-bottom: 16px;" />
         ${messages.map((msg) => {
-          const time = msg.timestamp.toLocaleTimeString();
-          if (msg.type === 'user') {
-            return `
+      const time = msg.timestamp.toLocaleTimeString();
+      if (msg.type === 'user') {
+        return `
               <div style="background: #3b82f6; color: white; padding: 12px 16px; border-radius: 12px; margin: 8px 0 8px 40px;">
                 <p style="font-size: 10px; opacity: 0.7; margin-bottom: 4px;">You &bull; ${time}</p>
                 <p style="font-size: 13px; margin: 0; white-space: pre-wrap;">${msg.content}</p>
               </div>`;
-          }
-          const modeLabel = msg.mode ? MODE_CONFIG[msg.mode]?.label || '' : '';
-          return `
+      }
+      const modeLabel = msg.mode ? MODE_CONFIG[msg.mode]?.label || '' : '';
+      return `
             <div style="background: #f3f4f6; padding: 12px 16px; border-radius: 12px; margin: 8px 40px 8px 0; border: 1px solid #e5e7eb;">
               <p style="font-size: 10px; color: #6b7280; margin-bottom: 4px;">AI Assistant &bull; ${time}${modeLabel ? ` &bull; ${modeLabel}` : ''}</p>
               <div style="font-size: 13px; margin: 0; white-space: pre-wrap;">${msg.content}</div>
               ${msg.sources && msg.sources.length > 0 ? `<p style="font-size: 10px; color: #9ca3af; margin-top: 8px;">${msg.sources.length} source(s) referenced</p>` : ''}
               ${msg.verificationSummary ? `<p style="font-size: 10px; color: #22c55e; margin-top: 4px;">Verified: ${msg.verificationSummary.verified}/${msg.verificationSummary.total} (${Math.round(msg.verificationSummary.score * 100)}%)</p>` : ''}
             </div>`;
-        }).join('')}
+    }).join('')}
       </div>`;
 
     const container = document.createElement('div');
@@ -612,7 +627,7 @@ export default function AskDocumentsPage() {
       {activeMode === 'text' && (
         <div className="flex-1 flex flex-col min-h-0">
           {/* Chat Messages Container */}
-          <div className="flex-1 overflow-y-auto rounded-lg bg-[var(--card-bg)] border border-[var(--card-border)] mb-2">
+          <ChatContainerRoot className="flex-1 overflow-y-auto rounded-lg bg-[var(--card-bg)] border border-[var(--card-border)] mb-2 relative">
             {messages.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center text-center p-6">
                 <div className="w-12 h-12 rounded-lg bg-[var(--primary-light)] flex items-center justify-center mb-3">
@@ -638,7 +653,7 @@ export default function AskDocumentsPage() {
                 </div>
               </div>
             ) : (
-              <div className="p-4 space-y-4">
+              <ChatContainerContent className="p-4 space-y-4">
                 {messages.map((message) => (
                   <div
                     key={message.id}
@@ -835,53 +850,86 @@ export default function AskDocumentsPage() {
                 ))}
 
                 {isLoading && (
-                  <div className="flex justify-start">
-                    <div className="bg-[var(--bg-secondary)] border border-[var(--card-border)] rounded-xl px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <Sparkles className="h-4 w-4 text-[var(--primary)] animate-pulse" />
-                        <span className="text-sm text-[var(--text-secondary)]">
-                          {ragMode === 'nli_verification'
-                            ? 'Generating answer and verifying citations...'
-                            : ragMode === 'file_search'
-                              ? 'Searching with Google File Search...'
-                              : 'Searching documents and generating answer...'}
-                        </span>
-                      </div>
+                  <Message className="justify-start gap-2">
+                    <div className="w-8 h-8 rounded-lg bg-[var(--primary)] flex items-center justify-center shrink-0 mt-1">
+                      <Bot className="h-4 w-4 text-white animate-pulse" />
                     </div>
-                  </div>
+                    <MessageContent className="bg-[var(--bg-secondary)] border border-[var(--card-border)] rounded-xl px-4 py-3 flex-1 max-w-[400px]">
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2">
+                          <LoadingSpinner size="sm" />
+                          <span className="text-sm text-[var(--text-secondary)] font-medium">
+                            {ragMode === 'nli_verification'
+                              ? 'Analyzing & Verifying Citations...'
+                              : ragMode === 'file_search'
+                                ? 'Searching with Google File Search...'
+                                : 'Analyzing Documents...'}
+                          </span>
+                        </div>
+                        {ragMode === 'nli_verification' && (
+                          <Tool
+                            toolPart={{
+                              type: "NLI Reasoning",
+                              state: "input-streaming",
+                            }}
+                            className="mt-2"
+                          />
+                        )}
+                      </div>
+                    </MessageContent>
+                  </Message>
                 )}
 
-                <div ref={messagesEndRef} />
-              </div>
+                <ChatContainerScrollAnchor />
+                <div className="absolute right-4 bottom-4">
+                  <ScrollButton className="shadow-sm border-[var(--card-border)] bg-[var(--card-bg)] text-[var(--text-primary)] hover:bg-[var(--bg-secondary)]" hover-bg="var(--bg-secondary)" />
+                </div>
+              </ChatContainerContent>
             )}
-          </div>
+          </ChatContainerRoot>
 
           {/* Input Form */}
-          <form onSubmit={handleSubmit} className="flex gap-2 shrink-0">
-            <input
-              type="text"
+          <div className="shrink-0 pt-2">
+            <PromptInput
               value={question}
-              onChange={(e) => setQuestion(e.target.value)}
-              placeholder="Ask a question about your documents..."
-              disabled={isLoading}
-              className="flex-1 px-4 py-2.5 bg-[var(--card-bg)] border border-[var(--card-border)] rounded-xl focus:outline-none focus:ring-2 focus:ring-[var(--primary)] text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)]"
-            />
-            <Button
-              type="submit"
-              variant="primary"
-              disabled={isLoading || !question.trim()}
-              className="px-4"
+              onValueChange={setQuestion}
+              onSubmit={() => {
+                if (question.trim()) handleSubmit();
+              }}
+              isLoading={isLoading}
+              className="w-full bg-[var(--card-bg)] border border-[var(--card-border)] rounded-2xl shadow-sm px-2 py-1 flex flex-row items-end"
             >
-              {isLoading ? (
-                <LoadingSpinner size="sm" />
-              ) : (
-                <>
-                  <Send className="h-4 w-4" />
-                  <span className="hidden sm:inline ml-1.5">Ask</span>
-                </>
-              )}
-            </Button>
-          </form>
+              <PromptInputTextarea
+                placeholder="Ask a question about your documents..."
+                disabled={isLoading}
+                className="min-h-[44px] px-3 py-2 bg-transparent border-none focus:ring-0 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] flex-1"
+              />
+              <PromptInputActions className="pb-1 pr-1">
+                <PromptInputAction
+                  tooltip={isLoading ? "Stop generation" : "Send message"}
+                >
+                  <Button
+                    type="button"
+                    onClick={() => {
+                      if (!isLoading && question.trim()) {
+                        handleSubmit();
+                      }
+                    }}
+                    variant="default"
+                    size="icon"
+                    className="h-8 w-8 rounded-full bg-[var(--primary)] hover:bg-[var(--primary)]/90 text-white"
+                    disabled={!isLoading && !question.trim()}
+                  >
+                    {isLoading ? (
+                      <Square className="h-4 w-4 fill-current" />
+                    ) : (
+                      <ArrowUp className="h-5 w-5" />
+                    )}
+                  </Button>
+                </PromptInputAction>
+              </PromptInputActions>
+            </PromptInput>
+          </div>
         </div>
       )}
     </div>

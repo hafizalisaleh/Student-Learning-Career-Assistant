@@ -15,9 +15,13 @@ import {
   MessageSquare,
   PanelRightClose,
   X,
+  ArrowUp,
+  Square,
+  Send,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn } from '@/lib/utils';
+import { PromptInput, PromptInputTextarea, PromptInputActions, PromptInputAction } from "@/components/ui/prompt-input";
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -170,16 +174,60 @@ function findParentDocId(nodeId: string, links: GraphApiLink[], nodes: GraphApiN
 export default function KnowledgeGraphPage() {
   const router = useRouter();
   const mindMapRef = useRef<MindMapRef>(null);
-  const chatPanelRef = useRef<HTMLDivElement>(null);
-
-  // Data state
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatInput, setChatInput] = useState('');
   const [rawData, setRawData] = useState<GraphApiData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-
-  // Chat panel state
   const [chatOpen, setChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [chatLoading, setChatLoading] = useState(false);
+
+  const chatPanelRef = useRef<HTMLDivElement>(null);
+
+  const handleSendChat = useCallback(async () => {
+    if (!chatInput.trim()) return;
+
+    const userMsg: ChatMessage = {
+      id: `user-${Date.now()}`,
+      role: 'user',
+      content: chatInput,
+    };
+
+    setChatMessages((prev) => [...prev, userMsg]);
+    const currentInput = chatInput;
+    setChatInput('');
+    setChatLoading(true);
+
+    try {
+      const response = await api.ragQuery(currentInput, undefined, 5, 'structured_output');
+
+      const assistantMsg: ChatMessage = {
+        id: `assistant-${Date.now()}`,
+        role: 'assistant',
+        content: response.answer || 'No answer available.',
+        sources: response.sources || [],
+      };
+
+      setChatMessages((prev) => [...prev, assistantMsg]);
+    } catch (error: any) {
+      console.error('AI query failed:', error);
+      const isQuotaError = error?.message?.includes("quota") || error?.message?.includes("429") || error?.message?.includes("RESOURCE_EXHAUSTED");
+
+      if (isQuotaError) {
+        toast.error("Gemini API limit reached. Please wait a moment.", { id: 'kg-quota-error' });
+      }
+
+      const errorMsg: ChatMessage = {
+        id: `error-${Date.now()}`,
+        role: 'assistant',
+        content: isQuotaError
+          ? "API quota exceeded. Please wait a few seconds and try again."
+          : 'Failed to get AI response. Please try again.',
+      };
+      setChatMessages((prev) => [...prev, errorMsg]);
+    } finally {
+      setChatLoading(false);
+    }
+  }, [chatInput, setChatMessages, setChatInput, setChatLoading]);
 
   // ─── Fetch graph data ───────────────────────────────────────────────
 
@@ -259,12 +307,20 @@ export default function KnowledgeGraphPage() {
       };
 
       setChatMessages((prev) => [...prev, assistantMsg]);
-    } catch (error) {
+    } catch (error: any) {
       console.error('AI query failed:', error);
+      const isQuotaError = error?.message?.includes("quota") || error?.message?.includes("429") || error?.message?.includes("RESOURCE_EXHAUSTED");
+
+      if (isQuotaError) {
+        toast.error("Gemini API limit reached. Please wait a moment.", { id: 'kg-quota-error' });
+      }
+
       const errorMsg: ChatMessage = {
         id: `error-${Date.now()}`,
         role: 'assistant',
-        content: 'Failed to get AI response. Please try again.',
+        content: isQuotaError
+          ? "API quota exceeded. Please wait a few seconds and try again."
+          : 'Failed to get AI response. Please try again.',
       };
       setChatMessages((prev) => [...prev, errorMsg]);
     } finally {
@@ -320,7 +376,7 @@ export default function KnowledgeGraphPage() {
       </div>
 
       {/* MindMap + Chat Split Container */}
-      <div className="flex rounded-2xl bg-[var(--card-bg)] border border-[var(--card-border)] overflow-hidden">
+      <div className="flex rounded-2xl bg-[var(--card-bg)] border border-[var(--card-border)] overflow-hidden h-[calc(100vh-200px)] min-h-[500px]">
         {/* MindMap area */}
         <div className={cn('relative transition-all duration-300', chatOpen ? 'flex-1 min-w-0' : 'w-full')}>
           <div className="h-[calc(100vh-240px)] min-h-[500px]">
@@ -483,6 +539,47 @@ export default function KnowledgeGraphPage() {
                     </div>
                   </div>
                 )}
+              </div>
+
+              {/* Input Area */}
+              <div className="px-3 pb-3 pt-1 bg-[var(--bg-primary)] border-t border-[var(--card-border)] shrink-0">
+                <div className="flex bg-[var(--card-bg)] rounded-2xl border border-[var(--card-border)] p-1 shadow-sm mt-1">
+                  <PromptInput
+                    value={chatInput}
+                    onValueChange={setChatInput}
+                    onSubmit={handleSendChat}
+                    isLoading={chatLoading}
+                    className="flex-1 flex flex-row items-end border-none shadow-none p-0 bg-transparent"
+                  >
+                    <PromptInputTextarea
+                      placeholder="Ask me anything about these topics..."
+                      disabled={chatLoading}
+                      className="min-h-[40px] max-h-40 px-3 py-2 bg-transparent border-none focus:ring-0 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] flex-1"
+                    />
+                    <PromptInputActions className="pb-1 pr-1">
+                      <PromptInputAction tooltip={chatLoading ? "Stop generation" : "Send message"}>
+                        <Button
+                          type="button"
+                          onClick={() => {
+                            if (!chatLoading && chatInput.trim()) {
+                              handleSendChat();
+                            }
+                          }}
+                          variant="default"
+                          size="icon"
+                          className="h-8 w-8 rounded-full bg-[var(--primary)] hover:bg-[var(--primary)]/90 text-white"
+                          disabled={!chatLoading && !chatInput.trim()}
+                        >
+                          {chatLoading ? (
+                            <Square className="h-4 w-4 fill-current" />
+                          ) : (
+                            <ArrowUp className="h-5 w-5" />
+                          )}
+                        </Button>
+                      </PromptInputAction>
+                    </PromptInputActions>
+                  </PromptInput>
+                </div>
               </div>
             </>
           )}

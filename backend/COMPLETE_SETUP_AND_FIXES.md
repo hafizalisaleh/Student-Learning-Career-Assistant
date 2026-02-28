@@ -24,6 +24,9 @@ Created all essential UI components:
 - **Input** - With label and error handling
 - **Card** - Card, CardHeader, CardTitle, CardDescription, CardContent
 - **LoadingSpinner** - Full screen and inline spinners
+- **PromptInput** - Advanced chat input from prompt-kit
+- **CitedMarkdown** - AI responses with grounded text citations
+- **MindMap** - Interactive knowledge graph visualization
 
 ### 4. Authentication System ✓
 - Login/Register with API integration
@@ -226,10 +229,12 @@ All components support className prop for custom styling
 - Delete documents
 
 ### AI Features
-- Generate summaries
-- Create quizzes
-- Auto-grading
-- Progress analytics
+- AI summarization (Brief, Detailed, Bulleted)
+- AI quiz generation with auto-grading
+- Intelligent RAG with Citation Grounding
+- Interactive 2D/3D Knowledge Graph
+- Gemini ⇄ Groq Fallback for consistent uptime
+- Progress analytics & Study streaks
 
 ### User Experience
 - ✓ Beautiful landing page

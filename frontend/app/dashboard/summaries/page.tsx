@@ -108,7 +108,7 @@ export default function SummariesPage() {
           <p className="text-sm text-[var(--text-tertiary)] mt-0.5">AI-generated content summaries</p>
         </div>
         <Link href="/dashboard/summaries/new">
-          <Button variant="primary">
+          <Button variant="default">
             <Plus className="h-4 w-4 mr-2" />
             Generate Summary
           </Button>
@@ -147,7 +147,7 @@ export default function SummariesPage() {
           action={
             !searchQuery && filterType === 'all' ? (
               <Link href="/dashboard/summaries/new">
-                <Button variant="primary">
+                <Button variant="default">
                   <Plus className="h-4 w-4 mr-2" />
                   Generate Summary
                 </Button>
@@ -196,7 +196,7 @@ export default function SummariesPage() {
                         )}
                       </Button>
                       <Button
-                        variant="danger"
+                        variant="destructive"
                         size="sm"
                         onClick={() => handleDelete(summary.id)}
                       >

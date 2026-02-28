@@ -64,7 +64,7 @@ export default function QuizzesPage() {
           <p className="text-sm text-[var(--text-tertiary)] mt-0.5">Test your knowledge with AI-generated quizzes</p>
         </div>
         <Link href="/dashboard/quizzes/new">
-          <Button variant="primary">
+          <Button variant="default">
             <Plus className="h-4 w-4 mr-2" />
             Generate Quiz
           </Button>
@@ -133,7 +133,7 @@ export default function QuizzesPage() {
           action={
             !searchQuery ? (
               <Link href="/dashboard/quizzes/new">
-                <Button variant="primary">
+                <Button variant="default">
                   <Plus className="h-4 w-4 mr-2" />
                   Generate Quiz
                 </Button>
@@ -168,7 +168,7 @@ export default function QuizzesPage() {
                     <span className="font-medium text-[var(--text-primary)]">{quiz.questions?.length || 0}</span>
                   </div>
                   <Link href={`/dashboard/quizzes/${quiz.id}`} className="block pt-2">
-                    <Button variant="primary" size="sm" className="w-full">
+                    <Button variant="default" size="sm" className="w-full">
                       <Play className="h-4 w-4 mr-2" />
                       Take Quiz
                     </Button>

@@ -74,7 +74,7 @@ export default function DashboardPage() {
           </p>
         </div>
         <Link href="/dashboard/documents">
-          <Button variant="primary" size="sm">
+          <Button variant="default" size="sm">
             <Upload className="h-3.5 w-3.5" />
             Upload
           </Button>

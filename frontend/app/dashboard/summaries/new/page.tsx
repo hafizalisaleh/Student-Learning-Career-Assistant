@@ -78,17 +78,17 @@ function NewSummaryContent() {
     try {
       setIsLoading(true);
       console.log('Submitting summary data:', data);
-      
+
       // Prepare the request data
       const requestData = {
         document_id: data.document_id,
         summary_length: data.summary_length
       };
-      
+
       console.log('Request data:', requestData);
       const result = await api.generateSummary(requestData);
       console.log('Summary generated:', result);
-      
+
       toast.success('Summary generated successfully!');
       // Go back to document page if pre-selected, otherwise to summaries list
       router.push(preSelectedDocId ? `/dashboard/documents/${preSelectedDocId}` : '/dashboard/summaries');
@@ -232,8 +232,7 @@ function NewSummaryContent() {
             <div className="flex gap-3 pt-4">
               <Button
                 type="submit"
-                variant="primary"
-                isLoading={isLoading}
+                variant="default"
                 disabled={isLoading}
                 className="flex-1"
               >

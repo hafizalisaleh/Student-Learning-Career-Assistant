@@ -472,23 +472,46 @@ Context:
 
 Question: {question}"""
 
-            response = self.client.models.generate_content(
-                model=self.model_id,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    response_json_schema=citation_schema
+            try:
+                response = self.client.models.generate_content(
+                    model=self.model_id,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        response_json_schema=citation_schema
+                    )
                 )
-            )
+                response_text = response.text
+                mode = "structured_output"
+            except Exception as e:
+                error_str = str(e)
+                if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
+                    from utils.groq_client import groq_client
+                    from config.settings import settings
+                    logger.info(f"RAG query: Gemini quota exceeded. Falling back to Groq ({settings.GROQ_MODEL})...")
+                    # Fallback to Groq with JSON mode
+                    # Make prompt even more explicit for Groq to ensure it uses the correct keys
+                    groq_prompt = prompt + f"\n\nResponse Schema: {json.dumps(citation_schema)}"
+                    response_text = groq_client.generate_text(groq_prompt, use_json=True)
+                    mode = "structured_output_groq"
+                else:
+                    raise e
 
             # Parse the structured response
             try:
-                structured = json.loads(response.text)
+                # Strip markdown blocks if present (common with some models despite JSON mode)
+                cleaned_response = response_text.strip()
+                if cleaned_response.startswith("```json"):
+                    cleaned_response = cleaned_response.replace("```json", "", 1).rsplit("```", 1)[0].strip()
+                elif cleaned_response.startswith("```"):
+                    cleaned_response = cleaned_response.replace("```", "", 1).rsplit("```", 1)[0].strip()
+                
+                structured = json.loads(cleaned_response)
                 answer = structured.get("answer", "")
                 citations = structured.get("citations", [])
-            except json.JSONDecodeError:
+            except (json.JSONDecodeError, AttributeError):
                 # Fallback: use raw text if JSON parsing fails
-                answer = response.text
+                answer = response_text
                 citations = []
 
             query_results = self.query(question, n_results, document_id)
@@ -499,15 +522,20 @@ Question: {question}"""
                 "sources": query_results.get("results", []),
                 "citations_metadata": citations,
                 "context_used": context[:500] + "..." if len(context) > 500 else context,
-                "mode": "structured_output"
+                "mode": mode
             }
 
         except Exception as e:
-            logger.error(f"Error in structured output RAG: {e}")
+            error_str = str(e)
+            user_msg = f"Error generating answer: {error_str}"
+            if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
+                user_msg = "Gemini API quota exceeded. Please wait a few seconds or try again later. (Free tier limits apply)"
+            
+            logger.error(f"Error in structured output RAG: {error_str}")
             return {
                 "success": False,
-                "error": str(e),
-                "answer": f"Error generating answer: {str(e)}",
+                "error": error_str,
+                "answer": user_msg,
                 "mode": "structured_output"
             }
 

@@ -1040,11 +1040,13 @@ label {
 .quiz-number-input::-webkit-outer-spin-button,
 .quiz-number-input::-webkit-inner-spin-button {
   -webkit-appearance: none;
+  appearance: none;
   margin: 0;
 }
 
 .quiz-number-input[type=number] {
   -moz-appearance: textfield;
+  appearance: textfield;
 }
 
 /* Quiz Stagger Animation */

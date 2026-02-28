@@ -4,6 +4,8 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { Mic, MicOff, PhoneOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import toast from 'react-hot-toast';
+import { Message, MessageContent } from '@/components/ui/message';
+import { Bot } from 'lucide-react';
 
 interface VoiceChatProps {
   documentId?: string;
@@ -35,6 +37,112 @@ export function VoiceChat({ documentId, onTranscript, onResponse }: VoiceChatPro
     }
     return null;
   };
+
+  // Disconnect voice chat
+  const disconnect = useCallback(() => {
+    if (mediaRecorderRef.current) {
+      mediaRecorderRef.current.stop();
+      mediaRecorderRef.current = null;
+    }
+
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+
+    if (wsRef.current) {
+      wsRef.current.send(JSON.stringify({ type: 'end' }));
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+
+    if (audioContextRef.current) {
+      audioContextRef.current.close();
+      audioContextRef.current = null;
+    }
+
+    setIsConnected(false);
+    setIsRecording(false);
+    setStatus('idle');
+    setTranscript('');
+  }, []);
+
+  // Start recording audio
+  const startRecording = useCallback(() => {
+    if (!streamRef.current) return;
+
+    try {
+      const mediaRecorder = new MediaRecorder(streamRef.current, {
+        mimeType: 'audio/webm;codecs=opus',
+      });
+      mediaRecorderRef.current = mediaRecorder;
+
+      mediaRecorder.ondataavailable = async (event) => {
+        if (event.data.size > 0 && wsRef.current?.readyState === WebSocket.OPEN && !isMuted) {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const base64 = (reader.result as string).split(',')[1];
+            wsRef.current?.send(JSON.stringify({
+              type: 'audio',
+              data: base64,
+            }));
+          };
+          reader.readAsDataURL(event.data);
+        }
+      };
+
+      mediaRecorder.start(250);
+      setIsRecording(true);
+      setStatus('listening');
+
+    } catch (error) {
+      console.error('Failed to start recording:', error);
+    }
+  }, [isMuted]);
+
+  // Play queued audio
+  const playNextInQueue = useCallback(() => {
+    if (isPlayingRef.current || audioQueueRef.current.length === 0) return;
+    if (!audioContextRef.current) return;
+
+    isPlayingRef.current = true;
+    const buffer = audioQueueRef.current.shift()!;
+
+    const source = audioContextRef.current.createBufferSource();
+    source.buffer = buffer;
+    source.connect(audioContextRef.current.destination);
+    source.onended = () => {
+      isPlayingRef.current = false;
+      playNextInQueue();
+    };
+    source.start();
+  }, []);
+
+  // Play audio chunk from server
+  const playAudioChunk = useCallback(async (base64Audio: string) => {
+    try {
+      if (!audioContextRef.current) {
+        audioContextRef.current = new AudioContext({ sampleRate: 24000 });
+      }
+
+      const audioData = Uint8Array.from(atob(base64Audio), c => c.charCodeAt(0));
+
+      const audioBuffer = audioContextRef.current.createBuffer(1, audioData.length / 2, 24000);
+      const channelData = audioBuffer.getChannelData(0);
+
+      for (let i = 0; i < audioData.length; i += 2) {
+        const sample = (audioData[i] | (audioData[i + 1] << 8));
+        const signedSample = sample > 32767 ? sample - 65536 : sample;
+        channelData[i / 2] = signedSample / 32768;
+      }
+
+      audioQueueRef.current.push(audioBuffer);
+      playNextInQueue();
+
+    } catch (error) {
+      console.error('Failed to play audio:', error);
+    }
+  }, [playNextInQueue]);
 
   // Connect to voice WebSocket
   const connect = useCallback(async () => {
@@ -125,113 +233,7 @@ export function VoiceChat({ documentId, onTranscript, onResponse }: VoiceChatPro
       toast.error(error.message || 'Failed to start voice chat');
       setStatus('idle');
     }
-  }, [documentId, onResponse]);
-
-  // Start recording audio
-  const startRecording = useCallback(() => {
-    if (!streamRef.current) return;
-
-    try {
-      const mediaRecorder = new MediaRecorder(streamRef.current, {
-        mimeType: 'audio/webm;codecs=opus',
-      });
-      mediaRecorderRef.current = mediaRecorder;
-
-      mediaRecorder.ondataavailable = async (event) => {
-        if (event.data.size > 0 && wsRef.current?.readyState === WebSocket.OPEN && !isMuted) {
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            const base64 = (reader.result as string).split(',')[1];
-            wsRef.current?.send(JSON.stringify({
-              type: 'audio',
-              data: base64,
-            }));
-          };
-          reader.readAsDataURL(event.data);
-        }
-      };
-
-      mediaRecorder.start(250);
-      setIsRecording(true);
-      setStatus('listening');
-
-    } catch (error) {
-      console.error('Failed to start recording:', error);
-    }
-  }, [isMuted]);
-
-  // Play audio chunk from server
-  const playAudioChunk = async (base64Audio: string) => {
-    try {
-      if (!audioContextRef.current) {
-        audioContextRef.current = new AudioContext({ sampleRate: 24000 });
-      }
-
-      const audioData = Uint8Array.from(atob(base64Audio), c => c.charCodeAt(0));
-
-      const audioBuffer = audioContextRef.current.createBuffer(1, audioData.length / 2, 24000);
-      const channelData = audioBuffer.getChannelData(0);
-
-      for (let i = 0; i < audioData.length; i += 2) {
-        const sample = (audioData[i] | (audioData[i + 1] << 8));
-        const signedSample = sample > 32767 ? sample - 65536 : sample;
-        channelData[i / 2] = signedSample / 32768;
-      }
-
-      audioQueueRef.current.push(audioBuffer);
-      playNextInQueue();
-
-    } catch (error) {
-      console.error('Failed to play audio:', error);
-    }
-  };
-
-  // Play queued audio
-  const playNextInQueue = () => {
-    if (isPlayingRef.current || audioQueueRef.current.length === 0) return;
-    if (!audioContextRef.current) return;
-
-    isPlayingRef.current = true;
-    const buffer = audioQueueRef.current.shift()!;
-
-    const source = audioContextRef.current.createBufferSource();
-    source.buffer = buffer;
-    source.connect(audioContextRef.current.destination);
-    source.onended = () => {
-      isPlayingRef.current = false;
-      playNextInQueue();
-    };
-    source.start();
-  };
-
-  // Disconnect voice chat
-  const disconnect = useCallback(() => {
-    if (mediaRecorderRef.current) {
-      mediaRecorderRef.current.stop();
-      mediaRecorderRef.current = null;
-    }
-
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-      streamRef.current = null;
-    }
-
-    if (wsRef.current) {
-      wsRef.current.send(JSON.stringify({ type: 'end' }));
-      wsRef.current.close();
-      wsRef.current = null;
-    }
-
-    if (audioContextRef.current) {
-      audioContextRef.current.close();
-      audioContextRef.current = null;
-    }
-
-    setIsConnected(false);
-    setIsRecording(false);
-    setStatus('idle');
-    setTranscript('');
-  }, []);
+  }, [documentId, onResponse, startRecording, playAudioChunk, disconnect]);
 
   // Toggle mute
   const toggleMute = () => {
@@ -331,9 +333,15 @@ export function VoiceChat({ documentId, onTranscript, onResponse }: VoiceChatPro
 
         {/* Transcript */}
         {transcript && (
-          <div className="w-full mt-2 p-3 rounded-md bg-[var(--bg-secondary)] border border-[var(--card-border)]">
-            <p className="text-xs text-[var(--text-muted)] mb-1">AI Response:</p>
-            <p className="text-sm text-[var(--text-primary)]">{transcript}</p>
+          <div className="w-full mt-4">
+            <Message className="justify-start gap-2">
+              <div className="w-6 h-6 rounded-md bg-[var(--primary)] flex items-center justify-center shrink-0 mt-1">
+                <Bot className="w-3.5 h-3.5 text-white" />
+              </div>
+              <MessageContent className="bg-[var(--bg-secondary)] border border-[var(--card-border)] rounded-xl px-3 py-2 text-sm leading-relaxed text-[var(--text-primary)]">
+                {transcript}
+              </MessageContent>
+            </Message>
           </div>
         )}
 

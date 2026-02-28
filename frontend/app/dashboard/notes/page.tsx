@@ -149,7 +149,7 @@ export default function NotesPage() {
             </Button>
           </Link>
           <Link href="/dashboard/notes/new">
-            <Button variant="primary" size="sm">
+            <Button variant="default" size="sm">
               <Sparkles className="h-4 w-4 mr-2" />
               AI Notes
             </Button>
@@ -201,7 +201,7 @@ export default function NotesPage() {
           action={
             !searchQuery ? (
               <Link href="/dashboard/notes/new">
-                <Button variant="primary">
+                <Button variant="default">
                   <Plus className="h-4 w-4 mr-2" />
                   Create Note
                 </Button>
@@ -282,7 +282,7 @@ export default function NotesPage() {
                           </Button>
                         </>
                       )}
-                      <Button variant="danger" size="sm" onClick={(e) => {
+                      <Button variant="destructive" size="sm" onClick={(e) => {
                         e.preventDefault();
                         handleDelete(note.id);
                       }}>

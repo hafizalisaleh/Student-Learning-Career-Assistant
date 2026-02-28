@@ -1,64 +1,64 @@
-'use client';
+import * as React from "react"
+import { cva, type VariantProps } from "class-variance-authority"
+import { Slot } from "radix-ui"
 
-import { ButtonHTMLAttributes, forwardRef } from 'react';
-import { cva, type VariantProps } from 'class-variance-authority';
-import { cn } from '@/lib/utils';
-import { Loader2 } from 'lucide-react';
+import { cn } from "@/lib/utils"
 
 const buttonVariants = cva(
-  'inline-flex items-center justify-center font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)] disabled:opacity-50 disabled:pointer-events-none active:scale-[0.98]',
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive",
   {
     variants: {
       variant: {
-        primary:
-          'bg-[var(--primary)] text-white hover:bg-[var(--primary-hover)] shadow-sm hover:shadow-md focus-visible:ring-[var(--primary)]',
-        secondary:
-          'bg-[var(--bg-elevated)] text-[var(--text-primary)] border border-[var(--card-border)] hover:bg-[var(--bg-secondary)] hover:border-[var(--card-border-hover)] focus-visible:ring-[var(--primary)]',
+        default: "bg-primary text-primary-foreground hover:bg-primary/90",
+        destructive:
+          "bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60",
         outline:
-          'bg-transparent border-2 border-[var(--primary)] text-[var(--primary)] hover:bg-[var(--primary-subtle)] focus-visible:ring-[var(--primary)]',
+          "border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50",
+        secondary:
+          "bg-secondary text-secondary-foreground hover:bg-secondary/80",
         ghost:
-          'bg-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)] focus-visible:ring-[var(--primary)]',
-        danger:
-          'bg-[var(--error)] text-white hover:opacity-90 focus-visible:ring-[var(--error)]',
-        success:
-          'bg-[var(--secondary)] text-white hover:bg-[var(--secondary-hover)] focus-visible:ring-[var(--secondary)]',
+          "hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",
+        link: "text-primary underline-offset-4 hover:underline",
       },
       size: {
-        sm: 'px-3 py-1.5 text-sm rounded-lg gap-1.5',
-        md: 'px-4 py-2.5 text-sm rounded-lg gap-2',
-        lg: 'px-6 py-3 text-base rounded-xl gap-2',
-        icon: 'p-2 rounded-lg',
+        default: "h-9 px-4 py-2 has-[>svg]:px-3",
+        xs: "h-6 gap-1 rounded-md px-2 text-xs has-[>svg]:px-1.5 [&_svg:not([class*='size-'])]:size-3",
+        sm: "h-8 rounded-md gap-1.5 px-3 has-[>svg]:px-2.5",
+        lg: "h-10 rounded-md px-6 has-[>svg]:px-4",
+        icon: "size-9",
+        "icon-xs": "size-6 rounded-md [&_svg:not([class*='size-'])]:size-3",
+        "icon-sm": "size-8",
+        "icon-lg": "size-10",
       },
     },
     defaultVariants: {
-      variant: 'primary',
-      size: 'md',
+      variant: "default",
+      size: "default",
     },
   }
-);
+)
 
-export interface ButtonProps
-  extends ButtonHTMLAttributes<HTMLButtonElement>,
-    VariantProps<typeof buttonVariants> {
-  isLoading?: boolean;
+function Button({
+  className,
+  variant = "default",
+  size = "default",
+  asChild = false,
+  ...props
+}: React.ComponentProps<"button"> &
+  VariantProps<typeof buttonVariants> & {
+    asChild?: boolean
+  }) {
+  const Comp = asChild ? Slot.Root : "button"
+
+  return (
+    <Comp
+      data-slot="button"
+      data-variant={variant}
+      data-size={size}
+      className={cn(buttonVariants({ variant, size, className }))}
+      {...props}
+    />
+  )
 }
 
-const Button = forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, isLoading, disabled, children, ...props }, ref) => {
-    return (
-      <button
-        ref={ref}
-        className={cn(buttonVariants({ variant, size, className }))}
-        disabled={disabled || isLoading}
-        {...props}
-      >
-        {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
-        {children}
-      </button>
-    );
-  }
-);
-
-Button.displayName = 'Button';
-
-export { Button, buttonVariants };
+export { Button, buttonVariants }

@@ -1,10 +1,12 @@
 'use client';
 
 import React from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import { FileText, Globe } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Markdown } from './markdown';
+import { Source as PromptSource, SourceTrigger, SourceContent } from './source';
+import { CodeBlock, CodeBlockCode } from './code-block';
+import { Reasoning, ReasoningTrigger, ReasoningContent } from './reasoning';
 
 interface Source {
   text: string;
@@ -55,17 +57,24 @@ function processTextWithCitations(
       const num = parseInt(normalMatch[1]);
       const sourceIdx = num - 1;
       const source = sources[sourceIdx];
-      if (!source) return <span key={i}>{part}</span>;
+      const docName = source.metadata?.document_title || source.metadata?.title || `Source ${num}`;
+      const uri = source.metadata?.uri || '#';
       const page = source.metadata?.page_number || source.metadata?.page;
+      const isWeb = source.metadata?.type === 'web' || source.metadata?.type === 'retrieved';
+      const description = source.text || "No description available";
+
       return (
-        <button
-          key={i}
-          onClick={() => onCitationClick?.(sourceIdx)}
-          className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[9px] font-bold bg-[var(--primary-light)] text-[var(--primary)] rounded-full hover:bg-[var(--primary)] hover:text-white transition-colors cursor-pointer align-super mx-0.5 leading-none"
-          title={`Source ${num}${page ? ` — Page ${page}` : ''}`}
-        >
-          {num}
-        </button>
+        <PromptSource key={i} href={uri}>
+          <SourceTrigger
+            label={num}
+            showFavicon={isWeb}
+            className="align-super mx-0.5"
+          />
+          <SourceContent
+            title={`${docName}${page ? ` (Page ${page})` : ''}`}
+            description={description}
+          />
+        </PromptSource>
       );
     }
 
@@ -108,43 +117,72 @@ export function CitedMarkdown({ content, sources, messageId, mode, groundingMeta
 
   return (
     <div className="prose prose-sm max-w-none text-[var(--text-primary)]">
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
+      <Markdown
+        id={messageId}
         components={{
-          p: ({ node, children, ...props }) => (
+          p: ({ node, children, ...props }: any) => (
             <p className="mb-2 last:mb-0 text-sm leading-relaxed text-[var(--text-primary)]" {...props}>
               {makeProcessor(children)}
             </p>
           ),
-          li: ({ node, children, ...props }) => (
+          li: ({ node, children, ...props }: any) => (
             <li className="ml-2 text-sm" {...props}>
               {makeProcessor(children)}
             </li>
           ),
-          strong: ({ node, ...props }) => <strong className="font-semibold text-[var(--text-primary)]" {...props} />,
-          ul: ({ node, ...props }) => <ul className="list-disc list-inside mb-2 space-y-1 text-sm text-[var(--text-primary)]" {...props} />,
-          ol: ({ node, ...props }) => <ol className="list-decimal list-inside mb-2 space-y-1 text-sm text-[var(--text-primary)]" {...props} />,
-          code: ({ node, inline, ...props }: any) =>
-            inline
-              ? <code className="bg-[var(--bg-elevated)] px-1 py-0.5 rounded text-xs font-mono" {...props} />
-              : <code className="block bg-[var(--bg-elevated)] p-3 rounded-lg text-xs font-mono my-2 overflow-x-auto" {...props} />,
-          blockquote: ({ node, ...props }) => <blockquote className="border-l-3 border-[var(--primary)] pl-3 italic text-sm text-[var(--text-secondary)] my-2" {...props} />,
-          h1: ({ node, ...props }) => <h1 className="text-base font-bold mt-3 mb-1 text-[var(--text-primary)]" {...props} />,
-          h2: ({ node, ...props }) => <h2 className="text-sm font-bold mt-2 mb-1 text-[var(--text-primary)]" {...props} />,
-          h3: ({ node, ...props }) => <h3 className="text-sm font-semibold mt-2 mb-1 text-[var(--text-primary)]" {...props} />,
+          strong: ({ node, ...props }: any) => <strong className="font-semibold text-[var(--text-primary)]" {...props} />,
+          ul: ({ node, ...props }: any) => <ul className="list-disc list-inside mb-2 space-y-1 text-sm text-[var(--text-primary)]" {...props} />,
+          ol: ({ node, ...props }: any) => <ol className="list-decimal list-inside mb-2 space-y-1 text-sm text-[var(--text-primary)]" {...props} />,
+          code: function CodeComponent({ className, children, node, inline, ...props }: any) {
+            const isInline =
+              !node?.position?.start.line ||
+              node?.position?.start.line === node?.position?.end.line;
+            if (isInline) {
+              return (
+                <span className={cn("bg-primary-foreground rounded-sm px-1 font-mono text-xs", className)} {...props}>
+                  {children}
+                </span>
+              );
+            }
+            const match = className?.match(/language-(\w+)/);
+            const language = match ? match[1] : "plaintext";
+            return (
+              <CodeBlock className="my-2">
+                <CodeBlockCode code={String(children).replace(/\n$/, '')} language={language} />
+              </CodeBlock>
+            );
+          },
+          pre: ({ children }: any) => <>{children}</>,
+          blockquote: ({ node, ...props }: any) => <blockquote className="border-l-3 border-[var(--primary)] pl-3 italic text-sm text-[var(--text-secondary)] my-2" {...props} />,
+          h1: ({ node, ...props }: any) => <h1 className="text-base font-bold mt-3 mb-1 text-[var(--text-primary)]" {...props} />,
+          h2: ({ node, ...props }: any) => <h2 className="text-sm font-bold mt-2 mb-1 text-[var(--text-primary)]" {...props} />,
+          h3: ({ node, ...props }: any) => <h3 className="text-sm font-semibold mt-2 mb-1 text-[var(--text-primary)]" {...props} />,
         }}
       >
         {content}
-      </ReactMarkdown>
+      </Markdown>
 
       {/* Grounding supports visualization for File Search mode */}
       {mode === 'file_search' && groundingMetadata?.grounding_supports && groundingMetadata.grounding_supports.length > 0 && (
-        <div className="mt-2 pt-2 border-t border-[var(--card-border)]">
-          <p className="text-[10px] text-[var(--text-muted)] mb-1 flex items-center gap-1">
+        <Reasoning className="mt-2 pt-2 border-t border-[var(--card-border)]">
+          <ReasoningTrigger className="text-[10px] text-[var(--text-muted)] flex items-center gap-1 hover:text-[var(--primary)] transition-colors">
             <Globe className="h-2.5 w-2.5" />
             Grounding: {groundingMetadata.grounding_supports.length} segment{groundingMetadata.grounding_supports.length > 1 ? 's' : ''} mapped to sources
-          </p>
-        </div>
+          </ReasoningTrigger>
+          <ReasoningContent className="mt-1">
+            <div className="text-[9px] text-[var(--text-secondary)] space-y-1 pl-3.5 border-l border-[var(--card-border)]">
+              {groundingMetadata.grounding_supports.map((gs, idx) => (
+                <div key={idx} className="flex gap-1.5">
+                  <span className="opacity-60">•</span>
+                  <span>
+                    &quot;{gs.segment.text.slice(0, 100)}...&quot;
+                    <span className="ml-1 text-[var(--primary)]">(Source {gs.chunk_indices.map(i => i + 1).join(', ')})</span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          </ReasoningContent>
+        </Reasoning>
       )}
     </div>
   );

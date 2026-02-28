@@ -16,12 +16,18 @@ const PDFViewer = dynamic(() => import('@/components/pdf/pdf-viewer'), {
 import BlockEditor from '@/components/editor/block-editor';
 import { Button } from '@/components/ui/button';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
-import { FileText, Send, Sparkles, User, Bot, ArrowLeft, Save, Check, BookOpen, Copy, ChevronDown, ChevronUp } from 'lucide-react';
+import { FileText, Send, Sparkles, User, Bot, ArrowLeft, Save, Check, BookOpen, Copy, ChevronDown, ChevronUp, ArrowUp, Square, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { api } from '@/lib/api';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import toast from 'react-hot-toast';
 import { CitedMarkdown, SourceCard } from '@/components/ui/cited-markdown';
+import { PromptInput, PromptInputTextarea, PromptInputActions, PromptInputAction } from "@/components/ui/prompt-input";
+import { ScrollButton } from "@/components/ui/scroll-button";
+import { ChatContainerRoot, ChatContainerContent, ChatContainerScrollAnchor } from "@/components/ui/chat-container";
+import { Message, MessageContent } from "@/components/ui/message";
+import { Markdown } from "@/components/ui/markdown";
 
 interface Message {
     role: 'user' | 'assistant';
@@ -83,11 +89,7 @@ function WorkspaceContent() {
         }
     }, [documentId]);
 
-    useEffect(() => {
-        if (scrollRef.current) {
-            scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-        }
-    }, [messages]);
+    // Auto-scroll handled by prompt-kit ChatContainer
 
     // Cleanup timer
     useEffect(() => {
@@ -203,11 +205,22 @@ function WorkspaceContent() {
                     content: response.error || "Sorry, I encountered an error processing that request."
                 }]);
             }
-        } catch (error) {
+        } catch (error: any) {
             console.error("RAG Error:", error);
+            const isQuotaError = error?.message?.includes("quota") || error?.message?.includes("429") || error?.message?.includes("RESOURCE_EXHAUSTED");
+
+            if (isQuotaError) {
+                toast.error("Gemini API limit reached. Please wait a moment before trying again.", {
+                    duration: 5000,
+                    id: 'quota-error'
+                });
+            }
+
             setMessages([...newMessages, {
                 role: 'assistant',
-                content: "I'm having trouble connecting to the AI service. Please check your internet connection and try again."
+                content: isQuotaError
+                    ? "I've reached my current API quota limit. Please wait a few seconds and try again. If you're using the free tier, there are daily and per-minute limits."
+                    : "I'm having trouble connecting to the AI service. Please check your internet connection and try again."
             }]);
         } finally {
             setIsLoading(false);
@@ -220,7 +233,7 @@ function WorkspaceContent() {
             <div className="flex flex-col items-center justify-center h-[60vh] gap-4">
                 <p className="text-[var(--text-secondary)]">Please select a document from the dashboard to open the workspace.</p>
                 <Link href="/dashboard/documents">
-                    <Button variant="primary">
+                    <Button variant="default">
                         <ArrowLeft className="h-4 w-4 mr-2" />
                         Back to Documents
                     </Button>
@@ -331,128 +344,159 @@ function WorkspaceContent() {
                             ) : (
                                 <div className="flex flex-col h-full bg-[var(--bg-secondary)]/30">
                                     {/* Chat History */}
-                                    <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4">
-                                        {messages.length === 0 && (
-                                            <div className="flex flex-col items-center justify-center h-full text-center space-y-4 max-w-sm mx-auto">
-                                                <div className="w-14 h-14 bg-[var(--primary-light)] rounded-2xl flex items-center justify-center text-[var(--primary)]">
-                                                    <Sparkles className="w-7 h-7" />
-                                                </div>
-                                                <h3 className="font-semibold text-[var(--text-primary)]">Your AI Study Partner</h3>
-                                                <p className="text-sm text-[var(--text-tertiary)]">Highlight text in the PDF to ask questions, or type below.</p>
-                                            </div>
-                                        )}
-
-                                        {messages.map((msg, i) => (
-                                            <div key={i} className={cn(
-                                                "flex gap-3 max-w-[92%] group",
-                                                msg.role === 'user' ? "ml-auto" : ""
-                                            )}>
-                                                {msg.role === 'assistant' && (
-                                                    <div className="w-7 h-7 rounded-lg bg-[var(--primary)] flex items-center justify-center shrink-0 mt-1">
-                                                        <Bot className="w-4 h-4 text-white" />
+                                    <ChatContainerRoot className="flex-1 overflow-y-auto relative bg-[var(--bg-secondary)]/30">
+                                        <ChatContainerContent className="p-4 space-y-4">
+                                            {messages.length === 0 && (
+                                                <div className="flex flex-col items-center justify-center h-full text-center space-y-4 max-w-sm mx-auto pt-20">
+                                                    <div className="w-14 h-14 bg-[var(--primary-light)] rounded-2xl flex items-center justify-center text-[var(--primary)]">
+                                                        <Sparkles className="w-7 h-7" />
                                                     </div>
-                                                )}
-                                                <div className={cn(
-                                                    "rounded-2xl px-4 py-3 relative",
-                                                    msg.role === 'user'
-                                                        ? "bg-[var(--primary)] text-white"
-                                                        : "bg-[var(--card-bg)] border border-[var(--card-border)]"
-                                                )}>
-                                                    {msg.role === 'assistant' ? (
-                                                        <CitedMarkdown
-                                                            content={msg.content}
-                                                            sources={msg.sources || []}
-                                                            messageId={`ws-${i}`}
-                                                            onCitationClick={(idx) => {
-                                                                setExpandedSources(prev => new Set(prev).add(i * 100 + idx));
-                                                                setTimeout(() => {
-                                                                    const el = document.getElementById(`source-ws-${i}-${idx}`);
-                                                                    el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                                                                }, 100);
-                                                            }}
-                                                        />
-                                                    ) : (
-                                                        <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
-                                                    )}
+                                                    <h3 className="font-semibold text-[var(--text-primary)]">Your AI Study Partner</h3>
+                                                    <p className="text-sm text-[var(--text-tertiary)]">Highlight text in the PDF to ask questions, or type below.</p>
+                                                </div>
+                                            )}
 
-                                                    {/* Copy button */}
-                                                    <button
-                                                        onClick={() => copyMessage(msg.content)}
-                                                        className={cn(
-                                                            'absolute top-2 right-2 p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity',
-                                                            msg.role === 'user' ? 'hover:bg-white/20 text-white/60' : 'hover:bg-[var(--bg-elevated)] text-[var(--text-muted)]'
-                                                        )}
-                                                    >
-                                                        <Copy className="h-3 w-3" />
-                                                    </button>
-
-                                                    {/* Source citations */}
-                                                    {msg.sources && msg.sources.length > 0 && (
-                                                        <div className="mt-2 pt-2 border-t border-[var(--card-border)]">
-                                                            <div className="mt-1.5 space-y-1">
-                                                                {msg.sources.map((src: any, idx: number) => (
-                                                                    <SourceCard key={idx} source={src} index={idx} messageId={`ws-${i}`} />
-                                                                ))}
-                                                            </div>
+                                            {messages.map((msg, i) => (
+                                                <Message
+                                                    key={i}
+                                                    className={cn("max-w-[92%]", msg.role === 'user' ? "ml-auto flex-row-reverse" : "")}
+                                                >
+                                                    {msg.role === 'assistant' && (
+                                                        <div className="w-7 h-7 rounded-lg bg-[var(--primary)] flex items-center justify-center shrink-0 mt-1">
+                                                            <Bot className="w-4 h-4 text-white" />
                                                         </div>
                                                     )}
-                                                </div>
-                                                {msg.role === 'user' && (
-                                                    <div className="w-7 h-7 rounded-lg bg-[var(--bg-secondary)] border border-[var(--card-border)] flex items-center justify-center shrink-0 mt-1">
-                                                        <User className="w-4 h-4 text-[var(--text-tertiary)]" />
+                                                    <MessageContent
+                                                        className={cn(
+                                                            "rounded-2xl px-4 py-3 relative",
+                                                            msg.role === 'user'
+                                                                ? "bg-[var(--primary)] text-white"
+                                                                : "bg-[var(--card-bg)] border border-[var(--card-border)]"
+                                                        )}
+                                                    >
+                                                        {msg.role === 'assistant' ? (
+                                                            <CitedMarkdown
+                                                                content={msg.content}
+                                                                sources={msg.sources || []}
+                                                                messageId={`ws-${i}`}
+                                                                onCitationClick={(idx) => {
+                                                                    setExpandedSources(prev => new Set(prev).add(i * 100 + idx));
+                                                                    setTimeout(() => {
+                                                                        const el = document.getElementById(`source-ws-${i}-${idx}`);
+                                                                        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                                                    }, 100);
+                                                                }}
+                                                            />
+                                                        ) : (
+                                                            <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+                                                        )}
+
+                                                        {/* Copy button */}
+                                                        <button
+                                                            onClick={() => copyMessage(msg.content)}
+                                                            className={cn(
+                                                                'absolute top-2 right-2 p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity',
+                                                                msg.role === 'user' ? 'hover:bg-white/20 text-white/60' : 'hover:bg-[var(--bg-elevated)] text-[var(--text-muted)]'
+                                                            )}
+                                                        >
+                                                            <Copy className="h-3 w-3" />
+                                                        </button>
+
+                                                        {/* Source citations rendering is handled inside CitedMarkdown now, 
+                                                            but keep the SourceCard loop if needed for fallback or special cases */}
+                                                        {msg.sources && msg.sources.length > 0 && (
+                                                            <div className="mt-2 pt-2 border-t border-[var(--card-border)]">
+                                                                <div className="mt-1.5 space-y-1">
+                                                                    {msg.sources.map((src: any, idx: number) => (
+                                                                        <SourceCard key={idx} source={src} index={idx} messageId={`ws-${i}`} />
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </MessageContent>
+                                                    {msg.role === 'user' && (
+                                                        <div className="w-7 h-7 rounded-lg bg-[var(--bg-secondary)] border border-[var(--card-border)] flex items-center justify-center shrink-0 mt-1">
+                                                            <User className="w-4 h-4 text-[var(--text-tertiary)]" />
+                                                        </div>
+                                                    )}
+                                                </Message>
+                                            ))}
+                                            {isLoading && (
+                                                <Message className="flex-row">
+                                                    <div className="w-7 h-7 bg-[var(--primary)] rounded-lg flex items-center justify-center">
+                                                        <Bot className="w-4 h-4 text-white animate-pulse" />
                                                     </div>
-                                                )}
+                                                    <MessageContent className="bg-[var(--card-bg)] border border-[var(--card-border)] rounded-2xl px-4 py-3">
+                                                        <div className="flex items-center gap-2">
+                                                            <LoadingSpinner size="sm" />
+                                                            <span className="text-sm text-[var(--text-secondary)]">Thinking...</span>
+                                                        </div>
+                                                    </MessageContent>
+                                                </Message>
+                                            )}
+                                            <ChatContainerScrollAnchor />
+                                            <div className="absolute right-4 bottom-4">
+                                                <ScrollButton className="shadow-sm border-[var(--card-border)] bg-[var(--card-bg)] text-[var(--text-primary)] hover:bg-[var(--bg-secondary)]" hover-bg="var(--bg-secondary)" />
                                             </div>
-                                        ))}
-                                        {isLoading && (
-                                            <div className="flex gap-3">
-                                                <div className="w-7 h-7 bg-[var(--primary)] rounded-lg flex items-center justify-center">
-                                                    <Sparkles className="w-4 h-4 text-white animate-pulse" />
-                                                </div>
-                                                <div className="flex items-center gap-2 py-2">
-                                                    <LoadingSpinner size="sm" />
-                                                    <span className="text-sm text-[var(--text-secondary)]">Thinking...</span>
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
+                                        </ChatContainerContent>
+                                    </ChatContainerRoot>
 
                                     {/* Input Area */}
                                     <div className="p-3 bg-[var(--card-bg)] border-t border-[var(--card-border)]">
                                         {selectedText && (
-                                            <div className="mb-3 p-2.5 bg-[var(--info-bg)] rounded-xl border border-[var(--info-border)] text-xs text-[var(--primary)] relative animate-in fade-in slide-in-from-bottom-2">
+                                            <div className="mb-2 p-2.5 bg-[var(--info-bg)] rounded-xl border border-[var(--info-border)] text-xs text-[var(--primary)] relative animate-in fade-in slide-in-from-bottom-2">
                                                 <div className="font-bold mb-1 flex justify-between items-center">
                                                     <span className="flex items-center gap-1">
                                                         <FileText className="w-3 h-3" />
                                                         Selected from Page {selectedText.page}
                                                     </span>
-                                                    <button onClick={() => setSelectedText(null)} className="p-1 hover:bg-[var(--bg-tertiary)] rounded-full text-[var(--text-tertiary)]">x</button>
+                                                    <button onClick={() => setSelectedText(null)} className="p-1 hover:bg-[var(--bg-tertiary)] rounded-full text-[var(--text-tertiary)] hover:bg-white/20 transition-colors flex items-center justify-center h-5 w-5">
+                                                        <X size={12} />
+                                                    </button>
                                                 </div>
                                                 <p className="line-clamp-2 italic opacity-80">&quot;{selectedText.text}&quot;</p>
                                             </div>
                                         )}
-                                        <div className="flex gap-2 items-end">
-                                            <textarea
+                                        <div className="flex bg-[var(--card-bg)] rounded-2xl border border-[var(--card-border)] p-1 shadow-sm mt-1">
+                                            <PromptInput
                                                 value={chatInput}
-                                                onChange={(e) => setChatInput(e.target.value)}
-                                                onKeyDown={(e) => {
-                                                    if (e.key === 'Enter' && !e.shiftKey) {
-                                                        e.preventDefault();
-                                                        handleSendQuery();
-                                                    }
+                                                onValueChange={setChatInput}
+                                                onSubmit={() => {
+                                                    if (chatInput.trim() || selectedText) handleSendQuery();
                                                 }}
-                                                placeholder="Ask about this document..."
-                                                className="flex-1 resize-none border border-[var(--card-border)] rounded-xl p-3 text-sm focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent outline-none min-h-[44px] max-h-28 transition-all bg-[var(--bg-elevated)] text-[var(--text-primary)] placeholder-[var(--text-muted)]"
-                                                rows={1}
-                                            />
-                                            <Button
-                                                variant="primary"
-                                                onClick={handleSendQuery}
-                                                disabled={isLoading || (!chatInput.trim() && !selectedText)}
-                                                className="rounded-xl h-[44px] w-[44px] p-0 flex items-center justify-center"
+                                                isLoading={isLoading}
+                                                className="flex-1 flex flex-row items-end border-none shadow-none p-0 bg-transparent"
                                             >
-                                                <Send className="w-4 h-4" />
-                                            </Button>
+                                                <PromptInputTextarea
+                                                    placeholder="Ask about this document..."
+                                                    disabled={isLoading}
+                                                    className="min-h-[40px] max-h-40 px-3 py-2 bg-transparent border-none focus:ring-0 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] flex-1"
+                                                />
+                                                <PromptInputActions className="pb-1 pr-1">
+                                                    <PromptInputAction
+                                                        tooltip={isLoading ? "Stop generation" : "Send message"}
+                                                    >
+                                                        <Button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                if (!isLoading && (chatInput.trim() || selectedText)) {
+                                                                    handleSendQuery();
+                                                                }
+                                                            }}
+                                                            variant="default"
+                                                            size="icon"
+                                                            className="h-8 w-8 rounded-full bg-[var(--primary)] hover:bg-[var(--primary)]/90 text-white"
+                                                            disabled={!isLoading && (!chatInput.trim() && !selectedText)}
+                                                        >
+                                                            {isLoading ? (
+                                                                <Square className="h-4 w-4 fill-current" />
+                                                            ) : (
+                                                                <ArrowUp className="h-5 w-5" />
+                                                            )}
+                                                        </Button>
+                                                    </PromptInputAction>
+                                                </PromptInputActions>
+                                            </PromptInput>
                                         </div>
                                     </div>
                                 </div>

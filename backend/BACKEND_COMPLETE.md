@@ -58,7 +58,10 @@ All backend requirements from the project specification have been implemented an
 - ✅ Video content processing (opencv-python)
 - ✅ URL content extraction (YouTube via Supadata, Web via ExtractorAPI)
 - ✅ File size validation (10MB limit)
-- ✅ Vector store creation for RAG pipeline
+- ✅ Vector store creation for RAG pipeline with ChromaDB
+- ✅ Intelligent LLM Fallback: Gemini ⇄ Groq (LLama 3.3) failover for 429 quota errors
+- ✅ Enhanced RAG with Citations and Grounded metadata (CitedMarkdown)
+- ✅ Interactive 2D/3D Knowledge Graph generation for topic visualization
 
 **API Endpoints**: 5 routes
 - POST `/api/documents/upload` - Upload document
@@ -375,11 +378,12 @@ All backend requirements from the project specification have been implemented an
 ## 🔗 External Integrations
 
 ### AI Services ✅ 100%
-- ✅ Google Gemini 2.5 Flash (content generation, summarization, quiz generation)
-- ✅ LlamaIndex (RAG pipeline)
-- ✅ Langchain (LLM orchestration)
-- ✅ ChromaDB (vector database for embeddings)
-- ✅ Sentence Transformers (text embeddings)
+- ✅ Google Gemini 1.5/2.0 (content generation, summarization, quiz generation)
+- ✅ Groq SDK (Llama 3.3 70B fallback engine)
+- ✅ LlamaIndex (RAG pipeline orchestration)
+- ✅ Langchain (LLM tooling)
+- ✅ ChromaDB (Vector store for document embeddings)
+- ✅ Sentence Transformers (Local text embeddings research - BGE/Stella)
 
 ### Content Extraction ✅ 100%
 - ✅ Supadata API (YouTube content extraction)

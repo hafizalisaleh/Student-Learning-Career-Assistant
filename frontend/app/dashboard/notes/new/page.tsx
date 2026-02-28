@@ -251,9 +251,8 @@ function NewNoteContent() {
 
           <div className="flex gap-3">
             <Button
-              variant="primary"
+              variant="default"
               onClick={handleCreateStudyNote}
-              isLoading={isLoading}
               disabled={isLoading || !selectedDoc || !studyTitle.trim()}
               className="flex-1"
             >
@@ -268,215 +267,214 @@ function NewNoteContent() {
           </div>
         </div>
       ) : (
-      <>
-      {/* Form */}
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-        <div className="p-6 rounded-2xl bg-[var(--card-bg)] backdrop-blur-xl border border-[var(--card-border)]">
-          <div className="flex items-center gap-2 mb-6">
-            <Sparkles className="h-5 w-5 text-[var(--accent-blue)]" />
-            <h2 className="text-lg font-semibold text-[var(--text-primary)]">Note Configuration</h2>
-          </div>
-
-          <div className="space-y-6">
-            {/* Document Selection */}
-            <div>
-              <label className="block text-sm font-medium text-[var(--text-primary)] mb-2">
-                Select Document <span className="text-red-400">*</span>
-              </label>
-              <select
-                className="w-full px-4 py-3 bg-[var(--bg-elevated)] border border-[var(--card-border)] rounded-xl focus:outline-none focus:ring-2 focus:ring-[var(--accent-blue)] text-[var(--text-primary)]"
-                {...register('document_id')}
-              >
-                <option value="">-- Choose a document --</option>
-                {documents.map((doc) => (
-                  <option key={doc.id} value={doc.id}>
-                    {doc.title}
-                  </option>
-                ))}
-              </select>
-              {errors.document_id && (
-                <p className="mt-1 text-sm text-red-400">{errors.document_id.message}</p>
-              )}
-              {documents.length === 0 && (
-                <p className="mt-2 text-sm text-[var(--text-tertiary)]">
-                  No documents available. Please{' '}
-                  <Link href="/dashboard/documents" className="text-[var(--accent-blue)] hover:underline">
-                    upload a document
-                  </Link>{' '}
-                  first.
-                </p>
-              )}
-            </div>
-
-            {/* Title */}
-            <Input
-              label="Note Title"
-              placeholder="e.g., Introduction to Machine Learning - Chapter 1"
-              error={errors.title?.message}
-              required
-              {...register('title')}
-            />
-
-            {/* Note Type Selection */}
-            <div>
-              <label className="block text-sm font-medium text-[var(--text-primary)] mb-3">
-                Note Type <span className="text-red-400">*</span>
-              </label>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {noteTypeOptions.map((option) => {
-                  const Icon = option.icon;
-                  const isSelected = noteType === option.value;
-                  return (
-                    <div
-                      key={option.value}
-                      onClick={() => setNoteType(option.value as any)}
-                      className={cn(
-                        'cursor-pointer border-2 rounded-xl p-4 transition-all',
-                        isSelected
-                          ? 'border-[var(--accent-blue)] bg-[var(--accent-blue-subtle)]'
-                          : 'border-[var(--card-border)] hover:border-[var(--card-border-hover)] bg-[var(--bg-elevated)]'
-                      )}
-                    >
-                      <div className="flex items-start gap-3">
-                        <Icon
-                          className={cn(
-                            'h-5 w-5 mt-1',
-                            isSelected ? 'text-[var(--accent-blue)]' : 'text-[var(--text-tertiary)]'
-                          )}
-                        />
-                        <div className="flex-1">
-                          <div
-                            className={cn(
-                              'font-medium mb-1',
-                              isSelected ? 'text-[var(--accent-blue)]' : 'text-[var(--text-primary)]'
-                            )}
-                          >
-                            {option.label}
-                          </div>
-                          <p
-                            className={cn(
-                              'text-sm',
-                              isSelected ? 'text-[var(--accent-blue)]' : 'text-[var(--text-tertiary)]'
-                            )}
-                          >
-                            {option.description}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
+        <>
+          {/* Form */}
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+            <div className="p-6 rounded-2xl bg-[var(--card-bg)] backdrop-blur-xl border border-[var(--card-border)]">
+              <div className="flex items-center gap-2 mb-6">
+                <Sparkles className="h-5 w-5 text-[var(--accent-blue)]" />
+                <h2 className="text-lg font-semibold text-[var(--text-primary)]">Note Configuration</h2>
               </div>
-            </div>
 
-            {/* Additional Context */}
-            <div>
-              <label className="block text-sm font-medium text-[var(--text-primary)] mb-2">
-                Additional Context (Optional)
-              </label>
-              <textarea
-                className="w-full px-4 py-3 bg-[var(--bg-elevated)] border border-[var(--card-border)] rounded-xl focus:outline-none focus:ring-2 focus:ring-[var(--accent-blue)] min-h-[120px] text-[var(--text-primary)] placeholder-[var(--text-tertiary)]"
-                placeholder="Add any specific instructions, focus areas, or additional context you want incorporated into the notes..."
-                value={additionalContext}
-                onChange={(e) => setAdditionalContext(e.target.value)}
-              />
-              <p className="mt-1 text-sm text-[var(--text-tertiary)]">
-                Examples: "Focus on key formulas", "Include real-world examples", "Emphasize historical context"
-              </p>
-            </div>
-
-            {/* Tags */}
-            <div>
-              <label className="block text-sm font-medium text-[var(--text-primary)] mb-2">
-                Tags (Optional)
-              </label>
-              <div className="flex gap-2 mb-3">
-                <Input
-                  type="text"
-                  placeholder="Add a tag (e.g., Machine Learning)"
-                  value={tagInput}
-                  onChange={(e) => setTagInput(e.target.value)}
-                  onKeyPress={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      handleAddTag();
-                    }
-                  }}
-                  className="flex-1"
-                />
-                <Button type="button" onClick={handleAddTag} variant="secondary">
-                  Add
-                </Button>
-              </div>
-              {tags.length > 0 && (
-                <div className="flex flex-wrap gap-2">
-                  {tags.map((tag) => (
-                    <span
-                      key={tag}
-                      className="inline-flex items-center gap-1 px-3 py-1 bg-[var(--accent-blue-subtle)] text-[var(--accent-blue)] text-sm rounded-full"
-                    >
-                      {tag}
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveTag(tag)}
-                        className="hover:text-[var(--text-primary)] ml-1"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </span>
-                  ))}
+              <div className="space-y-6">
+                {/* Document Selection */}
+                <div>
+                  <label className="block text-sm font-medium text-[var(--text-primary)] mb-2">
+                    Select Document <span className="text-red-400">*</span>
+                  </label>
+                  <select
+                    className="w-full px-4 py-3 bg-[var(--bg-elevated)] border border-[var(--card-border)] rounded-xl focus:outline-none focus:ring-2 focus:ring-[var(--accent-blue)] text-[var(--text-primary)]"
+                    {...register('document_id')}
+                  >
+                    <option value="">-- Choose a document --</option>
+                    {documents.map((doc) => (
+                      <option key={doc.id} value={doc.id}>
+                        {doc.title}
+                      </option>
+                    ))}
+                  </select>
+                  {errors.document_id && (
+                    <p className="mt-1 text-sm text-red-400">{errors.document_id.message}</p>
+                  )}
+                  {documents.length === 0 && (
+                    <p className="mt-2 text-sm text-[var(--text-tertiary)]">
+                      No documents available. Please{' '}
+                      <Link href="/dashboard/documents" className="text-[var(--accent-blue)] hover:underline">
+                        upload a document
+                      </Link>{' '}
+                      first.
+                    </p>
+                  )}
                 </div>
-              )}
-            </div>
-          </div>
-        </div>
 
-        {/* Action Buttons */}
-        <div className="flex gap-3">
-          <Button
-            type="submit"
-            variant="primary"
-            isLoading={isLoading}
-            disabled={isLoading || documents.length === 0}
-            className="flex-1"
-          >
-            {isLoading ? (
-              <>
-                <LoadingSpinner size="sm" className="mr-2" />
-                Generating Notes...
-              </>
-            ) : (
-              <>
-                <Sparkles className="h-4 w-4 mr-2" />
-                Generate AI Notes
-              </>
-            )}
-          </Button>
-          <Link href="/dashboard/notes" className="flex-1">
-            <Button type="button" variant="secondary" className="w-full" disabled={isLoading}>
-              Cancel
-            </Button>
-          </Link>
-        </div>
+                {/* Title */}
+                <Input
+                  label="Note Title"
+                  placeholder="e.g., Introduction to Machine Learning - Chapter 1"
+                  error={errors.title?.message}
+                  required
+                  {...register('title')}
+                />
 
-        {/* Info Box */}
-        <div className="p-5 rounded-xl bg-gradient-to-r from-[var(--accent-blue-subtle)] to-[var(--accent-purple-subtle)] border border-[rgba(0,212,255,0.2)]">
-          <div className="flex gap-3">
-            <Sparkles className="h-5 w-5 text-[var(--accent-blue)] flex-shrink-0 mt-0.5" />
-            <div className="text-sm">
-              <p className="font-medium mb-2 text-[var(--text-primary)]">AI-Powered Note Generation</p>
-              <ul className="list-disc list-inside space-y-1 text-[var(--text-secondary)]">
-                <li>Automatically extracts and organizes key information</li>
-                <li>Creates structured notes with headings and sections</li>
-                <li>Incorporates your additional context and preferences</li>
-                <li>Generates comprehensive, study-ready notes</li>
-                <li>Download as DOCX for offline access</li>
-              </ul>
+                {/* Note Type Selection */}
+                <div>
+                  <label className="block text-sm font-medium text-[var(--text-primary)] mb-3">
+                    Note Type <span className="text-red-400">*</span>
+                  </label>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {noteTypeOptions.map((option) => {
+                      const Icon = option.icon;
+                      const isSelected = noteType === option.value;
+                      return (
+                        <div
+                          key={option.value}
+                          onClick={() => setNoteType(option.value as any)}
+                          className={cn(
+                            'cursor-pointer border-2 rounded-xl p-4 transition-all',
+                            isSelected
+                              ? 'border-[var(--accent-blue)] bg-[var(--accent-blue-subtle)]'
+                              : 'border-[var(--card-border)] hover:border-[var(--card-border-hover)] bg-[var(--bg-elevated)]'
+                          )}
+                        >
+                          <div className="flex items-start gap-3">
+                            <Icon
+                              className={cn(
+                                'h-5 w-5 mt-1',
+                                isSelected ? 'text-[var(--accent-blue)]' : 'text-[var(--text-tertiary)]'
+                              )}
+                            />
+                            <div className="flex-1">
+                              <div
+                                className={cn(
+                                  'font-medium mb-1',
+                                  isSelected ? 'text-[var(--accent-blue)]' : 'text-[var(--text-primary)]'
+                                )}
+                              >
+                                {option.label}
+                              </div>
+                              <p
+                                className={cn(
+                                  'text-sm',
+                                  isSelected ? 'text-[var(--accent-blue)]' : 'text-[var(--text-tertiary)]'
+                                )}
+                              >
+                                {option.description}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Additional Context */}
+                <div>
+                  <label className="block text-sm font-medium text-[var(--text-primary)] mb-2">
+                    Additional Context (Optional)
+                  </label>
+                  <textarea
+                    className="w-full px-4 py-3 bg-[var(--bg-elevated)] border border-[var(--card-border)] rounded-xl focus:outline-none focus:ring-2 focus:ring-[var(--accent-blue)] min-h-[120px] text-[var(--text-primary)] placeholder-[var(--text-tertiary)]"
+                    placeholder="Add any specific instructions, focus areas, or additional context you want incorporated into the notes..."
+                    value={additionalContext}
+                    onChange={(e) => setAdditionalContext(e.target.value)}
+                  />
+                  <p className="mt-1 text-sm text-[var(--text-tertiary)]">
+                    Examples: "Focus on key formulas", "Include real-world examples", "Emphasize historical context"
+                  </p>
+                </div>
+
+                {/* Tags */}
+                <div>
+                  <label className="block text-sm font-medium text-[var(--text-primary)] mb-2">
+                    Tags (Optional)
+                  </label>
+                  <div className="flex gap-2 mb-3">
+                    <Input
+                      type="text"
+                      placeholder="Add a tag (e.g., Machine Learning)"
+                      value={tagInput}
+                      onChange={(e) => setTagInput(e.target.value)}
+                      onKeyPress={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleAddTag();
+                        }
+                      }}
+                      className="flex-1"
+                    />
+                    <Button type="button" onClick={handleAddTag} variant="secondary">
+                      Add
+                    </Button>
+                  </div>
+                  {tags.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {tags.map((tag) => (
+                        <span
+                          key={tag}
+                          className="inline-flex items-center gap-1 px-3 py-1 bg-[var(--accent-blue-subtle)] text-[var(--accent-blue)] text-sm rounded-full"
+                        >
+                          {tag}
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveTag(tag)}
+                            className="hover:text-[var(--text-primary)] ml-1"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
-      </form>
-      </>
+
+            {/* Action Buttons */}
+            <div className="flex gap-3">
+              <Button
+                type="submit"
+                variant="default"
+                disabled={isLoading || documents.length === 0}
+                className="flex-1"
+              >
+                {isLoading ? (
+                  <>
+                    <LoadingSpinner size="sm" className="mr-2" />
+                    Generating Notes...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-4 w-4 mr-2" />
+                    Generate AI Notes
+                  </>
+                )}
+              </Button>
+              <Link href="/dashboard/notes" className="flex-1">
+                <Button type="button" variant="secondary" className="w-full" disabled={isLoading}>
+                  Cancel
+                </Button>
+              </Link>
+            </div>
+
+            {/* Info Box */}
+            <div className="p-5 rounded-xl bg-gradient-to-r from-[var(--accent-blue-subtle)] to-[var(--accent-purple-subtle)] border border-[rgba(0,212,255,0.2)]">
+              <div className="flex gap-3">
+                <Sparkles className="h-5 w-5 text-[var(--accent-blue)] flex-shrink-0 mt-0.5" />
+                <div className="text-sm">
+                  <p className="font-medium mb-2 text-[var(--text-primary)]">AI-Powered Note Generation</p>
+                  <ul className="list-disc list-inside space-y-1 text-[var(--text-secondary)]">
+                    <li>Automatically extracts and organizes key information</li>
+                    <li>Creates structured notes with headings and sections</li>
+                    <li>Incorporates your additional context and preferences</li>
+                    <li>Generates comprehensive, study-ready notes</li>
+                    <li>Download as DOCX for offline access</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </form>
+        </>
       )}
     </div>
   );

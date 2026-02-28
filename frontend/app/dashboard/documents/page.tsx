@@ -279,7 +279,7 @@ export default function DocumentsPage() {
             Add URL
           </Button>
           <Button
-            variant="primary"
+            variant="default"
             onClick={() => fileInputRef.current?.click()}
             disabled={isUploading}
           >
@@ -363,7 +363,7 @@ export default function DocumentsPage() {
           </p>
           {!searchQuery && (
             <Button
-              variant="primary"
+              variant="default"
               onClick={() => fileInputRef.current?.click()}
             >
               <Upload className="h-4 w-4 mr-2" />
@@ -394,81 +394,81 @@ export default function DocumentsPage() {
               )}
 
               <div className="p-5">
-              {/* Header */}
-              <div className="flex items-start gap-3 mb-4">
-                <div className={cn('p-2.5 rounded-xl', getTypeColor(doc.content_type))}>
-                  {getTypeIcon(doc.content_type)}
+                {/* Header */}
+                <div className="flex items-start gap-3 mb-4">
+                  <div className={cn('p-2.5 rounded-xl', getTypeColor(doc.content_type))}>
+                    {getTypeIcon(doc.content_type)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-semibold text-[var(--text-primary)] truncate">
+                      {doc.title}
+                    </h3>
+                    <p className="text-sm text-[var(--text-tertiary)]">
+                      {formatDate(doc.created_at)}
+                    </p>
+                  </div>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-semibold text-[var(--text-primary)] truncate">
-                    {doc.title}
-                  </h3>
-                  <p className="text-sm text-[var(--text-tertiary)]">
-                    {formatDate(doc.created_at)}
-                  </p>
-                </div>
-              </div>
 
-              {/* Info */}
-              <div className="space-y-2 mb-4">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-[var(--text-secondary)]">Type</span>
-                  <span className="font-medium text-[var(--text-primary)] uppercase text-xs">
-                    {doc.content_type}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-[var(--text-secondary)]">Status</span>
-                  <span className={cn(
-                    'px-2 py-0.5 rounded-full text-xs font-medium border',
-                    getStatusBadge(doc.processing_status)
-                  )}>
-                    {doc.processing_status?.toLowerCase() || 'pending'}
-                  </span>
-                </div>
-                {doc.file_size && (
+                {/* Info */}
+                <div className="space-y-2 mb-4">
                   <div className="flex items-center justify-between text-sm">
-                    <span className="text-[var(--text-secondary)]">Size</span>
-                    <span className="text-[var(--text-primary)]">
-                      {formatFileSize(doc.file_size)}
+                    <span className="text-[var(--text-secondary)]">Type</span>
+                    <span className="font-medium text-[var(--text-primary)] uppercase text-xs">
+                      {doc.content_type}
                     </span>
                   </div>
-                )}
-              </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-[var(--text-secondary)]">Status</span>
+                    <span className={cn(
+                      'px-2 py-0.5 rounded-full text-xs font-medium border',
+                      getStatusBadge(doc.processing_status)
+                    )}>
+                      {doc.processing_status?.toLowerCase() || 'pending'}
+                    </span>
+                  </div>
+                  {doc.file_size && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-[var(--text-secondary)]">Size</span>
+                      <span className="text-[var(--text-primary)]">
+                        {formatFileSize(doc.file_size)}
+                      </span>
+                    </div>
+                  )}
+                </div>
 
-              {/* Actions */}
-              <div className="flex flex-wrap gap-2 pt-3 border-t border-[var(--card-border)]">
-                <Link href={`/dashboard/workspace?id=${doc.id}`} className="flex-1">
-                  <Button variant="primary" size="sm" className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 border-0">
-                    <Sparkles className="h-4 w-4 mr-2" />
-                    Open Workspace
-                  </Button>
-                </Link>
-                <Link href={`/dashboard/documents/${doc.id}`} title="View Details">
-                  <Button variant="secondary" size="sm">
-                    <FileText className="h-4 w-4" />
-                  </Button>
-                </Link>
-                {doc.file_url && (
-                  <a
-                    href={doc.file_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <Button variant="ghost" size="sm">
-                      <ExternalLink className="h-4 w-4" />
+                {/* Actions */}
+                <div className="flex flex-wrap gap-2 pt-3 border-t border-[var(--card-border)]">
+                  <Link href={`/dashboard/workspace?id=${doc.id}`} className="flex-1">
+                    <Button variant="default" size="sm" className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 border-0">
+                      <Sparkles className="h-4 w-4 mr-2" />
+                      Open Workspace
                     </Button>
-                  </a>
-                )}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleDelete(doc.id)}
-                  className="text-red-400 hover:text-red-300 hover:bg-red-400/10"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
+                  </Link>
+                  <Link href={`/dashboard/documents/${doc.id}`} title="View Details">
+                    <Button variant="secondary" size="sm">
+                      <FileText className="h-4 w-4" />
+                    </Button>
+                  </Link>
+                  {doc.file_url && (
+                    <a
+                      href={doc.file_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <Button variant="ghost" size="sm">
+                        <ExternalLink className="h-4 w-4" />
+                      </Button>
+                    </a>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleDelete(doc.id)}
+                    className="text-red-400 hover:text-red-300 hover:bg-red-400/10"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
             </div>
           ))}

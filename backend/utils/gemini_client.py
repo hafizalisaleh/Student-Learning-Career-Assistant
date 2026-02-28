@@ -76,7 +76,23 @@ class GeminiClient:
             
             return response.text
         except Exception as e:
-            raise Exception(f"Error generating text: {str(e)}")
+            error_str = str(e)
+            
+            # Handle Quota / Rate Limit with Groq Fallback
+            if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
+                from utils.groq_client import groq_client
+                print(f"Gemini quota exceeded. Attempting fallback to Groq ({settings.GROQ_MODEL})...")
+                try:
+                    # Note: Groq doesn't support images directly in this simple fallback yet
+                    if image_path:
+                        raise Exception("Gemini quota exceeded and Groq fallback does not support image input.")
+                    
+                    return groq_client.generate_text(prompt, temperature=temperature)
+                except Exception as groq_error:
+                    print(f"Groq fallback also failed: {groq_error}")
+                    raise Exception(f"Gemini API quota exceeded and Groq fallback failed: {str(groq_error)}")
+            
+            raise Exception(f"Error generating text: {error_str}")
     
     def generate_embeddings(self, text: str) -> List[float]:
         """

@@ -174,8 +174,8 @@ export default function TakeQuizPage() {
     const timeTaken = attempt.time_taken
       ? Math.round(attempt.time_taken / 60)
       : timeStarted
-      ? Math.round((new Date().getTime() - timeStarted.getTime()) / 60000)
-      : 0;
+        ? Math.round((new Date().getTime() - timeStarted.getTime()) / 60000)
+        : 0;
 
     const grade = getScoreGrade(attempt.score);
     const GradeIcon = grade.icon;
@@ -293,7 +293,7 @@ export default function TakeQuizPage() {
 
             <Button
               onClick={() => router.push('/dashboard/quizzes')}
-              variant="primary"
+              variant="default"
               className="px-8"
             >
               <ArrowLeft className="w-4 h-4 mr-2" />
@@ -551,8 +551,8 @@ export default function TakeQuizPage() {
                     isCurrent
                       ? 'bg-gradient-to-br from-[var(--accent-blue)] to-[var(--accent-purple)] text-white'
                       : isAnswered
-                      ? 'bg-[var(--accent-green)]/20 text-[var(--accent-green)] border border-[var(--accent-green)]/30'
-                      : 'bg-[var(--bg-elevated)] text-[var(--text-tertiary)] border border-[var(--card-border)] hover:border-[var(--card-border-hover)]'
+                        ? 'bg-[var(--accent-green)]/20 text-[var(--accent-green)] border border-[var(--accent-green)]/30'
+                        : 'bg-[var(--bg-elevated)] text-[var(--text-tertiary)] border border-[var(--card-border)] hover:border-[var(--card-border-hover)]'
                   )}
                 >
                   {i + 1}

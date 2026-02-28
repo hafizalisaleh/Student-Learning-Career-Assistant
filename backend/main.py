@@ -53,6 +53,16 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"[WARN] Vector store initialization: {str(e)}")
     
+    # Check Groq Fallback Status
+    try:
+        from utils.groq_client import groq_client
+        if groq_client.api_key:
+            logger.info(f"[OK] Groq fallback ready using model: {groq_client.model_id}")
+        else:
+            logger.warning("[WARN] Groq API Key not found in .env. Fallback will be disabled.")
+    except Exception as e:
+        logger.error(f"[ERROR] Groq client initialization: {str(e)}")
+    
     logger.info(f"[OK] Server started on {settings.HOST}:{settings.PORT}")
     logger.info(f"[INFO] API Documentation: http://{settings.HOST}:{settings.PORT}/docs")
     logger.info("=" * 50)

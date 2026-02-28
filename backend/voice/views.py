@@ -207,6 +207,6 @@ async def voice_status(
 
     return {
         "available": has_api_key,
-        "model": "gemini-2.0-flash-exp",
+        "model": "gemini-2.5-flash-exp",
         "features": ["real-time-voice", "transcription", "tts"]
     }

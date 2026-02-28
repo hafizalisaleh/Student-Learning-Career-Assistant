@@ -20,7 +20,7 @@ class GeminiLiveClient:
 
     def __init__(self):
         self.api_key = settings.GOOGLE_API_KEY
-        self.model = "gemini-2.0-flash-exp"
+        self.model = "gemini-2.5-flash-exp"
         self.ws_url = f"wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?key={self.api_key}"
         self.connection = None
         self.is_connected = False
@@ -228,7 +228,7 @@ class GeminiVoiceSimple:
             self.client = genai.Client(api_key=self.api_key)
         else:
             self.client = None
-        self.model_id = "gemini-2.0-flash-exp"
+        self.model_id = "gemini-2.5-flash-exp"
 
     async def process_audio_query(
         self,

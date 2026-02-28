@@ -643,7 +643,7 @@ export default function DocumentDetailPage() {
       {/* Quick Actions Bar */}
       <div className="flex flex-wrap items-center gap-2 p-3 rounded-xl bg-[var(--bg-secondary)] border border-[var(--card-border)]">
         <Button
-          variant="primary"
+          variant="default"
           size="sm"
           onClick={handleGenerateAll}
           disabled={isGeneratingAll}
@@ -807,7 +807,7 @@ export default function DocumentDetailPage() {
                 </Button>
               </div>
               <div className="mt-4 pt-4 border-t border-[var(--card-border)]">
-                <Button variant="danger" size="sm" className="w-full" onClick={handleDelete}>
+                <Button variant="destructive" size="sm" className="w-full" onClick={handleDelete}>
                   <Trash2 className="h-4 w-4 mr-2" />
                   Delete Document
                 </Button>
@@ -821,7 +821,7 @@ export default function DocumentDetailPage() {
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-semibold text-[var(--text-primary)]">Associated Notes</h3>
               <Link href={`/dashboard/notes/new?document=${documentId}`}>
-                <Button variant="primary" size="sm">
+                <Button variant="default" size="sm">
                   <Sparkles className="h-4 w-4 mr-2" />
                   Generate New Notes
                 </Button>
@@ -866,7 +866,7 @@ export default function DocumentDetailPage() {
           <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-semibold text-[var(--text-primary)]">Document Summaries</h3>
-              <Button variant="primary" size="sm" onClick={openSummaryModal}>
+              <Button variant="default" size="sm" onClick={openSummaryModal}>
                 <Sparkles className="h-4 w-4 mr-2" />
                 Generate New Summary
               </Button>
@@ -994,7 +994,7 @@ export default function DocumentDetailPage() {
                   </div>
                   <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-2">Visualize your Document</h3>
                   <p className="text-[var(--text-secondary)] mb-6">Create a visual mind map to help you understand complex relationships and key concepts faster.</p>
-                  <Button variant="primary" onClick={generateMindmap}>
+                  <Button variant="default" onClick={generateMindmap}>
                     <Sparkles className="h-4 w-4 mr-2" />
                     Generate Mind Map
                   </Button>
@@ -1020,7 +1020,7 @@ export default function DocumentDetailPage() {
                   className="flex-1 px-3 py-2 bg-[var(--bg-elevated)] border border-[var(--card-border)] rounded-lg text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-violet)]"
                 />
                 <Button
-                  variant="primary"
+                  variant="default"
                   size="sm"
                   disabled={isRevising || !revisionPrompt.trim()}
                   onClick={() => handleRevision(mindmapCode, 'mindmap', (revised) => setMindmapCode(revised))}
@@ -1142,7 +1142,7 @@ export default function DocumentDetailPage() {
                   className="flex-1 px-3 py-2 bg-[var(--bg-elevated)] border border-[var(--card-border)] rounded-lg text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-violet)]"
                 />
                 <Button
-                  variant="primary"
+                  variant="default"
                   size="sm"
                   disabled={isRevising || !revisionPrompt.trim()}
                   onClick={() => handleRevision(diagramCode, 'diagram', (revised) => {
@@ -1261,7 +1261,7 @@ export default function DocumentDetailPage() {
                     className="flex-1 px-3 py-2 bg-[var(--bg-elevated)] border border-[var(--card-border)] rounded-lg text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-violet)]"
                   />
                   <Button
-                    variant="primary"
+                    variant="default"
                     size="sm"
                     disabled={isRevising || !revisionPrompt.trim()}
                     onClick={() => handleRevision(summaryText, 'summary', (revised) => {
@@ -1306,7 +1306,7 @@ export default function DocumentDetailPage() {
                 {isEditingSummary && (
                   <>
                     <Button variant="ghost" size="sm" onClick={cancelEditSummary}>Cancel</Button>
-                    <Button variant="primary" size="sm" onClick={saveEditedSummary}>
+                    <Button variant="default" size="sm" onClick={saveEditedSummary}>
                       <Check className="h-4 w-4 mr-1" />
                       Save
                     </Button>
@@ -1316,13 +1316,13 @@ export default function DocumentDetailPage() {
 
               <div className="flex gap-2">
                 {!summaryGenerated && !isGeneratingSummary && (
-                  <Button variant="primary" onClick={generateSummary}>
+                  <Button variant="default" onClick={generateSummary}>
                     <Sparkles className="h-4 w-4 mr-2" />
                     Generate
                   </Button>
                 )}
                 {summaryGenerated && !isEditingSummary && (
-                  <Button variant="primary" onClick={closeSummaryModal}>Done</Button>
+                  <Button variant="default" onClick={closeSummaryModal}>Done</Button>
                 )}
               </div>
             </div>
