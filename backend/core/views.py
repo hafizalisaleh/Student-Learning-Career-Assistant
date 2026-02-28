@@ -441,3 +441,123 @@ def file_search_status(
         "indexed": store_name is not None,
         "store_name": store_name
     }
+
+
+# --- Content Revision ---
+
+class RevisionRequest(BaseModel):
+    """Request to revise AI-generated content"""
+    current_content: str
+    revision_prompt: str
+    content_type: str  # mindmap | diagram | summary | note
+    document_title: str = ""
+
+
+class RevisionResponse(BaseModel):
+    """Revision response"""
+    success: bool
+    revised_content: str
+    content_type: str
+    error: Optional[str] = None
+
+
+@router.post("/revise", response_model=RevisionResponse)
+def revise_content_endpoint(
+    request: RevisionRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Revise AI-generated content (mindmap, diagram, summary, note)
+    based on a natural language revision prompt.
+    """
+    from core.revision import revise_content
+
+    valid_types = ["mindmap", "diagram", "summary", "note"]
+    if request.content_type not in valid_types:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid content_type. Must be one of: {', '.join(valid_types)}"
+        )
+
+    logger.info(
+        f"User {current_user.email} revising {request.content_type}: "
+        f"{request.revision_prompt[:60]}"
+    )
+
+    result = revise_content(
+        current_content=request.current_content,
+        revision_prompt=request.revision_prompt,
+        content_type=request.content_type,
+        document_title=request.document_title,
+    )
+
+    return RevisionResponse(**result)
+
+
+# --- Knowledge Graph ---
+
+@router.get("/knowledge-graph")
+def get_knowledge_graph(
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Build a knowledge graph from the user's documents, notes, and embeddings.
+    Returns {nodes, links, stats} for react-force-graph.
+    """
+    from config.database import SessionLocal
+    from documents.models import Document, ProcessingStatus
+    from core.knowledge_graph import build_knowledge_graph
+
+    db = SessionLocal()
+    try:
+        # Get all completed documents
+        docs = db.query(Document).filter(
+            Document.user_id == current_user.id,
+            Document.processing_status == ProcessingStatus.COMPLETED,
+        ).all()
+
+        documents_data = []
+        for doc in docs:
+            documents_data.append({
+                "id": str(doc.id),
+                "title": doc.title,
+                "content_type": doc.content_type.value if doc.content_type else None,
+                "topics": doc.topics or [],
+                "keywords": doc.keywords or [],
+                "domains": doc.domains or [],
+            })
+
+        # Get all notes
+        from notes.models import Note as NoteModel
+        notes = db.query(NoteModel).filter(
+            NoteModel.user_id == current_user.id
+        ).all()
+
+        notes_data = []
+        for note in notes:
+            notes_data.append({
+                "id": str(note.id),
+                "title": note.title,
+                "document_id": str(note.document_id) if note.document_id else "",
+                "note_type": note.note_type,
+                "tags": note.tags or [],
+            })
+
+        graph = build_knowledge_graph(
+            documents=documents_data,
+            notes=notes_data,
+            chunks=[],
+        )
+
+        return graph
+
+    except Exception as e:
+        logger.error(f"Knowledge graph error: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to build knowledge graph: {str(e)}"
+        )
+    finally:
+        db.close()

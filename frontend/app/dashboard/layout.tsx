@@ -22,6 +22,7 @@ import {
   ChevronsRight,
   PanelLeftClose,
   PanelLeftOpen,
+  Network,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ThemeToggle, ThemeToggleCompact } from '@/components/ui/theme-toggle';
@@ -37,6 +38,7 @@ const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Documents', href: '/dashboard/documents', icon: FileText },
   { name: 'Voice Control', href: '/dashboard/ask', icon: Mic },
+  { name: 'Knowledge Graph', href: '/dashboard/knowledge-graph', icon: Network },
   { name: 'Progress', href: '/dashboard/progress', icon: TrendingUp },
   { name: 'Career', href: '/dashboard/career', icon: Briefcase },
 ];

@@ -35,6 +35,8 @@ import {
   MessageSquare,
   Zap,
   Play,
+  Send,
+  Wand2,
 } from 'lucide-react';
 import type { Document, Note, Summary } from '@/lib/types';
 import { formatDate, formatFileSize } from '@/lib/utils';
@@ -102,6 +104,11 @@ export default function DocumentDetailPage() {
   const [isEditingSummary, setIsEditingSummary] = useState(false);
   const [editedSummary, setEditedSummary] = useState('');
   const [summaryGenerated, setSummaryGenerated] = useState(false);
+
+  // Revision state
+  const [revisionPrompt, setRevisionPrompt] = useState('');
+  const [isRevising, setIsRevising] = useState(false);
+  const [revisionHistory, setRevisionHistory] = useState<string[]>([]);
 
   // Quick Action states
   const [isGeneratingAll, setIsGeneratingAll] = useState(false);
@@ -521,6 +528,54 @@ export default function DocumentDetailPage() {
     setSummaryText('');
     setSummaryGenerated(false);
     generateSummary();
+  };
+
+  const handleRevision = async (
+    currentContent: string,
+    contentType: 'mindmap' | 'diagram' | 'summary',
+    onSuccess: (revised: string) => void,
+  ) => {
+    if (!revisionPrompt.trim()) return;
+
+    setIsRevising(true);
+    toast.loading('Revising...', { id: 'revision' });
+
+    try {
+      const result = await api.reviseContent({
+        current_content: currentContent,
+        revision_prompt: revisionPrompt.trim(),
+        content_type: contentType,
+        document_title: document?.title || '',
+      });
+
+      if (result.success) {
+        // Save current version to history for undo
+        setRevisionHistory(prev => [...prev, currentContent]);
+        onSuccess(result.revised_content);
+        setRevisionPrompt('');
+        toast.dismiss('revision');
+        toast.success('Revision applied!');
+      } else {
+        toast.dismiss('revision');
+        toast.error(result.error || 'Revision failed');
+      }
+    } catch (error: any) {
+      toast.dismiss('revision');
+      toast.error(error.response?.data?.detail || 'Revision failed');
+    } finally {
+      setIsRevising(false);
+    }
+  };
+
+  const undoRevision = (
+    contentType: 'mindmap' | 'diagram' | 'summary',
+    restoreFn: (content: string) => void,
+  ) => {
+    if (revisionHistory.length === 0) return;
+    const previous = revisionHistory[revisionHistory.length - 1];
+    setRevisionHistory(prev => prev.slice(0, -1));
+    restoreFn(previous);
+    toast.success('Revision undone');
   };
 
   if (isLoading) {
@@ -946,6 +1001,45 @@ export default function DocumentDetailPage() {
                 </div>
               )}
             </div>
+
+            {/* Revision Bar for Mind Map */}
+            {mindmapCode && !isGeneratingMindmap && (
+              <div className="flex items-center gap-2 p-3 rounded-xl bg-[var(--card-bg)] border border-[var(--card-border)]">
+                <Wand2 className="h-4 w-4 text-[var(--accent-violet)] shrink-0" />
+                <input
+                  type="text"
+                  value={revisionPrompt}
+                  onChange={(e) => setRevisionPrompt(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !isRevising) {
+                      handleRevision(mindmapCode, 'mindmap', (revised) => setMindmapCode(revised));
+                    }
+                  }}
+                  placeholder="Revise: e.g. &quot;Add more detail to the Neural Networks branch&quot;"
+                  disabled={isRevising}
+                  className="flex-1 px-3 py-2 bg-[var(--bg-elevated)] border border-[var(--card-border)] rounded-lg text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-violet)]"
+                />
+                <Button
+                  variant="primary"
+                  size="sm"
+                  disabled={isRevising || !revisionPrompt.trim()}
+                  onClick={() => handleRevision(mindmapCode, 'mindmap', (revised) => setMindmapCode(revised))}
+                  className="bg-[var(--accent-violet)] hover:bg-[var(--accent-violet)]/90 border-0"
+                >
+                  {isRevising ? <LoadingSpinner size="sm" /> : <Send className="h-4 w-4" />}
+                </Button>
+                {revisionHistory.length > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => undoRevision('mindmap', (content) => setMindmapCode(content))}
+                    title="Undo last revision"
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -1026,6 +1120,54 @@ export default function DocumentDetailPage() {
                 </div>
               )}
             </div>
+
+            {/* Revision Bar for Diagrams */}
+            {diagramCode && !isGeneratingDiagram && (
+              <div className="flex items-center gap-2 p-3 rounded-xl bg-[var(--card-bg)] border border-[var(--card-border)]">
+                <Wand2 className="h-4 w-4 text-[var(--accent-violet)] shrink-0" />
+                <input
+                  type="text"
+                  value={revisionPrompt}
+                  onChange={(e) => setRevisionPrompt(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !isRevising) {
+                      handleRevision(diagramCode, 'diagram', (revised) => {
+                        setDiagramCode(revised);
+                        setGeneratedDiagrams(prev => ({ ...prev, [selectedDiagramType]: revised }));
+                      });
+                    }
+                  }}
+                  placeholder="Revise: e.g. &quot;Add error handling paths to the flowchart&quot;"
+                  disabled={isRevising}
+                  className="flex-1 px-3 py-2 bg-[var(--bg-elevated)] border border-[var(--card-border)] rounded-lg text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-violet)]"
+                />
+                <Button
+                  variant="primary"
+                  size="sm"
+                  disabled={isRevising || !revisionPrompt.trim()}
+                  onClick={() => handleRevision(diagramCode, 'diagram', (revised) => {
+                    setDiagramCode(revised);
+                    setGeneratedDiagrams(prev => ({ ...prev, [selectedDiagramType]: revised }));
+                  })}
+                  className="bg-[var(--accent-violet)] hover:bg-[var(--accent-violet)]/90 border-0"
+                >
+                  {isRevising ? <LoadingSpinner size="sm" /> : <Send className="h-4 w-4" />}
+                </Button>
+                {revisionHistory.length > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => undoRevision('diagram', (content) => {
+                      setDiagramCode(content);
+                      setGeneratedDiagrams(prev => ({ ...prev, [selectedDiagramType]: content }));
+                    })}
+                    title="Undo last revision"
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -1096,6 +1238,49 @@ export default function DocumentDetailPage() {
                       </div>
                     )}
                   </div>
+                </div>
+              )}
+
+              {/* Revision Bar for Summary */}
+              {summaryGenerated && !isEditingSummary && !isGeneratingSummary && (
+                <div className="flex items-center gap-2 mt-4">
+                  <Wand2 className="h-4 w-4 text-[var(--accent-violet)] shrink-0" />
+                  <input
+                    type="text"
+                    value={revisionPrompt}
+                    onChange={(e) => setRevisionPrompt(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !isRevising) {
+                        handleRevision(summaryText, 'summary', (revised) => {
+                          setSummaryText(revised);
+                        });
+                      }
+                    }}
+                    placeholder='Revise: e.g. "Make it more concise" or "Add examples"'
+                    disabled={isRevising}
+                    className="flex-1 px-3 py-2 bg-[var(--bg-elevated)] border border-[var(--card-border)] rounded-lg text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-violet)]"
+                  />
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    disabled={isRevising || !revisionPrompt.trim()}
+                    onClick={() => handleRevision(summaryText, 'summary', (revised) => {
+                      setSummaryText(revised);
+                    })}
+                    className="bg-[var(--accent-violet)] hover:bg-[var(--accent-violet)]/90 border-0"
+                  >
+                    {isRevising ? <LoadingSpinner size="sm" /> : <Send className="h-4 w-4" />}
+                  </Button>
+                  {revisionHistory.length > 0 && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => undoRevision('summary', (content) => setSummaryText(content))}
+                      title="Undo last revision"
+                    >
+                      <RotateCcw className="h-4 w-4" />
+                    </Button>
+                  )}
                 </div>
               )}
             </div>

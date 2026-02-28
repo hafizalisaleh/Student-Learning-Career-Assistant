@@ -63,6 +63,8 @@ interface ApiInstance extends AxiosInstance {
   getDocumentEmbeddings: (documentId: string) => Promise<any>;
   indexForFileSearch: (documentId: string) => Promise<any>;
   getFileSearchStatus: (documentId: string) => Promise<any>;
+  reviseContent: (data: { current_content: string; revision_prompt: string; content_type: string; document_title?: string }) => Promise<any>;
+  getKnowledgeGraph: () => Promise<any>;
 }
 
 const axiosInstance = axios.create({
@@ -359,6 +361,16 @@ axiosInstance.indexForFileSearch = async (documentId: string) => {
 
 axiosInstance.getFileSearchStatus = async (documentId: string) => {
   const response = await axiosInstance.get(`/api/vectors/file-search/status/${documentId}`);
+  return response.data;
+};
+
+axiosInstance.reviseContent = async (data: { current_content: string; revision_prompt: string; content_type: string; document_title?: string }) => {
+  const response = await axiosInstance.post('/api/vectors/revise', data);
+  return response.data;
+};
+
+axiosInstance.getKnowledgeGraph = async () => {
+  const response = await axiosInstance.get('/api/vectors/knowledge-graph');
   return response.data;
 };
 
