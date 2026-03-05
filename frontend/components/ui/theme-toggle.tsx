@@ -16,14 +16,19 @@ export function ThemeToggle({ className }: { className?: string }) {
 
     const initialTheme = savedTheme || (systemPrefersDark ? 'dark' : 'light');
     setTheme(initialTheme);
-    document.documentElement.setAttribute('data-theme', initialTheme);
+    applyTheme(initialTheme);
   }, []);
+
+  const applyTheme = (t: 'light' | 'dark') => {
+    document.documentElement.setAttribute('data-theme', t);
+    document.documentElement.classList.toggle('dark', t === 'dark');
+  };
 
   const toggleTheme = () => {
     const newTheme = theme === 'light' ? 'dark' : 'light';
     setTheme(newTheme);
     localStorage.setItem('theme', newTheme);
-    document.documentElement.setAttribute('data-theme', newTheme);
+    applyTheme(newTheme);
   };
 
   if (!mounted) {
@@ -84,14 +89,19 @@ export function ThemeToggleCompact({ className }: { className?: string }) {
     const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
     const initialTheme = savedTheme || (systemPrefersDark ? 'dark' : 'light');
     setTheme(initialTheme);
-    document.documentElement.setAttribute('data-theme', initialTheme);
+    applyTheme(initialTheme);
   }, []);
+
+  const applyTheme = (t: 'light' | 'dark') => {
+    document.documentElement.setAttribute('data-theme', t);
+    document.documentElement.classList.toggle('dark', t === 'dark');
+  };
 
   const toggleTheme = () => {
     const newTheme = theme === 'light' ? 'dark' : 'light';
     setTheme(newTheme);
     localStorage.setItem('theme', newTheme);
-    document.documentElement.setAttribute('data-theme', newTheme);
+    applyTheme(newTheme);
   };
 
   if (!mounted) return null;

@@ -220,7 +220,7 @@ function NewNoteContent() {
         <div className="p-6 rounded-2xl bg-[var(--card-bg)] border border-[var(--card-border)] space-y-6">
           <div>
             <label className="block text-sm font-medium text-[var(--text-primary)] mb-2">
-              Select Document <span className="text-red-400">*</span>
+              Select Document <span className="text-[var(--error)]">*</span>
             </label>
             <select
               className="w-full px-4 py-3 bg-[var(--bg-elevated)] border border-[var(--card-border)] rounded-xl focus:outline-none focus:ring-2 focus:ring-[var(--accent-blue)] text-[var(--text-primary)]"
@@ -239,7 +239,7 @@ function NewNoteContent() {
 
           <div>
             <label className="block text-sm font-medium text-[var(--text-primary)] mb-2">
-              Note Title <span className="text-red-400">*</span>
+              Note Title <span className="text-[var(--error)]">*</span>
             </label>
             <Input
               type="text"
@@ -280,7 +280,7 @@ function NewNoteContent() {
                 {/* Document Selection */}
                 <div>
                   <label className="block text-sm font-medium text-[var(--text-primary)] mb-2">
-                    Select Document <span className="text-red-400">*</span>
+                    Select Document <span className="text-[var(--error)]">*</span>
                   </label>
                   <select
                     className="w-full px-4 py-3 bg-[var(--bg-elevated)] border border-[var(--card-border)] rounded-xl focus:outline-none focus:ring-2 focus:ring-[var(--accent-blue)] text-[var(--text-primary)]"
@@ -294,7 +294,7 @@ function NewNoteContent() {
                     ))}
                   </select>
                   {errors.document_id && (
-                    <p className="mt-1 text-sm text-red-400">{errors.document_id.message}</p>
+                    <p className="mt-1 text-sm text-[var(--error)]">{errors.document_id.message}</p>
                   )}
                   {documents.length === 0 && (
                     <p className="mt-2 text-sm text-[var(--text-tertiary)]">
@@ -319,7 +319,7 @@ function NewNoteContent() {
                 {/* Note Type Selection */}
                 <div>
                   <label className="block text-sm font-medium text-[var(--text-primary)] mb-3">
-                    Note Type <span className="text-red-400">*</span>
+                    Note Type <span className="text-[var(--error)]">*</span>
                   </label>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     {noteTypeOptions.map((option) => {

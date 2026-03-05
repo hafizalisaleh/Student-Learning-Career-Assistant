@@ -23,6 +23,9 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Network,
+  BookOpen,
+  Sparkles,
+  ClipboardCheck,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ThemeToggle, ThemeToggleCompact } from '@/components/ui/theme-toggle';
@@ -37,6 +40,9 @@ interface DashboardLayoutProps {
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Documents', href: '/dashboard/documents', icon: FileText },
+  { name: 'Notes', href: '/dashboard/notes', icon: BookOpen },
+  { name: 'Summaries', href: '/dashboard/summaries', icon: Sparkles },
+  { name: 'Quizzes', href: '/dashboard/quizzes', icon: ClipboardCheck },
   { name: 'Voice Control', href: '/dashboard/ask', icon: Mic },
   { name: 'Knowledge Graph', href: '/dashboard/knowledge-graph', icon: Network },
   { name: 'Progress', href: '/dashboard/progress', icon: TrendingUp },
@@ -261,7 +267,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                   {mounted && user ? getUserInitials() : '...'}
                 </div>
                 {/* Online indicator */}
-                <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 rounded-full border-2 border-white" />
+                <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-[var(--success)] rounded-full border-2 border-[var(--card-bg)]" />
               </div>
 
               {mounted && user && (
@@ -377,7 +383,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               <div className="h-8 w-8 rounded-full bg-gradient-to-br from-[var(--primary)] to-[var(--secondary)] flex items-center justify-center text-white text-sm font-medium">
                 {mounted && user ? getUserInitials() : '...'}
               </div>
-              <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-white" />
+              <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-[var(--success)] rounded-full border-2 border-[var(--card-bg)]" />
             </button>
           </div>
 

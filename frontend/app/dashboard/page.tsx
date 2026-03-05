@@ -55,10 +55,10 @@ export default function DashboardPage() {
   }
 
   const stats = [
-    { name: 'Documents', value: progress?.total_documents || 0, icon: FileText, color: 'documents' },
-    { name: 'Notes', value: progress?.total_notes || 0, icon: BookOpen, color: 'notes' },
-    { name: 'Summaries', value: progress?.total_summaries || 0, icon: Brain, color: 'summaries' },
-    { name: 'Quizzes', value: progress?.total_quizzes_generated || 0, icon: ClipboardCheck, color: 'quizzes' },
+    { name: 'Documents', value: progress?.total_documents || 0, icon: FileText, color: 'documents', href: '/dashboard/documents' },
+    { name: 'Notes', value: progress?.total_notes || 0, icon: BookOpen, color: 'notes', href: '/dashboard/notes' },
+    { name: 'Summaries', value: progress?.total_summaries || 0, icon: Brain, color: 'summaries', href: '/dashboard/summaries' },
+    { name: 'Quizzes', value: progress?.total_quizzes_generated || 0, icon: ClipboardCheck, color: 'quizzes', href: '/dashboard/quizzes' },
   ];
 
   return (
@@ -86,7 +86,7 @@ export default function DashboardPage() {
         {stats.map((stat) => {
           const Icon = stat.icon;
           return (
-            <div key={stat.name} className="stat-card">
+            <Link key={stat.name} href={stat.href} className="stat-card hover:border-[var(--accent-blue)] transition-all cursor-pointer block">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="stat-value">{stat.value}</p>
@@ -96,7 +96,7 @@ export default function DashboardPage() {
                   <Icon className="h-4 w-4" />
                 </div>
               </div>
-            </div>
+            </Link>
           );
         })}
       </div>

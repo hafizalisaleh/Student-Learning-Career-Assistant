@@ -228,7 +228,7 @@ export default function DocumentsPage() {
   const getTypeColor = (type: string) => {
     switch (type) {
       case 'YOUTUBE':
-        return 'text-red-400 bg-red-400/10';
+        return 'text-[var(--error)] bg-[var(--error-bg)]';
       case 'PDF':
         return 'text-[var(--accent-amber)] bg-[var(--accent-amber-subtle)]';
       case 'IMAGE':
@@ -251,7 +251,7 @@ export default function DocumentsPage() {
       case 'processing':
         return 'bg-[var(--accent-blue-subtle)] text-[var(--accent-blue)] border-[rgba(0,212,255,0.3)]';
       case 'failed':
-        return 'bg-red-500/10 text-red-400 border-red-500/30';
+        return 'bg-[var(--error-bg)] text-[var(--error)] border-[var(--error-border)]';
       default:
         return 'bg-[var(--accent-amber-subtle)] text-[var(--accent-amber)] border-[rgba(251,191,36,0.3)]';
     }
@@ -269,29 +269,31 @@ export default function DocumentsPage() {
           <h1 className="text-xl font-semibold text-[var(--text-primary)]">Documents</h1>
           <p className="text-sm text-[var(--text-tertiary)]">Upload and manage your learning materials</p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <Button
             variant="secondary"
             onClick={() => setShowUrlInput(!showUrlInput)}
             disabled={isUploading}
+            className="flex-1 sm:flex-none h-10"
           >
             <LinkIcon className="h-4 w-4 mr-2" />
-            Add URL
+            <span className="whitespace-nowrap">Add URL</span>
           </Button>
           <Button
             variant="default"
             onClick={() => fileInputRef.current?.click()}
             disabled={isUploading}
+            className="flex-1 sm:flex-none h-10 shadow-lg shadow-blue-500/20"
           >
             {isUploading ? (
               <>
                 <LoadingSpinner size="sm" className="mr-2" />
-                Uploading...
+                <span className="whitespace-nowrap">Uploading...</span>
               </>
             ) : (
               <>
                 <Upload className="h-4 w-4 mr-2" />
-                Upload File
+                <span className="whitespace-nowrap">Upload File</span>
               </>
             )}
           </Button>
@@ -464,7 +466,7 @@ export default function DocumentsPage() {
                     variant="ghost"
                     size="sm"
                     onClick={() => handleDelete(doc.id)}
-                    className="text-red-400 hover:text-red-300 hover:bg-red-400/10"
+                    className="text-[var(--error)] hover:text-[var(--error)] hover:bg-[var(--error-bg)]"
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>
@@ -577,8 +579,8 @@ export default function DocumentsPage() {
               {/* Success State */}
               {uploadStatus === 'success' && (
                 <div className="text-center py-4">
-                  <div className="w-16 h-16 mx-auto mb-3 rounded-full bg-green-500/10 flex items-center justify-center">
-                    <CheckCircle2 className="h-8 w-8 text-green-500" />
+                  <div className="w-16 h-16 mx-auto mb-3 rounded-full bg-[var(--success-bg)] flex items-center justify-center">
+                    <CheckCircle2 className="h-8 w-8 text-[var(--success)]" />
                   </div>
                   <p className="text-[var(--text-primary)] font-medium">
                     Document uploaded successfully!
@@ -592,13 +594,13 @@ export default function DocumentsPage() {
               {/* Error State */}
               {uploadStatus === 'error' && (
                 <div className="text-center py-4">
-                  <div className="w-16 h-16 mx-auto mb-3 rounded-full bg-red-500/10 flex items-center justify-center">
-                    <AlertCircle className="h-8 w-8 text-red-500" />
+                  <div className="w-16 h-16 mx-auto mb-3 rounded-full bg-[var(--error-bg)] flex items-center justify-center">
+                    <AlertCircle className="h-8 w-8 text-[var(--error)]" />
                   </div>
                   <p className="text-[var(--text-primary)] font-medium">
                     Upload failed
                   </p>
-                  <p className="text-sm text-red-400 mt-1">
+                  <p className="text-sm text-[var(--error)] mt-1">
                     {uploadError}
                   </p>
                   <Button

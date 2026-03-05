@@ -42,6 +42,9 @@ class VectorStore:
         self.default_collection_name = "slca_documents"
         self._ensure_collection()
 
+        # Concepts collection for knowledge evolution timeline
+        self._ensure_concepts_collection()
+
         logger.info(f"VectorStore initialized with ChromaDB at {settings.VECTOR_DB_PATH}")
 
     def _ensure_collection(self):
@@ -55,6 +58,88 @@ class VectorStore:
         except Exception as e:
             logger.error(f"Error creating collection: {e}")
             raise
+
+    def _ensure_concepts_collection(self):
+        """Ensure concepts collection exists for knowledge evolution timeline"""
+        try:
+            self.concepts_collection = self.chroma_client.get_or_create_collection(
+                name="slca_concepts",
+                metadata={"description": "SLCA concept embeddings for knowledge timeline"}
+            )
+            logger.info(f"Collection 'slca_concepts' ready with {self.concepts_collection.count()} concepts")
+        except Exception as e:
+            logger.warning(f"Error creating concepts collection: {e}")
+            self.concepts_collection = None
+
+    def find_similar_concepts(self, text: str, n_results: int = 5) -> List[Dict[str, Any]]:
+        """
+        Query slca_concepts collection for concepts similar to the given text.
+        Returns list of dicts with text, metadata, distance, similarity.
+        """
+        if not self.concepts_collection or self.concepts_collection.count() == 0:
+            return []
+
+        try:
+            embedding = self._generate_query_embedding(text)
+            results = self.concepts_collection.query(
+                query_embeddings=[embedding],
+                n_results=min(n_results, self.concepts_collection.count()),
+                include=["documents", "metadatas", "distances"]
+            )
+
+            matches = []
+            if results and results["documents"] and results["documents"][0]:
+                for i in range(len(results["documents"][0])):
+                    distance = results["distances"][0][i] if results["distances"] else 1.0
+                    matches.append({
+                        "text": results["documents"][0][i],
+                        "metadata": results["metadatas"][0][i] if results["metadatas"] else {},
+                        "distance": distance,
+                        "similarity": 1 - distance
+                    })
+
+            return matches
+        except Exception as e:
+            logger.warning(f"Concept similarity search failed: {e}")
+            return []
+
+    def get_chunk_concept_depth(self, document_id: str, concept_text: str, threshold: float = 0.7) -> float:
+        """
+        Compute depth score: ratio of document chunks related to a concept.
+        """
+        try:
+            # Get total chunks for document
+            doc_results = self.collection.get(
+                where={"document_id": document_id},
+                include=[]
+            )
+            total_chunks = len(doc_results["ids"]) if doc_results["ids"] else 0
+
+            if total_chunks == 0:
+                return 0.3
+
+            # Query chunks for similarity to the concept
+            concept_embedding = self._generate_query_embedding(concept_text)
+            query_results = self.collection.query(
+                query_embeddings=[concept_embedding],
+                n_results=total_chunks,
+                where={"document_id": document_id},
+                include=["distances"]
+            )
+
+            if not query_results["distances"] or not query_results["distances"][0]:
+                return 0.3
+
+            related_count = sum(
+                1 for d in query_results["distances"][0]
+                if (1 - d) >= threshold
+            )
+
+            return related_count / total_chunks
+
+        except Exception as e:
+            logger.warning(f"Depth score computation failed: {e}")
+            return 0.3
 
     def _generate_embedding(self, text: str) -> List[float]:
         """

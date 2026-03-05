@@ -108,7 +108,7 @@ export default function HomePage() {
               <Button variant="ghost" size="sm">Sign in</Button>
             </Link>
             <Link href="/register">
-              <Button variant="primary" size="sm">Get Started</Button>
+              <Button variant="default" size="sm">Get Started</Button>
             </Link>
           </div>
         </div>

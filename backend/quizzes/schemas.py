@@ -47,6 +47,7 @@ class QuizResponse(BaseModel):
     difficulty_level: DifficultyLevelEnum
     question_type: str
     created_at: datetime
+    document_references: Optional[List[str]] = None
     questions: List[QuestionResponse] = []
     
     # Computed fields for frontend compatibility

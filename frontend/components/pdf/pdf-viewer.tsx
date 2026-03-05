@@ -33,30 +33,30 @@ export default function PDFViewer({ url, onTextSelect, currentPage = 1 }: PDFVie
     }, [pageNumber, onTextSelect]);
 
     return (
-        <div className="flex flex-col h-full bg-gray-100 overflow-hidden">
+        <div className="flex flex-col h-full bg-[var(--bg-secondary)] overflow-hidden">
             {/* Controls */}
-            <div className="flex items-center justify-between p-2 bg-white border-b border-gray-200 z-10 shadow-sm">
+            <div className="flex items-center justify-between p-2 bg-[var(--card-bg)] border-b border-[var(--card-border)] z-10 shadow-sm">
                 <div className="flex items-center gap-2">
                     <button
                         onClick={() => setPageNumber(p => Math.max(1, p - 1))}
                         disabled={pageNumber <= 1}
-                        className="px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded disabled:opacity-50"
+                        className="px-3 py-1 bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] rounded disabled:opacity-50 text-[var(--text-primary)] text-sm"
                     >
                         Previous
                     </button>
-                    <span className="text-sm font-medium">Page {pageNumber} of {numPages}</span>
+                    <span className="text-sm font-medium text-[var(--text-primary)]">Page {pageNumber} of {numPages}</span>
                     <button
                         onClick={() => setPageNumber(p => Math.min(numPages, p + 1))}
                         disabled={pageNumber >= numPages}
-                        className="px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded disabled:opacity-50"
+                        className="px-3 py-1 bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] rounded disabled:opacity-50 text-[var(--text-primary)] text-sm"
                     >
                         Next
                     </button>
                 </div>
                 <div className="flex items-center gap-2">
-                    <button onClick={() => setScale(s => s - 0.1)} className="p-1 hover:bg-gray-100 rounded">-</button>
-                    <span className="text-xs">{Math.round(scale * 100)}%</span>
-                    <button onClick={() => setScale(s => s + 0.1)} className="p-1 hover:bg-gray-100 rounded">+</button>
+                    <button onClick={() => setScale(s => s - 0.1)} className="p-1 hover:bg-[var(--bg-secondary)] rounded text-[var(--text-secondary)]">-</button>
+                    <span className="text-xs text-[var(--text-secondary)]">{Math.round(scale * 100)}%</span>
+                    <button onClick={() => setScale(s => s + 0.1)} className="p-1 hover:bg-[var(--bg-secondary)] rounded text-[var(--text-secondary)]">+</button>
                 </div>
             </div>
 

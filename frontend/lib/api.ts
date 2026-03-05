@@ -48,6 +48,12 @@ interface ApiInstance extends AxiosInstance {
   getActivityLog: () => Promise<any>;
   getAIInsights: () => Promise<any>;
 
+  // Knowledge Evolution
+  getEvolutionTimeline: (conceptId?: string) => Promise<any>;
+  getEvolutionConcepts: (domain?: string) => Promise<any>;
+  getEvolutionDomainSummary: () => Promise<any>;
+  recalculateEvolution: () => Promise<any>;
+
   // Career
   getCareerAnalysis: () => Promise<any>;
   getCurrentCareerAnalysis: () => Promise<any>;
@@ -285,6 +291,29 @@ axiosInstance.getActivityLog = async () => {
 
 axiosInstance.getAIInsights = async () => {
   const response = await axiosInstance.get('/api/progress/insights/ai');
+  return response.data;
+};
+
+// ===== Knowledge Evolution =====
+axiosInstance.getEvolutionTimeline = async (conceptId?: string) => {
+  const params = conceptId ? `?concept_id=${conceptId}` : '';
+  const response = await axiosInstance.get(`/api/evolution/timeline${params}`);
+  return response.data;
+};
+
+axiosInstance.getEvolutionConcepts = async (domain?: string) => {
+  const params = domain ? `?domain=${encodeURIComponent(domain)}` : '';
+  const response = await axiosInstance.get(`/api/evolution/concepts${params}`);
+  return response.data;
+};
+
+axiosInstance.getEvolutionDomainSummary = async () => {
+  const response = await axiosInstance.get('/api/evolution/domain-summary');
+  return response.data;
+};
+
+axiosInstance.recalculateEvolution = async () => {
+  const response = await axiosInstance.post('/api/evolution/recalculate');
   return response.data;
 };
 

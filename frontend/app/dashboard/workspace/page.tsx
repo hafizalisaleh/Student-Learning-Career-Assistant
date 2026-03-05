@@ -450,7 +450,7 @@ function WorkspaceContent() {
                                                         <FileText className="w-3 h-3" />
                                                         Selected from Page {selectedText.page}
                                                     </span>
-                                                    <button onClick={() => setSelectedText(null)} className="p-1 hover:bg-[var(--bg-tertiary)] rounded-full text-[var(--text-tertiary)] hover:bg-white/20 transition-colors flex items-center justify-center h-5 w-5">
+                                                    <button onClick={() => setSelectedText(null)} className="p-1 hover:bg-[var(--bg-tertiary)] rounded-full text-[var(--text-tertiary)] transition-colors flex items-center justify-center h-5 w-5">
                                                         <X size={12} />
                                                     </button>
                                                 </div>

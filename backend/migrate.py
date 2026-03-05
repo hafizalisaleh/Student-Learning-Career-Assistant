@@ -23,6 +23,10 @@ from summarizer.models import Summary
 from quizzes.models import Quiz, QuizQuestion, QuizAttempt
 from progress.models import UserProgress, ActivityLog
 from career.models import Resume, ResumeAnalysis, CareerRecommendation
+from knowledge_timeline.models import (
+    Concept, DocumentConceptLink, ConceptSnapshot,
+    ConceptRelationship, UserConceptState
+)
 from utils.logger import logger
 
 def create_tables():
@@ -151,6 +155,7 @@ if __name__ == "__main__":
         reset_database()
     elif command == "check":
         check_database()
+        
     elif command == "help":
         show_help()
     else:

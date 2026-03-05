@@ -34,6 +34,7 @@ export default function RootLayout({
                     theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
                   }
                   document.documentElement.setAttribute('data-theme', theme);
+                  if (theme === 'dark') document.documentElement.classList.add('dark');
                 } catch (e) {}
               })();
             `,

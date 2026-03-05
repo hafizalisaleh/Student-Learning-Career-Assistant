@@ -37,9 +37,11 @@ import {
   Play,
   Send,
   Wand2,
+  Plus,
+  Calendar,
 } from 'lucide-react';
-import type { Document, Note, Summary } from '@/lib/types';
-import { formatDate, formatFileSize } from '@/lib/utils';
+import type { Document, Note, Summary, Quiz } from '@/lib/types';
+import { formatDate, formatFileSize, getDifficultyBadgeClass } from '@/lib/utils';
 import toast from 'react-hot-toast';
 import { cn } from '@/lib/utils';
 import { Breadcrumb } from '@/components/ui/breadcrumb';
@@ -55,7 +57,7 @@ const getMermaid = async () => {
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
-type TabType = 'content' | 'info' | 'notes' | 'summaries' | 'mindmap' | 'diagrams';
+type TabType = 'content' | 'info' | 'notes' | 'quizzes' | 'summaries' | 'mindmap' | 'diagrams';
 type SummaryLength = 'short' | 'medium' | 'detailed';
 type DiagramType = 'flowchart' | 'sequence' | 'er' | 'state' | 'class';
 
@@ -79,6 +81,7 @@ export default function DocumentDetailPage() {
   // Artifacts state
   const [notes, setNotes] = useState<Note[]>([]);
   const [summaries, setSummaries] = useState<Summary[]>([]);
+  const [quizzes, setQuizzes] = useState<Quiz[]>([]);
   const [isLoadingArtifacts, setIsLoadingArtifacts] = useState(false);
 
   // Mind map state
@@ -137,12 +140,19 @@ export default function DocumentDetailPage() {
   async function fetchArtifacts() {
     try {
       setIsLoadingArtifacts(true);
-      const [notesData, summariesData] = await Promise.all([
+      const [notesData, summariesData, quizzesData] = await Promise.all([
         api.getNotesByDocument(documentId),
-        api.getSummariesByDocument(documentId)
+        api.getSummariesByDocument(documentId),
+        api.getQuizzes()
       ]);
       setNotes(notesData || []);
       setSummaries(summariesData || []);
+
+      // Filter quizzes by document ID
+      const filteredQuizzes = (quizzesData || []).filter((quiz: Quiz) =>
+        quiz.document_references?.some(ref => ref === documentId)
+      );
+      setQuizzes(filteredQuizzes);
     } catch (error) {
       console.error('Failed to load artifacts:', error);
     } finally {
@@ -212,7 +222,7 @@ export default function DocumentDetailPage() {
   };
 
   const handleQuickQuiz = () => {
-    router.push(`/dashboard/quizzes/new?document=${documentId}`);
+    setActiveTab('quizzes');
   };
 
   const generateMindmap = async () => {
@@ -326,7 +336,7 @@ export default function DocumentDetailPage() {
       if (mindmapRef.current) {
         mindmapRef.current.innerHTML = `
           <div class="text-center p-8">
-            <p class="text-red-400 mb-4">Failed to render mind map</p>
+            <p class="text-[var(--error)] mb-4">Failed to render mind map</p>
             <pre class="text-xs text-left bg-[var(--bg-elevated)] p-4 rounded-lg overflow-auto max-h-64">${mindmapCode}</pre>
           </div>
         `;
@@ -352,7 +362,7 @@ export default function DocumentDetailPage() {
       if (diagramRef.current) {
         diagramRef.current.innerHTML = `
           <div class="text-center p-8">
-            <p class="text-red-400 mb-4">Failed to render diagram</p>
+            <p class="text-[var(--error)] mb-4">Failed to render diagram</p>
             <pre class="text-xs text-left bg-[var(--bg-elevated)] p-4 rounded-lg overflow-auto max-h-64">${diagramCode}</pre>
           </div>
         `;
@@ -590,6 +600,7 @@ export default function DocumentDetailPage() {
     { id: 'content', label: 'Content', icon: FileText },
     { id: 'info', label: 'Details', icon: Info },
     { id: 'notes', label: `Notes (${notes.length})`, icon: Lightbulb },
+    { id: 'quizzes', label: `Quizzes (${quizzes.length})`, icon: ClipboardCheck },
     { id: 'summaries', label: `Summaries (${summaries.length})`, icon: Sparkles },
     { id: 'mindmap', label: 'Mind Map', icon: Share2 },
     { id: 'diagrams', label: 'Diagrams', icon: Workflow },
@@ -855,6 +866,65 @@ export default function DocumentDetailPage() {
                 <Link href={`/dashboard/notes/new?document=${documentId}`}>
                   <Button variant="secondary" size="sm">
                     Create First Note
+                  </Button>
+                </Link>
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'quizzes' && (
+          <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-[var(--text-primary)]">Document Quizzes</h3>
+              <Link href={`/dashboard/quizzes/new?document=${documentId}`}>
+                <Button variant="default" size="sm">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Generate New Quiz
+                </Button>
+              </Link>
+            </div>
+
+            {isLoadingArtifacts ? (
+              <div className="flex justify-center py-12">
+                <LoadingSpinner size="lg" />
+              </div>
+            ) : quizzes.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {quizzes.map((quiz) => (
+                  <div key={quiz.id} className="p-4 rounded-xl bg-[var(--card-bg)] border border-[var(--card-border)] hover:border-[var(--accent-blue)] transition-all group flex flex-col">
+                    <div className="flex items-start justify-between mb-2">
+                      <h4 className="font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-blue)] line-clamp-1">{quiz.title}</h4>
+                      <span className={cn(
+                        "px-2 py-0.5 rounded-full text-[10px] font-medium uppercase",
+                        getDifficultyBadgeClass((quiz as any).difficulty || quiz.difficulty_level || 'medium')
+                      )}>
+                        {(quiz as any).difficulty || quiz.difficulty_level || 'Medium'}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs text-[var(--text-tertiary)] mb-4">
+                      <Calendar className="h-3.5 w-3.5" />
+                      {formatDate(quiz.created_at)}
+                    </div>
+
+                    <div className="mt-auto pt-2">
+                      <Link href={`/dashboard/quizzes/${quiz.id}`} className="block">
+                        <Button variant="secondary" size="sm" className="w-full">
+                          <Play className="h-3.5 w-3.5 mr-2" />
+                          Take Quiz
+                        </Button>
+                      </Link>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-12 rounded-2xl bg-[var(--card-bg)] border border-dashed border-[var(--card-border)]">
+                <ClipboardCheck className="h-12 w-12 text-[var(--text-tertiary)] mx-auto mb-4" />
+                <p className="text-[var(--text-secondary)] mb-4">No quizzes generated for this document yet.</p>
+                <Link href={`/dashboard/quizzes/new?document=${documentId}`}>
+                  <Button variant="secondary" size="sm">
+                    Generate First Quiz
                   </Button>
                 </Link>
               </div>

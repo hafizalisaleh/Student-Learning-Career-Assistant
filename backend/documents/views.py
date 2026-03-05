@@ -113,6 +113,22 @@ def process_document_background(document_id: str):
                 
                 doc.processing_status = ProcessingStatus.COMPLETED
                 logger.info(f"Document {document_id} processed successfully with topics: {doc.topics[:3]}")
+
+                # Knowledge Evolution: match concepts and record snapshots
+                try:
+                    from knowledge_timeline.concept_matcher import concept_matcher
+                    from knowledge_timeline.snapshot_service import snapshot_service
+                    concept_ids = concept_matcher.process_document_concepts(
+                        db, document_id, str(doc.user_id), topic_data
+                    )
+                    if concept_ids:
+                        snapshot_service.record_document_upload_snapshots(
+                            db, str(doc.user_id), document_id
+                        )
+                        logger.info(f"Knowledge evolution: linked {len(concept_ids)} concepts for document {document_id}")
+                except Exception as evo_err:
+                    logger.warning(f"Knowledge evolution processing failed (non-critical): {evo_err}")
+
             else:
                 # If extraction fails, mark as completed but without topics
                 doc.processing_status = ProcessingStatus.COMPLETED

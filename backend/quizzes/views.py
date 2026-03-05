@@ -178,6 +178,7 @@ def generate_quiz(
         difficulty_level=new_quiz.difficulty_level,
         question_type=new_quiz.question_type,
         created_at=new_quiz.created_at,
+        document_references=new_quiz.document_references,
         questions=[
             QuestionResponse(
                 id=q.id,
@@ -222,6 +223,7 @@ def list_quizzes(
             difficulty_level=quiz.difficulty_level,
             question_type=quiz.question_type,
             created_at=quiz.created_at,
+            document_references=quiz.document_references,
             questions=[
                 QuestionResponse(
                     id=q.id,
@@ -386,6 +388,7 @@ def get_quiz(
         difficulty_level=quiz.difficulty_level,
         question_type=quiz.question_type,
         created_at=quiz.created_at,
+        document_references=quiz.document_references,
         questions=[
             QuestionResponse(
                 id=q.id,
@@ -625,7 +628,17 @@ def submit_quiz(
         ]
         
         logger.info(f"Quiz submission successful: Score {evaluation['score']}%, Correct {evaluation['correct_answers']}/{evaluation['total_questions']}")
-        
+
+        # Knowledge Evolution: record quiz snapshot
+        try:
+            from knowledge_timeline.snapshot_service import snapshot_service
+            doc_ids = quiz.document_references or []
+            if doc_ids:
+                snapshot_service.record_quiz_snapshot(db, str(current_user.id), [str(d) for d in doc_ids])
+                db.commit()
+        except Exception as evo_err:
+            logger.warning(f"Knowledge evolution quiz snapshot failed (non-critical): {evo_err}")
+
         return QuizResultResponse(
             attempt_id=new_attempt.id,
             quiz_id=quiz.id,

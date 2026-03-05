@@ -108,7 +108,15 @@ async def generate_notes(
         db.refresh(new_note)
         
         logger.info(f"Notes saved successfully with ID: {new_note.id}")
-        
+
+        # Knowledge Evolution: record note snapshot
+        try:
+            from knowledge_timeline.snapshot_service import snapshot_service
+            snapshot_service.record_note_snapshot(db, str(current_user.id), str(new_note.document_id))
+            db.commit()
+        except Exception as evo_err:
+            logger.warning(f"Knowledge evolution note snapshot failed (non-critical): {evo_err}")
+
         return NoteResponse.from_orm(new_note)
         
     except HTTPException:
@@ -153,6 +161,14 @@ async def create_study_note(
     db.refresh(new_note)
 
     logger.info(f"Study note created: {new_note.id} for document {document.id}")
+
+    # Knowledge Evolution: record note snapshot
+    try:
+        from knowledge_timeline.snapshot_service import snapshot_service
+        snapshot_service.record_note_snapshot(db, str(current_user.id), str(new_note.document_id))
+        db.commit()
+    except Exception as evo_err:
+        logger.warning(f"Knowledge evolution study note snapshot failed (non-critical): {evo_err}")
 
     return NoteResponse.from_orm(new_note)
 
@@ -264,6 +280,15 @@ def update_note(
     db.refresh(note)
 
     logger.info(f"Note {note_id} updated by user {current_user.email}")
+
+    # Knowledge Evolution: record note update snapshot (only if content changed)
+    if note_data.content is not None:
+        try:
+            from knowledge_timeline.snapshot_service import snapshot_service
+            snapshot_service.record_note_snapshot(db, str(current_user.id), str(note.document_id))
+            db.commit()
+        except Exception as evo_err:
+            logger.warning(f"Knowledge evolution note update snapshot failed (non-critical): {evo_err}")
 
     return NoteResponse.from_orm(note)
 

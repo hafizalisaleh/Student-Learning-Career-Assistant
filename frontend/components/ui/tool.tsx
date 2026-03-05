@@ -19,10 +19,10 @@ import { useState } from "react"
 export type ToolPart = {
   type: string
   state:
-    | "input-streaming"
-    | "input-available"
-    | "output-available"
-    | "output-error"
+  | "input-streaming"
+  | "input-available"
+  | "output-available"
+  | "output-error"
   input?: Record<string, unknown>
   output?: Record<string, unknown>
   toolCallId?: string
@@ -107,7 +107,7 @@ const Tool = ({ toolPart, defaultOpen = false, className }: ToolProps) => {
           <span
             className={cn(
               baseClasses,
-              "bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400"
+              "bg-[var(--bg-tertiary)] text-[var(--text-secondary)]"
             )}
           >
             Pending

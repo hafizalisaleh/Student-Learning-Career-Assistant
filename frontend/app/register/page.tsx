@@ -126,7 +126,7 @@ export default function RegisterPage() {
 
             <Button
               type="submit"
-              variant="primary"
+              variant="default"
               className="w-full"
               isLoading={isLoading}
               disabled={isLoading}

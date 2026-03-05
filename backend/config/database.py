@@ -43,6 +43,10 @@ def init_db():
     from quizzes.models import Quiz, QuizQuestion, QuizAttempt
     from progress.models import UserProgress, ActivityLog
     from career.models import Resume, ResumeAnalysis, CareerRecommendation
-    
+    from knowledge_timeline.models import (
+        Concept, DocumentConceptLink, ConceptSnapshot,
+        ConceptRelationship, UserConceptState
+    )
+
     # Create all tables
     Base.metadata.create_all(bind=engine)

@@ -16,6 +16,7 @@ from progress.views import router as progress_router
 from career.views import router as career_router
 from core.views import router as vectors_router
 from voice.views import router as voice_router
+from knowledge_timeline.views import router as knowledge_timeline_router
 from utils.logger import logger
 import traceback
 
@@ -97,13 +98,21 @@ async def global_exception_handler(request: Request, exc: Exception):
     logger.error(f"Unhandled exception: {str(exc)}")
     logger.error(traceback.format_exc())
     
-    return JSONResponse(
+    response = JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={
             "detail": "Internal server error occurred",
             "path": str(request.url)
         }
     )
+    
+    # Manually add CORS headers for exception responses
+    origin = request.headers.get("origin")
+    if origin in settings.cors_origins:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        
+    return response
 
 # Validation error handler
 @app.exception_handler(RequestValidationError)
@@ -111,13 +120,21 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     """Handle validation errors"""
     logger.warning(f"Validation error: {exc.errors()}")
     
-    return JSONResponse(
+    response = JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content={
             "detail": "Validation error",
             "errors": exc.errors()
         }
     )
+    
+    # Manually add CORS headers for exception responses
+    origin = request.headers.get("origin")
+    if origin in settings.cors_origins:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        
+    return response
 
 # Include routers
 app.include_router(users_router)
@@ -129,6 +146,7 @@ app.include_router(progress_router)
 app.include_router(career_router)
 app.include_router(vectors_router)
 app.include_router(voice_router)
+app.include_router(knowledge_timeline_router)
 
 @app.get("/")
 def read_root():
