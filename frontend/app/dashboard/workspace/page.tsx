@@ -42,6 +42,7 @@ function WorkspaceContent() {
     const documentId = searchParams.get('id');
     const [docUrl, setDocUrl] = useState<string | null>(null);
     const [docTitle, setDocTitle] = useState<string>('');
+    const [docContentType, setDocContentType] = useState<string | null>(null);
 
     const [selectedText, setSelectedText] = useState<{ text: string; page: number } | null>(null);
     const [chatInput, setChatInput] = useState('');
@@ -63,9 +64,16 @@ function WorkspaceContent() {
     useEffect(() => {
         if (documentId) {
             api.getDocument(documentId).then(doc => {
+                setDocTitle(doc.title || '');
+                setDocContentType(doc.content_type || null);
+
+                if (doc.content_type?.toLowerCase() !== 'pdf') {
+                    setDocUrl(null);
+                    return;
+                }
+
                 const url = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/documents/${documentId}/file`;
                 setDocUrl(url);
-                setDocTitle(doc.title || '');
             }).catch(err => console.error("Error loading document:", err));
 
             // Load existing study note from DB
@@ -238,6 +246,38 @@ function WorkspaceContent() {
                         Back to Documents
                     </Button>
                 </Link>
+            </div>
+        );
+    }
+
+    if (docContentType && docContentType.toLowerCase() !== 'pdf') {
+        return (
+            <div className="flex min-h-[60vh] items-center justify-center px-4">
+                <div className="max-w-xl rounded-3xl border border-[var(--card-border)] bg-[var(--card-bg)] p-8 text-center shadow-sm">
+                    <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--bg-secondary)] text-[var(--text-secondary)]">
+                        <FileText className="h-6 w-6" />
+                    </div>
+                    <h1 className="text-xl font-semibold text-[var(--text-primary)]">
+                        Study workspace is available for PDF documents
+                    </h1>
+                    <p className="mt-2 text-sm text-[var(--text-secondary)]">
+                        {docTitle || 'This document'} can still be used for notes, summaries, quizzes, and AI chat from the document details page, but the split-screen workspace needs a PDF preview.
+                    </p>
+                    <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
+                        <Link href={`/dashboard/documents/${documentId}`}>
+                            <Button variant="default">
+                                <ArrowLeft className="h-4 w-4 mr-2" />
+                                Back to Document
+                            </Button>
+                        </Link>
+                        <Link href={`/dashboard/notes/new?document=${documentId}`}>
+                            <Button variant="secondary">
+                                <BookOpen className="h-4 w-4 mr-2" />
+                                Create Notes
+                            </Button>
+                        </Link>
+                    </div>
+                </div>
             </div>
         );
     }

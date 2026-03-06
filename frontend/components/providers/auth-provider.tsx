@@ -23,7 +23,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (isLoading) return;
 
     // Public routes that don't require auth
-    const publicRoutes = ['/', '/login', '/register'];
+    const publicRoutes = ['/', '/login', '/register', '/reset-password', '/terms', '/privacy'];
 
     // Redirect to login if not authenticated and not on a public route
     if (!isAuthenticated && !publicRoutes.includes(pathname)) {

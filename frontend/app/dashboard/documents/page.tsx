@@ -31,6 +31,10 @@ import { cn } from '@/lib/utils';
 
 type UploadStatus = 'idle' | 'uploading' | 'processing' | 'success' | 'error';
 
+function supportsStudyWorkspace(contentType?: string) {
+  return contentType?.toLowerCase() === 'pdf';
+}
+
 export default function DocumentsPage() {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -375,11 +379,14 @@ export default function DocumentsPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredDocuments.map((doc) => (
-            <div
-              key={doc.id}
-              className="group rounded-2xl bg-[var(--card-bg)] backdrop-blur-xl border border-[var(--card-border)] hover:border-[var(--card-border-hover)] transition-all duration-200 overflow-hidden"
-            >
+          {filteredDocuments.map((doc) => {
+            const canOpenWorkspace = supportsStudyWorkspace(doc.content_type);
+
+            return (
+              <div
+                key={doc.id}
+                className="group rounded-2xl bg-[var(--card-bg)] backdrop-blur-xl border border-[var(--card-border)] hover:border-[var(--card-border-hover)] transition-all duration-200 overflow-hidden"
+              >
               {/* Thumbnail Preview */}
               {doc.thumbnail_path && (
                 <div className="relative w-full h-40 bg-[var(--bg-secondary)] border-b border-[var(--card-border)] overflow-hidden">
@@ -440,17 +447,28 @@ export default function DocumentsPage() {
 
                 {/* Actions */}
                 <div className="flex flex-wrap gap-2 pt-3 border-t border-[var(--card-border)]">
-                  <Link href={`/dashboard/workspace?id=${doc.id}`} className="flex-1">
-                    <Button variant="default" size="sm" className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 border-0">
-                      <Sparkles className="h-4 w-4 mr-2" />
-                      Open Workspace
-                    </Button>
-                  </Link>
-                  <Link href={`/dashboard/documents/${doc.id}`} title="View Details">
-                    <Button variant="secondary" size="sm">
-                      <FileText className="h-4 w-4" />
-                    </Button>
-                  </Link>
+                  {canOpenWorkspace ? (
+                    <Link href={`/dashboard/workspace?id=${doc.id}`} className="flex-1">
+                      <Button variant="default" size="sm" className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 border-0 hover:from-blue-700 hover:to-indigo-700">
+                        <Sparkles className="h-4 w-4 mr-2" />
+                        Open Workspace
+                      </Button>
+                    </Link>
+                  ) : (
+                    <Link href={`/dashboard/documents/${doc.id}`} className="flex-1">
+                      <Button variant="default" size="sm" className="w-full">
+                        <FileText className="h-4 w-4 mr-2" />
+                        View Details
+                      </Button>
+                    </Link>
+                  )}
+                  {canOpenWorkspace && (
+                    <Link href={`/dashboard/documents/${doc.id}`} title="View Details">
+                      <Button variant="secondary" size="sm">
+                        <FileText className="h-4 w-4" />
+                      </Button>
+                    </Link>
+                  )}
                   {doc.file_url && (
                     <a
                       href={doc.file_url}
@@ -473,7 +491,8 @@ export default function DocumentsPage() {
                 </div>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

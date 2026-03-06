@@ -61,6 +61,10 @@ type TabType = 'content' | 'info' | 'notes' | 'quizzes' | 'summaries' | 'mindmap
 type SummaryLength = 'short' | 'medium' | 'detailed';
 type DiagramType = 'flowchart' | 'sequence' | 'er' | 'state' | 'class';
 
+function supportsStudyWorkspace(contentType?: string) {
+  return contentType?.toLowerCase() === 'pdf';
+}
+
 const DIAGRAM_TYPES: { type: DiagramType; label: string; icon: any; description: string }[] = [
   { type: 'flowchart', label: 'Flowchart', icon: Workflow, description: 'Process & workflow visualization' },
   { type: 'sequence', label: 'Sequence', icon: GitBranch, description: 'Interaction & communication flow' },
@@ -596,6 +600,8 @@ export default function DocumentDetailPage() {
     return null;
   }
 
+  const canOpenWorkspace = supportsStudyWorkspace(document.content_type);
+
   const tabs = [
     { id: 'content', label: 'Content', icon: FileText },
     { id: 'info', label: 'Details', icon: Info },
@@ -633,12 +639,14 @@ export default function DocumentDetailPage() {
               </Button>
             </a>
           )}
-          <Link href={`/dashboard/workspace?id=${documentId}`}>
-            <Button variant="secondary" size="sm">
-              <Play className="h-4 w-4 mr-2" />
-              Study
-            </Button>
-          </Link>
+          {canOpenWorkspace && (
+            <Link href={`/dashboard/workspace?id=${documentId}`}>
+              <Button variant="secondary" size="sm">
+                <Play className="h-4 w-4 mr-2" />
+                Study
+              </Button>
+            </Link>
+          )}
           <Button
             variant="ghost"
             size="sm"
@@ -802,12 +810,18 @@ export default function DocumentDetailPage() {
                   <ClipboardCheck className="h-4 w-4 mr-2" />
                   Quiz
                 </Button>
-                <Link href={`/dashboard/workspace?id=${documentId}`} className="w-full">
-                  <Button variant="secondary" className="w-full">
-                    <Play className="h-4 w-4 mr-2" />
-                    Study Mode
-                  </Button>
-                </Link>
+                {canOpenWorkspace ? (
+                  <Link href={`/dashboard/workspace?id=${documentId}`} className="w-full">
+                    <Button variant="secondary" className="w-full">
+                      <Play className="h-4 w-4 mr-2" />
+                      Study Mode
+                    </Button>
+                  </Link>
+                ) : (
+                  <div className="col-span-2 rounded-xl border border-dashed border-[var(--card-border)] bg-[var(--bg-secondary)] px-4 py-3 text-sm text-[var(--text-secondary)]">
+                    Study workspace is currently available for PDF documents only.
+                  </div>
+                )}
                 <Button variant="secondary" className="w-full" onClick={() => { setActiveTab('mindmap'); if (!mindmapCode) generateMindmap(); }}>
                   <Network className="h-4 w-4 mr-2" />
                   Mind Map
