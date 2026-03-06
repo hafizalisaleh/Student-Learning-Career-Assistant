@@ -10,6 +10,7 @@ from documents.models import Document, ProcessingStatus
 from users.auth import get_current_user
 from users.models import User
 from summarizer.summarizer import summarizer
+from core.generation_thresholds import MIN_GENERATION_CONTENT_CHARS
 from core.rag_retriever import rag_retriever
 from utils.logger import logger
 
@@ -73,10 +74,13 @@ async def generate_summary(
         logger.info(f"Content extracted successfully, length: {len(content)} characters")
         
         # Check minimum content length
-        if len(content) < 100:
+        if len(content) < MIN_GENERATION_CONTENT_CHARS:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Document content is too short for summarization (minimum 100 characters required)"
+                detail=(
+                    "Document content is too short for summarization "
+                    f"(minimum {MIN_GENERATION_CONTENT_CHARS} characters required)"
+                )
             )
         
         # Generate summary using Gemini AI

@@ -11,6 +11,7 @@ from documents.models import Document, ProcessingStatus
 from users.auth import get_current_user
 from users.models import User
 from notes.generator import notes_generator
+from core.generation_thresholds import MIN_GENERATION_CONTENT_CHARS
 from core.rag_retriever import rag_retriever
 from docx import Document as DocxDocument
 from docx.shared import Inches, Pt, RGBColor
@@ -76,6 +77,15 @@ async def generate_notes(
             )
 
         logger.info(f"Content extracted successfully, length: {len(content)} characters")
+
+        if len(content) < MIN_GENERATION_CONTENT_CHARS:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "Document content is too short for note generation "
+                    f"(minimum {MIN_GENERATION_CONTENT_CHARS} characters required)"
+                )
+            )
         
         # Generate notes using Gemini AI
         try:

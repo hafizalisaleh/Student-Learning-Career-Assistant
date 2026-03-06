@@ -1,10 +1,11 @@
 """
 Document API endpoints
 """
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, BackgroundTasks
 from fastapi.responses import JSONResponse, FileResponse
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 import validators
 from config.database import get_db
 from documents.models import Document, ContentType, ProcessingStatus
@@ -19,6 +20,49 @@ from core.rag_pipeline import rag_pipeline
 from documents.topic_extractor import topic_extractor
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
+
+
+def _merge_doc_metadata(existing: Optional[Dict[str, Any]], **updates: Any) -> Dict[str, Any]:
+    """Create a new document metadata payload without mutating the existing JSON object in-place."""
+    metadata = dict(existing or {})
+    for key, value in updates.items():
+        if value is not None:
+            metadata[key] = value
+    return metadata
+
+
+def _cleanup_document_quizzes(db: Session, document_id: str, user_id: str) -> Dict[str, int]:
+    """Delete or detach quizzes that reference a document being removed."""
+    from quizzes.models import Quiz, QuizAttempt, QuizQuestion
+
+    deleted_quizzes = 0
+    updated_quizzes = 0
+
+    quizzes = db.query(Quiz).filter(
+        Quiz.user_id == user_id,
+        Quiz.document_references.contains([document_id])
+    ).all()
+
+    for quiz in quizzes:
+        remaining_references = [
+            ref for ref in (quiz.document_references or [])
+            if ref != document_id
+        ]
+
+        if remaining_references:
+            quiz.document_references = remaining_references
+            updated_quizzes += 1
+            continue
+
+        db.query(QuizQuestion).filter(QuizQuestion.quiz_id == quiz.id).delete()
+        db.query(QuizAttempt).filter(QuizAttempt.quiz_id == quiz.id).delete()
+        db.delete(quiz)
+        deleted_quizzes += 1
+
+    return {
+        "deleted_quizzes": deleted_quizzes,
+        "updated_quizzes": updated_quizzes,
+    }
 
 def process_document_background(document_id: str):
     """
@@ -45,11 +89,19 @@ def process_document_background(document_id: str):
         if doc.content_type in [ContentType.YOUTUBE, ContentType.ARTICLE]:
             logger.info(f"URL document {document_id} - skipping content extraction at upload")
             doc.processing_status = ProcessingStatus.COMPLETED
-            doc.doc_metadata = {
-                "type": "url",
-                "extraction": "on-demand",
-                "note": "Content will be extracted when needed for summaries/notes/quizzes"
-            }
+            doc.doc_metadata = _merge_doc_metadata(
+                doc.doc_metadata,
+                type="url",
+                extraction="on-demand",
+                indexed=False,
+                embeddings_stored=False,
+                ready_for_generation=True,
+                extracted_text_available=False,
+                processing_stage="completed",
+                enrichment_status="skipped",
+                generation_ready_at=datetime.now(timezone.utc).isoformat(),
+                note="Content will be extracted when needed for summaries/notes/quizzes",
+            )
             db.commit()
             return
         
@@ -62,91 +114,179 @@ def process_document_background(document_id: str):
 
         # For file uploads, update status to processing
         doc.processing_status = ProcessingStatus.PROCESSING
+        doc.doc_metadata = _merge_doc_metadata(
+            doc.doc_metadata,
+            ready_for_generation=False,
+            extracted_text_available=False,
+            processing_stage="extracting",
+            enrichment_status="pending",
+        )
         db.commit()
         
         # Extract content for topic analysis and create embeddings
         extracted_text = ""
-        try:
-            logger.info(f"[Background] Calling RAG pipeline for {document_id}, file: {doc.file_path}")
+        logger.info(f"[Background] Calling RAG pipeline for {document_id}, file: {doc.file_path}")
 
-            # Pass document_id to store embeddings in vector store
-            result = rag_pipeline.process_document(
-                file_path=doc.file_path,
-                document_id=document_id,
-                store_embeddings=True
+        # Pass document_id to store embeddings in vector store
+        result = rag_pipeline.process_document(
+            file_path=doc.file_path,
+            document_id=document_id,
+            store_embeddings=True
+        )
+
+        logger.info(
+            f"[Background] RAG pipeline result for {document_id}: "
+            f"success={result.get('success')}, embeddings_stored={result.get('embeddings_stored')}, "
+            f"chunk_count={result.get('chunk_count')}"
+        )
+
+        db.expire_all()
+        doc = db.query(Document).filter(Document.id == document_id).first()
+        if not doc:
+            if result.get("embeddings_stored"):
+                rag_pipeline.delete_document_embeddings(document_id)
+            logger.info(f"Document {document_id} was deleted while processing; cleaned up extracted embeddings")
+            return
+
+        if not result.get("success"):
+            error_message = result.get("error") or "Content extraction failed"
+            doc.processing_status = ProcessingStatus.FAILED
+            doc.doc_metadata = _merge_doc_metadata(
+                doc.doc_metadata,
+                indexed=False,
+                embeddings_stored=False,
+                ready_for_generation=False,
+                extracted_text_available=False,
+                processing_stage="failed",
+                enrichment_status="skipped",
+                error=error_message,
+                note="Document upload succeeded, but extraction/indexing failed.",
+            )
+            db.commit()
+            logger.warning(f"Document {document_id} extraction failed: {error_message}")
+            return
+
+        extracted_text = (result.get("text") or "").strip()
+        if not extracted_text:
+            doc.processing_status = ProcessingStatus.FAILED
+            doc.doc_metadata = _merge_doc_metadata(
+                doc.doc_metadata,
+                indexed=False,
+                embeddings_stored=False,
+                ready_for_generation=False,
+                extracted_text_available=False,
+                processing_stage="failed",
+                enrichment_status="skipped",
+                error="No extractable text was found in the uploaded document.",
+                note="The document uploaded successfully, but no readable text could be extracted.",
+            )
+            db.commit()
+            logger.warning(f"Document {document_id} contains no extractable text")
+            return
+
+        topic_error_message = None
+        try:
+            logger.info(f"Extracting topics for document {document_id}")
+            topic_data = topic_extractor.extract_topics_and_domains(
+                extracted_text,
+                doc.original_filename
+            )
+        except Exception as topic_error:
+            topic_error_message = str(topic_error)
+            logger.warning(f"Topic extraction failed for {document_id}: {topic_error_message}")
+            topic_data = {
+                "topics": [],
+                "domains": [],
+                "keywords": [],
+                "subject_area": "General",
+                "difficulty_level": "intermediate",
+                "technical_skills": [],
+                "concepts": [],
+                "technologies": [],
+                "programming_languages": [],
+                "extraction_confidence": "low",
+                "extraction_method": "failed",
+            }
+
+        # Persist the "ready for generation" state before slower enrichment work starts.
+        doc.vector_db_reference_id = document_id if result.get("embeddings_stored") else None
+        doc.extracted_text = extracted_text
+        doc.topics = topic_data.get('topics', [])
+        doc.domains = topic_data.get('domains', [])
+        doc.keywords = topic_data.get('keywords', [])
+        doc.subject_area = topic_data.get('subject_area', 'General')
+        doc.difficulty_level = topic_data.get('difficulty_level', 'intermediate')
+        doc.processing_status = ProcessingStatus.COMPLETED
+        doc.doc_metadata = _merge_doc_metadata(
+            doc.doc_metadata,
+            indexed=bool(result.get("embeddings_stored")),
+            embeddings_stored=bool(result.get("embeddings_stored")),
+            chunk_count=result.get("chunk_count", 0),
+            indexed_at=datetime.now(timezone.utc).isoformat(),
+            technical_skills=topic_data.get('technical_skills', []),
+            concepts=topic_data.get('concepts', []),
+            technologies=topic_data.get('technologies', []),
+            programming_languages=topic_data.get('programming_languages', []),
+            extraction_confidence=topic_data.get('extraction_confidence', 'medium'),
+            extraction_method=topic_data.get('extraction_method', 'ai'),
+            ready_for_generation=True,
+            extracted_text_available=True,
+            generation_ready_at=datetime.now(timezone.utc).isoformat(),
+            processing_stage="enriching" if not topic_error_message else "completed",
+            enrichment_status="processing" if not topic_error_message else "failed",
+            topic_extraction_failed=bool(topic_error_message),
+            topic_extraction_error=topic_error_message,
+        )
+        db.commit()
+        logger.info(
+            f"Document {document_id} is ready for generation with topics: {doc.topics[:3]}"
+        )
+
+        if topic_error_message:
+            return
+
+        # Knowledge Evolution is enrichment work. It should never block document readiness.
+        try:
+            from knowledge_timeline.concept_matcher import concept_matcher
+            from knowledge_timeline.snapshot_service import snapshot_service
+
+            concept_ids = concept_matcher.process_document_concepts(
+                db, document_id, str(doc.user_id), topic_data
             )
 
-            logger.info(f"[Background] RAG pipeline result for {document_id}: success={result.get('success')}, embeddings_stored={result.get('embeddings_stored')}, chunk_count={result.get('chunk_count')}")
-
-            if result.get("success"):
-                # Store vector DB reference
-                doc.vector_db_reference_id = document_id if result.get("embeddings_stored") else None
-                extracted_text = result.get("text", "")
-                
-                # Extract topics and domains using AI
-                logger.info(f"Extracting topics for document {document_id}")
-                topic_data = topic_extractor.extract_topics_and_domains(
-                    extracted_text,
-                    doc.original_filename
+            if concept_ids:
+                snapshot_service.record_document_upload_snapshots(
+                    db, str(doc.user_id), document_id
                 )
-                
-                # Store topic data in document
-                doc.topics = topic_data.get('topics', [])
-                doc.domains = topic_data.get('domains', [])
-                doc.keywords = topic_data.get('keywords', [])
-                doc.subject_area = topic_data.get('subject_area', 'General')
-                doc.difficulty_level = topic_data.get('difficulty_level', 'intermediate')
-                
-                # Store comprehensive metadata
-                doc.doc_metadata = {
-                    "indexed": True,
-                    "embeddings_stored": result.get("embeddings_stored", False),
-                    "chunk_count": result.get("chunk_count", 0),
-                    "indexed_at": str(doc.upload_date),
-                    "technical_skills": topic_data.get('technical_skills', []),
-                    "concepts": topic_data.get('concepts', []),
-                    "technologies": topic_data.get('technologies', []),
-                    "programming_languages": topic_data.get('programming_languages', []),
-                    "extraction_confidence": topic_data.get('extraction_confidence', 'medium'),
-                    "extraction_method": topic_data.get('extraction_method', 'ai')
-                }
-                
-                doc.processing_status = ProcessingStatus.COMPLETED
-                logger.info(f"Document {document_id} processed successfully with topics: {doc.topics[:3]}")
-
-                # Knowledge Evolution: match concepts and record snapshots
-                try:
-                    from knowledge_timeline.concept_matcher import concept_matcher
-                    from knowledge_timeline.snapshot_service import snapshot_service
-                    concept_ids = concept_matcher.process_document_concepts(
-                        db, document_id, str(doc.user_id), topic_data
-                    )
-                    if concept_ids:
-                        snapshot_service.record_document_upload_snapshots(
-                            db, str(doc.user_id), document_id
-                        )
-                        logger.info(f"Knowledge evolution: linked {len(concept_ids)} concepts for document {document_id}")
-                except Exception as evo_err:
-                    logger.warning(f"Knowledge evolution processing failed (non-critical): {evo_err}")
-
+                doc.doc_metadata = _merge_doc_metadata(
+                    doc.doc_metadata,
+                    enrichment_status="completed",
+                    processing_stage="completed",
+                    concept_link_count=len(concept_ids),
+                    enriched_at=datetime.now(timezone.utc).isoformat(),
+                )
+                db.commit()
+                logger.info(
+                    f"Knowledge evolution: linked {len(concept_ids)} concepts for document {document_id}"
+                )
             else:
-                # If extraction fails, mark as completed but without topics
-                doc.processing_status = ProcessingStatus.COMPLETED
-                doc.doc_metadata = {
-                    "indexed": False,
-                    "note": "File uploaded successfully, content extraction failed"
-                }
-                logger.warning(f"Document {document_id} extraction failed: {result.get('error')}")
-        except Exception as extract_error:
-            logger.error(f"Topic extraction failed for {document_id}: {extract_error}")
-            # Still mark as completed - file is uploaded
-            doc.processing_status = ProcessingStatus.COMPLETED
-            doc.doc_metadata = {
-                "indexed": False,
-                "note": "File uploaded successfully, topic extraction failed"
-            }
-        
-        db.commit()
+                doc.doc_metadata = _merge_doc_metadata(
+                    doc.doc_metadata,
+                    enrichment_status="skipped",
+                    processing_stage="completed",
+                    concept_link_count=0,
+                    enriched_at=datetime.now(timezone.utc).isoformat(),
+                )
+                db.commit()
+        except Exception as evo_err:
+            logger.warning(f"Knowledge evolution processing failed (non-critical): {evo_err}")
+            doc.doc_metadata = _merge_doc_metadata(
+                doc.doc_metadata,
+                enrichment_status="failed",
+                processing_stage="completed",
+                enrichment_error=str(evo_err),
+            )
+            db.commit()
         
     except Exception as e:
         logger.error(f"Error processing document {document_id}: {e}")
@@ -156,7 +296,14 @@ def process_document_background(document_id: str):
             doc = db.query(Document).filter(Document.id == document_id).first()
             if doc:
                 doc.processing_status = ProcessingStatus.FAILED
-                doc.doc_metadata = {"error": str(e)}
+                doc.doc_metadata = _merge_doc_metadata(
+                    doc.doc_metadata,
+                    ready_for_generation=False,
+                    extracted_text_available=bool(doc.extracted_text),
+                    processing_stage="failed",
+                    enrichment_status="failed",
+                    error=str(e),
+                )
                 db.commit()
         except Exception as db_error:
             logger.error(f"Failed to update document status: {db_error}")
@@ -412,16 +559,55 @@ def delete_document(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Document not found"
         )
-    
-    # Delete file if exists
-    if doc.file_path:
-        upload_handler.delete_file(doc.file_path)
-    
-    # Delete from database
+
+    cleanup_warnings: List[str] = []
+    document_id_str = str(doc.id)
+    user_id_str = str(current_user.id)
+    file_path = doc.file_path
+    thumbnail_path = doc.thumbnail_path
+    metadata = doc.doc_metadata or {}
+
+    vector_cleanup = rag_pipeline.delete_document_embeddings(document_id_str)
+    if not vector_cleanup.get("success"):
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=vector_cleanup.get("error", "Failed to delete document embeddings")
+        )
+
+    if metadata.get("file_search_indexed") or metadata.get("file_search_store"):
+        try:
+            from core.file_search_manager import file_search_manager
+
+            file_search_cleanup = file_search_manager.delete_store(document_id_str)
+            if not file_search_cleanup.get("success"):
+                cleanup_warnings.append(
+                    file_search_cleanup.get("error", "Failed to delete file search store")
+                )
+        except Exception as cleanup_error:
+            cleanup_warnings.append(f"Failed to delete file search store: {cleanup_error}")
+
+    quiz_cleanup = _cleanup_document_quizzes(db, document_id_str, user_id_str)
+
     db.delete(doc)
     db.commit()
-    
-    return {"message": "Document deleted successfully"}
+
+    if file_path and not upload_handler.delete_file(file_path):
+        cleanup_warnings.append("Failed to delete uploaded file from disk")
+
+    if thumbnail_path and thumbnail_path != file_path and not upload_handler.delete_file(thumbnail_path):
+        cleanup_warnings.append("Failed to delete document thumbnail from disk")
+
+    response = {
+        "message": "Document deleted successfully",
+        "cleanup": {
+            "deleted_chunks": vector_cleanup.get("deleted_chunks", 0),
+            **quiz_cleanup,
+        },
+    }
+    if cleanup_warnings:
+        response["warnings"] = cleanup_warnings
+
+    return response
 
 @router.get("/{document_id}/content")
 def get_document_content(
@@ -458,6 +644,14 @@ def get_document_content(
     
     # Extract content based on type
     try:
+        if doc.extracted_text:
+            return {
+                "document_id": str(doc.id),
+                "title": doc.title,
+                "content": doc.extracted_text,
+                "metadata": doc.doc_metadata or {},
+                "extracted_at": str(doc.upload_date)
+            }
         if doc.content_type == ContentType.YOUTUBE:
             result = rag_pipeline.process_youtube(doc.file_url)
         elif doc.content_type == ContentType.ARTICLE:
@@ -593,8 +787,10 @@ async def generate_document_mindmap(
 
     # Extract content on-demand
     try:
-        content = None
-        if doc.content_type == ContentType.YOUTUBE:
+        content = doc.extracted_text
+        if content:
+            logger.info(f"Using stored extracted_text for mind map generation")
+        elif doc.content_type == ContentType.YOUTUBE:
             result = rag_pipeline.process_youtube(doc.file_url, store_embeddings=False)
             if result.get("success"):
                 content = result.get("text")
@@ -830,4 +1026,3 @@ async def generate_document_diagram(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Diagram generation failed: {str(e)}"
         )
-

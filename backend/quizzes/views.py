@@ -16,6 +16,7 @@ from users.auth import get_current_user
 from users.models import User
 from quizzes.generator import quiz_generator
 from quizzes.evaluator import quiz_evaluator
+from core.generation_thresholds import MIN_GENERATION_CONTENT_CHARS
 from core.rag_retriever import rag_retriever
 from utils.logger import logger
 
@@ -90,10 +91,13 @@ def generate_quiz(
     combined_content = "\n\n".join(extracted_contents)
     logger.info(f"Combined content length: {len(combined_content)} characters")
 
-    if len(combined_content) < 200:
+    if len(combined_content) < MIN_GENERATION_CONTENT_CHARS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Insufficient content to generate quiz (minimum 200 characters required)."
+            detail=(
+                "Insufficient content to generate quiz "
+                f"(minimum {MIN_GENERATION_CONTENT_CHARS} characters required)."
+            )
         )
     
     # Generate questions based on type

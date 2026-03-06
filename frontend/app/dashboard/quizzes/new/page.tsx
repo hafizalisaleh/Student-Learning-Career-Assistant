@@ -26,6 +26,7 @@ import toast from 'react-hot-toast';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
 import type { Document } from '@/lib/types';
+import { isDocumentReadyForGeneration } from '@/lib/document-status';
 
 const questionTypes = [
   {
@@ -97,7 +98,7 @@ function NewQuizContent() {
         const data = await api.getDocuments();
         const docsArray = Array.isArray(data) ? data : [];
         const completedDocs = docsArray.filter(
-          (doc) => doc.processing_status?.toLowerCase() === 'completed'
+          (doc) => isDocumentReadyForGeneration(doc)
         );
         setDocuments(completedDocs);
 

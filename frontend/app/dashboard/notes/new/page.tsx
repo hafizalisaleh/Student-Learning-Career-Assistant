@@ -13,6 +13,7 @@ import { ArrowLeft, Sparkles, FileText, List, BookOpen, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Link from 'next/link';
 import type { Document } from '@/lib/types';
+import { isDocumentReadyForGeneration } from '@/lib/document-status';
 import { cn } from '@/lib/utils';
 import { Breadcrumb, BreadcrumbItem } from '@/components/ui/breadcrumb';
 import { useSearchParams } from 'next/navigation';
@@ -58,7 +59,7 @@ function NewNoteContent() {
 
         const docsArray = Array.isArray(data) ? data : [];
         const completedDocs = docsArray.filter((doc) =>
-          doc.processing_status?.toLowerCase() === 'completed'
+          isDocumentReadyForGeneration(doc)
         );
 
         setDocuments(completedDocs);

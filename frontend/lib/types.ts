@@ -40,10 +40,14 @@ export interface Document {
   upload_date: string;
   file_size?: number;
   processing_status: 'pending' | 'processing' | 'completed' | 'failed';
+  doc_metadata?: Record<string, any> | null;
   thumbnail_path?: string;
   extracted_text?: string;
   topics?: string[];
+  domains?: string[];
   keywords?: string[];
+  difficulty_level?: string;
+  subject_area?: string;
   created_at: string;
 }
 

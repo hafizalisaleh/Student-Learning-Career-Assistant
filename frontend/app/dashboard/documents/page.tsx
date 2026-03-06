@@ -25,14 +25,31 @@ import {
   Sparkles,
 } from 'lucide-react';
 import type { Document } from '@/lib/types';
+import {
+  getDocumentStatusDescription,
+  isDocumentReadyForGeneration,
+} from '@/lib/document-status';
 import { formatDate, formatFileSize } from '@/lib/utils';
 import toast from 'react-hot-toast';
 import { cn } from '@/lib/utils';
 
-type UploadStatus = 'idle' | 'uploading' | 'processing' | 'success' | 'error';
+type UploadStatus = 'idle' | 'uploading' | 'processing' | 'success' | 'background' | 'error';
+
+const UPLOAD_POLL_INTERVAL_MS = 1500;
+const UPLOAD_TIMEOUT_MS = 60000;
 
 function supportsStudyWorkspace(contentType?: string) {
   return contentType?.toLowerCase() === 'pdf';
+}
+
+function getDeleteConfirmationMessage(doc: Document) {
+  return [
+    `Delete "${doc.title}"?`,
+    '',
+    'This will also remove the uploaded file, extracted text, vector chunks, and any related study content linked to this document.',
+    '',
+    'Related notes, summaries, and single-document quizzes may also be deleted.',
+  ].join('\n');
 }
 
 export default function DocumentsPage() {
@@ -51,16 +68,36 @@ export default function DocumentsPage() {
   const [uploadFileSize, setUploadFileSize] = useState(0);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadError, setUploadError] = useState('');
+  const [uploadStatusMessage, setUploadStatusMessage] = useState('');
 
 
   useEffect(() => {
     fetchDocuments();
   }, []);
 
+  useEffect(() => {
+    const hasActiveProcessing = documents.some((doc) => {
+      const status = doc.processing_status?.toLowerCase();
+      return status === 'pending' || status === 'processing';
+    });
 
-  async function fetchDocuments() {
+    if (!hasActiveProcessing) {
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      fetchDocuments(false);
+    }, 3000);
+
+    return () => window.clearInterval(interval);
+  }, [documents]);
+
+
+  async function fetchDocuments(showLoader: boolean = true) {
     try {
-      setIsLoading(true);
+      if (showLoader) {
+        setIsLoading(true);
+      }
       const data = await api.getDocuments();
       setDocuments(Array.isArray(data) ? data : []);
     } catch (error) {
@@ -68,8 +105,43 @@ export default function DocumentsPage() {
       toast.error('Failed to load documents');
       setDocuments([]);
     } finally {
-      setIsLoading(false);
+      if (showLoader) {
+        setIsLoading(false);
+      }
     }
+  }
+
+  async function waitForDocumentReady(documentId: string) {
+    const startedAt = Date.now();
+    let progressFloor = 92;
+
+    while (Date.now() - startedAt < UPLOAD_TIMEOUT_MS) {
+      const document = await api.getDocument(documentId);
+      const status = document.processing_status?.toLowerCase();
+
+      if (status === 'failed') {
+        throw new Error(
+          document.doc_metadata?.error ||
+          document.doc_metadata?.note ||
+          'Document processing failed after upload'
+        );
+      }
+
+      setUploadStatusMessage(getDocumentStatusDescription(document));
+      setUploadProgress((current) => {
+        const next = Math.min(99, Math.max(current, progressFloor));
+        progressFloor = Math.min(99, next + Math.random() * 4 + 1);
+        return next;
+      });
+
+      if (isDocumentReadyForGeneration(document)) {
+        return document;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, UPLOAD_POLL_INTERVAL_MS));
+    }
+
+    return null;
   }
 
   async function handleFileUpload(event: React.ChangeEvent<HTMLInputElement>) {
@@ -87,6 +159,7 @@ export default function DocumentsPage() {
     setUploadStatus('uploading');
     setUploadProgress(0);
     setUploadError('');
+    setUploadStatusMessage('Uploading your document...');
     setShowUploadModal(true);
 
     // Simulate progress
@@ -106,29 +179,37 @@ export default function DocumentsPage() {
       formData.append('file', file);
 
       // Upload
-      await api.uploadDocument(formData);
+      const uploadedDocument = await api.uploadDocument(formData);
 
       clearInterval(progressInterval);
-      setUploadProgress(100);
+      setUploadProgress(92);
       setUploadStatus('processing');
+      setUploadStatusMessage('Preparing your document...');
 
-      // Brief processing state
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      setUploadStatus('success');
-      await fetchDocuments();
+      const readyDocument = await waitForDocumentReady(uploadedDocument.id);
+      await fetchDocuments(false);
       event.target.value = '';
 
-      // Auto close after success
-      setTimeout(() => {
-        setShowUploadModal(false);
-        setUploadStatus('idle');
-      }, 2000);
+      if (readyDocument) {
+        setUploadProgress(100);
+        setUploadStatus('success');
+        setUploadStatusMessage(getDocumentStatusDescription(readyDocument));
+
+        setTimeout(() => {
+          setShowUploadModal(false);
+          setUploadStatus('idle');
+          setUploadStatusMessage('');
+        }, 2000);
+      } else {
+        setUploadProgress(100);
+        setUploadStatus('background');
+        setUploadStatusMessage('Upload finished. Final processing is continuing in the background.');
+      }
     } catch (error: any) {
       clearInterval(progressInterval);
       console.error('Upload error:', error);
       setUploadStatus('error');
-      setUploadError(error.response?.data?.detail || 'Failed to upload document');
+      setUploadError(error.response?.data?.detail || error.message || 'Failed to upload document');
     } finally {
       setIsUploading(false);
     }
@@ -139,6 +220,7 @@ export default function DocumentsPage() {
       setShowUploadModal(false);
       setUploadStatus('idle');
       setUploadError('');
+      setUploadStatusMessage('');
     }
   };
 
@@ -152,6 +234,7 @@ export default function DocumentsPage() {
     setUploadStatus('uploading');
     setUploadProgress(0);
     setUploadError('');
+    setUploadStatusMessage('Submitting your link...');
     setShowUploadModal(true);
 
     // Simulate progress
@@ -167,43 +250,58 @@ export default function DocumentsPage() {
 
     try {
       setIsUploading(true);
-      await api.processUrl(url);
+      const uploadedDocument = await api.processUrl(url);
 
       clearInterval(progressInterval);
-      setUploadProgress(100);
+      setUploadProgress(92);
       setUploadStatus('processing');
+      setUploadStatusMessage('Preparing your document...');
 
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      setUploadStatus('success');
+      const readyDocument = await waitForDocumentReady(uploadedDocument.id);
       setUrl('');
       setShowUrlInput(false);
-      await fetchDocuments();
+      await fetchDocuments(false);
 
-      // Auto close after success
-      setTimeout(() => {
-        setShowUploadModal(false);
-        setUploadStatus('idle');
-      }, 2000);
+      if (readyDocument) {
+        setUploadProgress(100);
+        setUploadStatus('success');
+        setUploadStatusMessage(getDocumentStatusDescription(readyDocument));
+
+        setTimeout(() => {
+          setShowUploadModal(false);
+          setUploadStatus('idle');
+          setUploadStatusMessage('');
+        }, 2000);
+      } else {
+        setUploadProgress(100);
+        setUploadStatus('background');
+        setUploadStatusMessage('Upload finished. Final processing is continuing in the background.');
+      }
     } catch (error: any) {
       clearInterval(progressInterval);
       console.error('URL processing error:', error);
       setUploadStatus('error');
-      setUploadError(error.response?.data?.detail || 'Failed to process URL');
+      setUploadError(error.response?.data?.detail || error.message || 'Failed to process URL');
     } finally {
       setIsUploading(false);
     }
   }
 
   async function handleDelete(id: string) {
-    if (!confirm('Are you sure you want to delete this document?')) return;
+    const documentToDelete = documents.find((doc) => doc.id === id);
+    const confirmationMessage = documentToDelete
+      ? getDeleteConfirmationMessage(documentToDelete)
+      : 'Delete this document and its related study content?';
+
+    if (!confirm(confirmationMessage)) return;
 
     try {
-      await api.deleteDocument(id);
-      toast.success('Document deleted successfully');
+      const result = await api.deleteDocument(id);
+      toast.success(result?.warnings?.length ? 'Document deleted with cleanup warnings' : 'Document deleted successfully');
+      (result?.warnings || []).forEach((warning: string) => toast.error(warning));
       setDocuments(documents.filter((doc) => doc.id !== id));
-    } catch (error) {
-      toast.error('Failed to delete document');
+    } catch (error: any) {
+      toast.error(error.response?.data?.detail || 'Failed to delete document');
     }
   }
 
@@ -381,6 +479,7 @@ export default function DocumentsPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredDocuments.map((doc) => {
             const canOpenWorkspace = supportsStudyWorkspace(doc.content_type);
+            const readyForGeneration = isDocumentReadyForGeneration(doc);
 
             return (
               <div
@@ -447,7 +546,7 @@ export default function DocumentsPage() {
 
                 {/* Actions */}
                 <div className="flex flex-wrap gap-2 pt-3 border-t border-[var(--card-border)]">
-                  {canOpenWorkspace ? (
+                  {canOpenWorkspace && readyForGeneration ? (
                     <Link href={`/dashboard/workspace?id=${doc.id}`} className="flex-1">
                       <Button variant="default" size="sm" className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 border-0 hover:from-blue-700 hover:to-indigo-700">
                         <Sparkles className="h-4 w-4 mr-2" />
@@ -462,7 +561,7 @@ export default function DocumentsPage() {
                       </Button>
                     </Link>
                   )}
-                  {canOpenWorkspace && (
+                  {canOpenWorkspace && readyForGeneration && (
                     <Link href={`/dashboard/documents/${doc.id}`} title="View Details">
                       <Button variant="secondary" size="sm">
                         <FileText className="h-4 w-4" />
@@ -514,6 +613,8 @@ export default function DocumentsPage() {
                 <div className="p-3 bg-white/20 rounded-2xl backdrop-blur-sm">
                   {uploadStatus === 'success' ? (
                     <CheckCircle2 className="h-8 w-8 text-white" />
+                  ) : uploadStatus === 'background' ? (
+                    <CloudUpload className="h-8 w-8 text-white" />
                   ) : uploadStatus === 'error' ? (
                     <AlertCircle className="h-8 w-8 text-white" />
                   ) : (
@@ -525,13 +626,14 @@ export default function DocumentsPage() {
                     {uploadStatus === 'uploading' && 'Uploading Document'}
                     {uploadStatus === 'processing' && 'Processing Document'}
                     {uploadStatus === 'success' && 'Upload Complete!'}
+                    {uploadStatus === 'background' && 'Still Processing'}
                     {uploadStatus === 'error' && 'Upload Failed'}
                   </h2>
                   <p className="text-sm text-white/80 truncate max-w-[250px]">
                     {uploadFileName}
                   </p>
                 </div>
-                {(uploadStatus === 'success' || uploadStatus === 'error') && (
+                {(uploadStatus === 'success' || uploadStatus === 'background' || uploadStatus === 'error') && (
                   <button
                     onClick={closeUploadModal}
                     className="p-2 hover:bg-white/20 rounded-xl transition-colors"
@@ -589,7 +691,7 @@ export default function DocumentsPage() {
                   </div>
                   {uploadStatus === 'processing' && (
                     <p className="text-xs text-[var(--text-tertiary)] text-center mt-2">
-                      Extracting content and creating embeddings...
+                      {uploadStatusMessage || 'Extracting content and creating embeddings...'}
                     </p>
                   )}
                 </div>
@@ -605,7 +707,21 @@ export default function DocumentsPage() {
                     Document uploaded successfully!
                   </p>
                   <p className="text-sm text-[var(--text-tertiary)] mt-1">
-                    Your document is ready to use
+                    {uploadStatusMessage || 'Your document is ready to use'}
+                  </p>
+                </div>
+              )}
+
+              {uploadStatus === 'background' && (
+                <div className="text-center py-4">
+                  <div className="w-16 h-16 mx-auto mb-3 rounded-full bg-[var(--accent-blue-subtle)] flex items-center justify-center">
+                    <CloudUpload className="h-8 w-8 text-[var(--accent-blue)]" />
+                  </div>
+                  <p className="text-[var(--text-primary)] font-medium">
+                    Upload finished successfully
+                  </p>
+                  <p className="text-sm text-[var(--text-tertiary)] mt-1">
+                    {uploadStatusMessage || 'Your document is still being prepared in the background.'}
                   </p>
                 </div>
               )}

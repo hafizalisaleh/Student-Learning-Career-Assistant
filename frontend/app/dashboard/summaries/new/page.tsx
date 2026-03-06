@@ -15,6 +15,7 @@ import toast from 'react-hot-toast';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
 import type { Document } from '@/lib/types';
+import { isDocumentReadyForGeneration } from '@/lib/document-status';
 
 function NewSummaryContent() {
   const router = useRouter();
@@ -51,7 +52,7 @@ function NewSummaryContent() {
 
         // Filter for completed documents (case-insensitive)
         const completedDocs = docsArray.filter((doc) =>
-          doc.processing_status?.toLowerCase() === 'completed'
+          isDocumentReadyForGeneration(doc)
         );
 
         setDocuments(completedDocs);

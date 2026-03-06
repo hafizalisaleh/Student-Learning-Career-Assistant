@@ -32,6 +32,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import type { Document } from '@/lib/types';
+import { isDocumentReadyForGeneration } from '@/lib/document-status';
 import { cn } from '@/lib/utils';
 import { CitedMarkdown, SourceCard } from '@/components/ui/cited-markdown';
 import { PromptInput, PromptInputTextarea, PromptInputActions, PromptInputAction } from "@/components/ui/prompt-input";
@@ -135,7 +136,7 @@ export default function AskDocumentsPage() {
       const data = await api.getDocuments();
       const docsArray = Array.isArray(data) ? data : [];
       const completedDocs = docsArray.filter(
-        (doc: Document) => doc.processing_status?.toLowerCase() === 'completed'
+        (doc: Document) => isDocumentReadyForGeneration(doc)
       );
       setDocuments(completedDocs);
     } catch (error) {

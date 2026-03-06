@@ -42,6 +42,11 @@ import {
 } from 'lucide-react';
 import type { Document, Note, Summary, Quiz } from '@/lib/types';
 import { formatDate, formatFileSize, getDifficultyBadgeClass } from '@/lib/utils';
+import {
+  getDocumentStatusDescription,
+  isDocumentFailed,
+  isDocumentReadyForGeneration,
+} from '@/lib/document-status';
 import toast from 'react-hot-toast';
 import { cn } from '@/lib/utils';
 import { Breadcrumb } from '@/components/ui/breadcrumb';
@@ -63,6 +68,10 @@ type DiagramType = 'flowchart' | 'sequence' | 'er' | 'state' | 'class';
 
 function supportsStudyWorkspace(contentType?: string) {
   return contentType?.toLowerCase() === 'pdf';
+}
+
+function formatArtifactCount(count: number, singular: string, plural: string = `${singular}s`) {
+  return `${count} ${count === 1 ? singular : plural}`;
 }
 
 const DIAGRAM_TYPES: { type: DiagramType; label: string; icon: any; description: string }[] = [
@@ -127,9 +136,30 @@ export default function DocumentDetailPage() {
     }
   }, [documentId]);
 
-  async function fetchDocument() {
+  useEffect(() => {
+    if (!documentId || !document) {
+      return;
+    }
+
+    if (isDocumentReadyForGeneration(document) || isDocumentFailed(document)) {
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      fetchDocument(false);
+    }, 2500);
+
+    return () => window.clearInterval(interval);
+  }, [
+    document,
+    documentId,
+  ]);
+
+  async function fetchDocument(showLoader: boolean = true) {
     try {
-      setIsLoading(true);
+      if (showLoader) {
+        setIsLoading(true);
+      }
       const data = await api.getDocument(documentId);
       setDocument(data);
     } catch (error) {
@@ -137,7 +167,9 @@ export default function DocumentDetailPage() {
       toast.error('Document not found');
       router.push('/dashboard/documents');
     } finally {
-      setIsLoading(false);
+      if (showLoader) {
+        setIsLoading(false);
+      }
     }
   }
 
@@ -165,18 +197,51 @@ export default function DocumentDetailPage() {
   }
 
   const handleDelete = async () => {
-    if (!confirm('Are you sure you want to delete this document? All associated notes and summaries will also be deleted.')) return;
+    const quizDeleteCount = quizzes.filter((quiz) => (quiz.document_references?.length || 0) <= 1).length;
+    const quizDetachCount = quizzes.length - quizDeleteCount;
+    const relatedArtifacts: string[] = [];
+
+    if (notes.length > 0) {
+      relatedArtifacts.push(formatArtifactCount(notes.length, 'note'));
+    }
+    if (summaries.length > 0) {
+      relatedArtifacts.push(formatArtifactCount(summaries.length, 'summary'));
+    }
+    if (quizDeleteCount > 0) {
+      relatedArtifacts.push(formatArtifactCount(quizDeleteCount, 'quiz'));
+    }
+    if (quizDetachCount > 0) {
+      relatedArtifacts.push(`remove this document from ${formatArtifactCount(quizDetachCount, 'multi-document quiz', 'multi-document quizzes')}`);
+    }
+
+    const artifactLine = relatedArtifacts.length > 0
+      ? `This will also affect ${relatedArtifacts.join(', ')}.`
+      : 'This will also remove extracted text, vector chunks, and any linked study content for this document.';
+
+    if (!confirm([
+      `Delete "${document?.title || 'this document'}"?`,
+      '',
+      artifactLine,
+      '',
+      'The uploaded file, thumbnail, extracted text, and embeddings will be removed as well.',
+    ].join('\n'))) return;
 
     try {
-      await api.deleteDocument(documentId);
-      toast.success('Document deleted successfully');
+      const result = await api.deleteDocument(documentId);
+      toast.success(result?.warnings?.length ? 'Document deleted with cleanup warnings' : 'Document deleted successfully');
+      (result?.warnings || []).forEach((warning: string) => toast.error(warning));
       router.push('/dashboard/documents');
-    } catch (error) {
-      toast.error('Failed to delete document');
+    } catch (error: any) {
+      toast.error(error.response?.data?.detail || 'Failed to delete document');
     }
   };
 
   const handleGenerateSummary = async (length: SummaryLength) => {
+    if (!isDocumentReadyForGeneration(document)) {
+      toast.error(getDocumentStatusDescription(document) || 'This document is still being prepared.');
+      return;
+    }
+
     try {
       setIsGeneratingSummary(true);
       await api.generateSummary({
@@ -194,6 +259,11 @@ export default function DocumentDetailPage() {
   };
 
   const handleGenerateAll = async () => {
+    if (!isDocumentReadyForGeneration(document)) {
+      toast.error(getDocumentStatusDescription(document) || 'This document is still being prepared.');
+      return;
+    }
+
     setIsGeneratingAll(true);
     toast.loading('Generating all artifacts...', { id: 'generate-all' });
 
@@ -226,10 +296,20 @@ export default function DocumentDetailPage() {
   };
 
   const handleQuickQuiz = () => {
+    if (!isDocumentReadyForGeneration(document)) {
+      toast.error(getDocumentStatusDescription(document) || 'This document is still being prepared.');
+      return;
+    }
+
     setActiveTab('quizzes');
   };
 
   const generateMindmap = async () => {
+    if (!isDocumentReadyForGeneration(document)) {
+      toast.error(getDocumentStatusDescription(document) || 'This document is still being prepared.');
+      return;
+    }
+
     try {
       setIsGeneratingMindmap(true);
       toast.loading('Generating mind map...', { id: 'mindmap' });
@@ -425,6 +505,11 @@ export default function DocumentDetailPage() {
   };
 
   const generateDiagram = async (type: DiagramType) => {
+    if (!isDocumentReadyForGeneration(document)) {
+      toast.error(getDocumentStatusDescription(document) || 'This document is still being prepared.');
+      return;
+    }
+
     // Check if already cached
     if (generatedDiagrams[type]) {
       setSelectedDiagramType(type);
@@ -467,6 +552,11 @@ export default function DocumentDetailPage() {
 
   // Summary functions
   const openSummaryModal = () => {
+    if (!isDocumentReadyForGeneration(document)) {
+      toast.error(getDocumentStatusDescription(document) || 'This document is still being prepared.');
+      return;
+    }
+
     setShowSummaryModal(true);
     setSummaryText('');
     setSummaryGenerated(false);
@@ -601,6 +691,8 @@ export default function DocumentDetailPage() {
   }
 
   const canOpenWorkspace = supportsStudyWorkspace(document.content_type);
+  const readyForGeneration = isDocumentReadyForGeneration(document);
+  const statusDescription = getDocumentStatusDescription(document);
 
   const tabs = [
     { id: 'content', label: 'Content', icon: FileText },
@@ -639,14 +731,19 @@ export default function DocumentDetailPage() {
               </Button>
             </a>
           )}
-          {canOpenWorkspace && (
+          {canOpenWorkspace && readyForGeneration ? (
             <Link href={`/dashboard/workspace?id=${documentId}`}>
               <Button variant="secondary" size="sm">
                 <Play className="h-4 w-4 mr-2" />
                 Study
               </Button>
             </Link>
-          )}
+          ) : canOpenWorkspace ? (
+            <Button variant="secondary" size="sm" disabled>
+              <Play className="h-4 w-4 mr-2" />
+              Study
+            </Button>
+          ) : null}
           <Button
             variant="ghost"
             size="sm"
@@ -659,13 +756,24 @@ export default function DocumentDetailPage() {
         </div>
       </div>
 
+      {!readyForGeneration && (
+        <div className={cn(
+          'rounded-2xl border px-4 py-3 text-sm',
+          isDocumentFailed(document)
+            ? 'border-[var(--error-border)] bg-[var(--error-bg)] text-[var(--error)]'
+            : 'border-[var(--card-border)] bg-[var(--bg-secondary)] text-[var(--text-secondary)]'
+        )}>
+          {statusDescription || 'This document is still being prepared.'}
+        </div>
+      )}
+
       {/* Quick Actions Bar */}
       <div className="flex flex-wrap items-center gap-2 p-3 rounded-xl bg-[var(--bg-secondary)] border border-[var(--card-border)]">
         <Button
           variant="default"
           size="sm"
           onClick={handleGenerateAll}
-          disabled={isGeneratingAll}
+          disabled={isGeneratingAll || !readyForGeneration}
         >
           {isGeneratingAll ? (
             <>
@@ -682,21 +790,28 @@ export default function DocumentDetailPage() {
 
         <div className="h-5 w-px bg-[var(--card-border)]" />
 
-        <Button variant="ghost" size="sm" onClick={openSummaryModal}>
+        <Button variant="ghost" size="sm" onClick={openSummaryModal} disabled={!readyForGeneration}>
           <Sparkles className="h-4 w-4 mr-1.5" />
           Summary
         </Button>
-        <Link href={`/dashboard/notes/new?document=${documentId}`}>
-          <Button variant="ghost" size="sm">
+        {readyForGeneration ? (
+          <Link href={`/dashboard/notes/new?document=${documentId}`}>
+            <Button variant="ghost" size="sm">
+              <BookOpen className="h-4 w-4 mr-1.5" />
+              Notes
+            </Button>
+          </Link>
+        ) : (
+          <Button variant="ghost" size="sm" disabled>
             <BookOpen className="h-4 w-4 mr-1.5" />
             Notes
           </Button>
-        </Link>
-        <Button variant="ghost" size="sm" onClick={handleQuickQuiz}>
+        )}
+        <Button variant="ghost" size="sm" onClick={handleQuickQuiz} disabled={!readyForGeneration}>
           <ClipboardCheck className="h-4 w-4 mr-1.5" />
           Quiz
         </Button>
-        <Button variant="ghost" size="sm" onClick={() => { setActiveTab('mindmap'); if (!mindmapCode) generateMindmap(); }}>
+        <Button variant="ghost" size="sm" disabled={!readyForGeneration} onClick={() => { setActiveTab('mindmap'); if (!mindmapCode) generateMindmap(); }}>
           <Share2 className="h-4 w-4 mr-1.5" />
           Mind Map
         </Button>
@@ -796,37 +911,49 @@ export default function DocumentDetailPage() {
             <div className="p-6 rounded-2xl bg-[var(--card-bg)] border border-[var(--card-border)]">
               <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-4">Quick Actions</h3>
               <div className="grid grid-cols-2 gap-3">
-                <Button variant="secondary" className="w-full" onClick={openSummaryModal}>
+                <Button variant="secondary" className="w-full" onClick={openSummaryModal} disabled={!readyForGeneration}>
                   <Sparkles className="h-4 w-4 mr-2" />
                   Summary
                 </Button>
-                <Link href={`/dashboard/notes/new?document=${documentId}`} className="w-full">
-                  <Button variant="secondary" className="w-full">
+                {readyForGeneration ? (
+                  <Link href={`/dashboard/notes/new?document=${documentId}`} className="w-full">
+                    <Button variant="secondary" className="w-full">
+                      <BookOpen className="h-4 w-4 mr-2" />
+                      Notes
+                    </Button>
+                  </Link>
+                ) : (
+                  <Button variant="secondary" className="w-full" disabled>
                     <BookOpen className="h-4 w-4 mr-2" />
                     Notes
                   </Button>
-                </Link>
-                <Button variant="secondary" className="w-full" onClick={handleQuickQuiz}>
+                )}
+                <Button variant="secondary" className="w-full" onClick={handleQuickQuiz} disabled={!readyForGeneration}>
                   <ClipboardCheck className="h-4 w-4 mr-2" />
                   Quiz
                 </Button>
-                {canOpenWorkspace ? (
+                {canOpenWorkspace && readyForGeneration ? (
                   <Link href={`/dashboard/workspace?id=${documentId}`} className="w-full">
                     <Button variant="secondary" className="w-full">
                       <Play className="h-4 w-4 mr-2" />
                       Study Mode
                     </Button>
                   </Link>
+                ) : canOpenWorkspace ? (
+                  <Button variant="secondary" className="w-full" disabled>
+                    <Play className="h-4 w-4 mr-2" />
+                    Study Mode
+                  </Button>
                 ) : (
                   <div className="col-span-2 rounded-xl border border-dashed border-[var(--card-border)] bg-[var(--bg-secondary)] px-4 py-3 text-sm text-[var(--text-secondary)]">
                     Study workspace is currently available for PDF documents only.
                   </div>
                 )}
-                <Button variant="secondary" className="w-full" onClick={() => { setActiveTab('mindmap'); if (!mindmapCode) generateMindmap(); }}>
+                <Button variant="secondary" className="w-full" onClick={() => { setActiveTab('mindmap'); if (!mindmapCode) generateMindmap(); }} disabled={!readyForGeneration}>
                   <Network className="h-4 w-4 mr-2" />
                   Mind Map
                 </Button>
-                <Button variant="secondary" className="w-full" onClick={() => { setActiveTab('diagrams'); if (!diagramCode) generateDiagram(selectedDiagramType); }}>
+                <Button variant="secondary" className="w-full" onClick={() => { setActiveTab('diagrams'); if (!diagramCode) generateDiagram(selectedDiagramType); }} disabled={!readyForGeneration}>
                   <Workflow className="h-4 w-4 mr-2" />
                   Diagrams
                 </Button>
@@ -845,12 +972,19 @@ export default function DocumentDetailPage() {
           <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-semibold text-[var(--text-primary)]">Associated Notes</h3>
-              <Link href={`/dashboard/notes/new?document=${documentId}`}>
-                <Button variant="default" size="sm">
+              {readyForGeneration ? (
+                <Link href={`/dashboard/notes/new?document=${documentId}`}>
+                  <Button variant="default" size="sm">
+                    <Sparkles className="h-4 w-4 mr-2" />
+                    Generate New Notes
+                  </Button>
+                </Link>
+              ) : (
+                <Button variant="default" size="sm" disabled>
                   <Sparkles className="h-4 w-4 mr-2" />
                   Generate New Notes
                 </Button>
-              </Link>
+              )}
             </div>
 
             {isLoadingArtifacts ? (
@@ -877,11 +1011,17 @@ export default function DocumentDetailPage() {
               <div className="text-center py-12 rounded-2xl bg-[var(--card-bg)] border border-dashed border-[var(--card-border)]">
                 <BookOpen className="h-12 w-12 text-[var(--text-tertiary)] mx-auto mb-4" />
                 <p className="text-[var(--text-secondary)] mb-4">No notes generated for this document yet.</p>
-                <Link href={`/dashboard/notes/new?document=${documentId}`}>
-                  <Button variant="secondary" size="sm">
+                {readyForGeneration ? (
+                  <Link href={`/dashboard/notes/new?document=${documentId}`}>
+                    <Button variant="secondary" size="sm">
+                      Create First Note
+                    </Button>
+                  </Link>
+                ) : (
+                  <Button variant="secondary" size="sm" disabled>
                     Create First Note
                   </Button>
-                </Link>
+                )}
               </div>
             )}
           </div>
@@ -891,12 +1031,19 @@ export default function DocumentDetailPage() {
           <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-semibold text-[var(--text-primary)]">Document Quizzes</h3>
-              <Link href={`/dashboard/quizzes/new?document=${documentId}`}>
-                <Button variant="default" size="sm">
+              {readyForGeneration ? (
+                <Link href={`/dashboard/quizzes/new?document=${documentId}`}>
+                  <Button variant="default" size="sm">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Generate New Quiz
+                  </Button>
+                </Link>
+              ) : (
+                <Button variant="default" size="sm" disabled>
                   <Plus className="h-4 w-4 mr-2" />
                   Generate New Quiz
                 </Button>
-              </Link>
+              )}
             </div>
 
             {isLoadingArtifacts ? (
@@ -936,11 +1083,17 @@ export default function DocumentDetailPage() {
               <div className="text-center py-12 rounded-2xl bg-[var(--card-bg)] border border-dashed border-[var(--card-border)]">
                 <ClipboardCheck className="h-12 w-12 text-[var(--text-tertiary)] mx-auto mb-4" />
                 <p className="text-[var(--text-secondary)] mb-4">No quizzes generated for this document yet.</p>
-                <Link href={`/dashboard/quizzes/new?document=${documentId}`}>
-                  <Button variant="secondary" size="sm">
+                {readyForGeneration ? (
+                  <Link href={`/dashboard/quizzes/new?document=${documentId}`}>
+                    <Button variant="secondary" size="sm">
+                      Generate First Quiz
+                    </Button>
+                  </Link>
+                ) : (
+                  <Button variant="secondary" size="sm" disabled>
                     Generate First Quiz
                   </Button>
-                </Link>
+                )}
               </div>
             )}
           </div>
@@ -950,7 +1103,7 @@ export default function DocumentDetailPage() {
           <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-semibold text-[var(--text-primary)]">Document Summaries</h3>
-              <Button variant="default" size="sm" onClick={openSummaryModal}>
+              <Button variant="default" size="sm" onClick={openSummaryModal} disabled={!readyForGeneration}>
                 <Sparkles className="h-4 w-4 mr-2" />
                 Generate New Summary
               </Button>

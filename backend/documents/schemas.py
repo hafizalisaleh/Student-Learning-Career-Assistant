@@ -47,6 +47,12 @@ class DocumentResponse(BaseModel):
     doc_metadata: Optional[Dict[str, Any]] = None  # Match model field name
     thumbnail_path: Optional[str] = None
     unique_filename: Optional[str] = None
+    extracted_text: Optional[str] = None
+    topics: Optional[list[str]] = None
+    domains: Optional[list[str]] = None
+    keywords: Optional[list[str]] = None
+    difficulty_level: Optional[str] = None
+    subject_area: Optional[str] = None
     created_at: datetime
     
     class Config:

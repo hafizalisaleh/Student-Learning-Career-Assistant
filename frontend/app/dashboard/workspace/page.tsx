@@ -19,6 +19,7 @@ import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { FileText, Send, Sparkles, User, Bot, ArrowLeft, Save, Check, BookOpen, Copy, ChevronDown, ChevronUp, ArrowUp, Square, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { api } from '@/lib/api';
+import { getDocumentStatusDescription, isDocumentReadyForGeneration } from '@/lib/document-status';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
@@ -43,6 +44,8 @@ function WorkspaceContent() {
     const [docUrl, setDocUrl] = useState<string | null>(null);
     const [docTitle, setDocTitle] = useState<string>('');
     const [docContentType, setDocContentType] = useState<string | null>(null);
+    const [docReadyForGeneration, setDocReadyForGeneration] = useState(false);
+    const [docStatusDescription, setDocStatusDescription] = useState('');
 
     const [selectedText, setSelectedText] = useState<{ text: string; page: number } | null>(null);
     const [chatInput, setChatInput] = useState('');
@@ -66,8 +69,15 @@ function WorkspaceContent() {
             api.getDocument(documentId).then(doc => {
                 setDocTitle(doc.title || '');
                 setDocContentType(doc.content_type || null);
+                setDocReadyForGeneration(isDocumentReadyForGeneration(doc));
+                setDocStatusDescription(getDocumentStatusDescription(doc));
 
                 if (doc.content_type?.toLowerCase() !== 'pdf') {
+                    setDocUrl(null);
+                    return;
+                }
+
+                if (!isDocumentReadyForGeneration(doc)) {
                     setDocUrl(null);
                     return;
                 }
@@ -274,6 +284,32 @@ function WorkspaceContent() {
                             <Button variant="secondary">
                                 <BookOpen className="h-4 w-4 mr-2" />
                                 Create Notes
+                            </Button>
+                        </Link>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    if (documentId && docContentType?.toLowerCase() === 'pdf' && !docReadyForGeneration) {
+        return (
+            <div className="flex min-h-[60vh] items-center justify-center px-4">
+                <div className="max-w-xl rounded-3xl border border-[var(--card-border)] bg-[var(--card-bg)] p-8 text-center shadow-sm">
+                    <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--bg-secondary)] text-[var(--text-secondary)]">
+                        <FileText className="h-6 w-6" />
+                    </div>
+                    <h1 className="text-xl font-semibold text-[var(--text-primary)]">
+                        This PDF is still being prepared
+                    </h1>
+                    <p className="mt-2 text-sm text-[var(--text-secondary)]">
+                        {docStatusDescription || 'The study workspace will be available once text extraction and indexing finish.'}
+                    </p>
+                    <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
+                        <Link href={`/dashboard/documents/${documentId}`}>
+                            <Button variant="default">
+                                <ArrowLeft className="h-4 w-4 mr-2" />
+                                Back to Document
                             </Button>
                         </Link>
                     </div>

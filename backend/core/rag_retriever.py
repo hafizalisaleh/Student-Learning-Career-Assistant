@@ -44,8 +44,12 @@ class RAGRetriever:
         """
         document_id = str(document.id)
 
+        metadata = document.doc_metadata or {}
+
         # Check if document has embeddings stored
-        has_embeddings = bool(document.vector_db_reference_id)
+        has_embeddings = bool(
+            document.vector_db_reference_id or metadata.get("embeddings_stored")
+        )
 
         logger.info(f"RAGRetriever: Getting content for {document_id}, has_embeddings={has_embeddings}, task={task_type}")
 
@@ -164,7 +168,11 @@ class RAGRetriever:
         try:
             content = None
 
-            if document.content_type.value == "youtube":
+            if getattr(document, "extracted_text", None):
+                logger.info(f"RAGRetriever: Using stored extracted text for {document.id}")
+                content = document.extracted_text
+
+            elif document.content_type.value == "youtube":
                 logger.info(f"RAGRetriever: Extracting YouTube content from {document.file_url}")
                 result = self.rag_pipeline.process_youtube(document.file_url, store_embeddings=False)
                 if result.get("success"):
