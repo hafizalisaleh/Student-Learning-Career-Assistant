@@ -14,7 +14,7 @@ export type MessageProps = {
 } & React.HTMLProps<HTMLDivElement>
 
 const Message = ({ children, className, ...props }: MessageProps) => (
-  <div className={cn("flex gap-3", className)} {...props}>
+  <div className={cn("flex items-start gap-3.5", className)} {...props}>
     {children}
   </div>
 )
@@ -35,7 +35,12 @@ const MessageAvatar = ({
   className,
 }: MessageAvatarProps) => {
   return (
-    <Avatar className={cn("h-8 w-8 shrink-0", className)}>
+    <Avatar
+      className={cn(
+        "h-9 w-9 shrink-0 rounded-2xl border border-[var(--card-border)] bg-[color:color-mix(in_srgb,var(--bg-elevated)_80%,transparent)] shadow-[var(--card-shadow)]",
+        className
+      )}
+    >
       <AvatarImage src={src} alt={alt} />
       {fallback && (
         <AvatarFallback delayMs={delayMs}>{fallback}</AvatarFallback>
@@ -58,7 +63,7 @@ const MessageContent = ({
   ...props
 }: MessageContentProps) => {
   const classNames = cn(
-    "rounded-lg p-2 text-foreground bg-secondary prose break-words whitespace-normal",
+    "prose prose-neutral max-w-none break-words whitespace-normal rounded-[1.4rem] border border-[var(--card-border)] bg-[color:color-mix(in_srgb,var(--bg-elevated)_82%,transparent)] px-4 py-3 text-[var(--text-primary)] shadow-[var(--card-shadow)] dark:prose-invert",
     className
   )
 
@@ -84,7 +89,7 @@ const MessageActions = ({
   ...props
 }: MessageActionsProps) => (
   <div
-    className={cn("text-muted-foreground flex items-center gap-2", className)}
+    className={cn("flex items-center gap-2 text-[var(--text-muted)]", className)}
     {...props}
   >
     {children}

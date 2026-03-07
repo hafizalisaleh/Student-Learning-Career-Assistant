@@ -1,23 +1,20 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { VoiceChat } from '@/components/voice/VoiceChat';
 import {
   MessageSquare,
-  Send,
   ChevronDown,
   ChevronUp,
   BookOpen,
-  Database,
   Trash2,
   Keyboard,
   Volume2,
   Copy,
   Sparkles,
-  FileText,
   ShieldCheck,
   Search,
   Braces,
@@ -25,10 +22,10 @@ import {
   CheckCircle2,
   XCircle,
   AlertCircle,
-  Info,
   Download,
   ArrowUp,
   Square,
+  Bot,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import type { Document } from '@/lib/types';
@@ -38,11 +35,8 @@ import { CitedMarkdown, SourceCard } from '@/components/ui/cited-markdown';
 import { PromptInput, PromptInputTextarea, PromptInputActions, PromptInputAction } from "@/components/ui/prompt-input";
 import { ScrollButton } from "@/components/ui/scroll-button";
 import { ChatContainerRoot, ChatContainerContent, ChatContainerScrollAnchor } from "@/components/ui/chat-container";
-import { Markdown } from "@/components/ui/markdown";
 import { Message, MessageContent } from "@/components/ui/message";
 import { Tool } from "@/components/ui/tool";
-import { Reasoning, ReasoningTrigger, ReasoningContent } from "@/components/ui/reasoning";
-import { Bot } from 'lucide-react';
 
 type RAGMode = 'structured_output' | 'file_search' | 'nli_verification';
 
@@ -263,14 +257,14 @@ export default function AskDocumentsPage() {
       const isQuotaError = error?.message?.includes("quota") || error?.message?.includes("429") || error?.message?.includes("RESOURCE_EXHAUSTED") || error.response?.data?.detail?.includes("quota");
 
       if (isQuotaError) {
-        toast.error("Gemini API limit reached. Please wait a moment.", { id: 'ask-quota-error' });
+        toast.error("The active AI provider hit a rate limit. Please wait a moment.", { id: 'ask-quota-error' });
       }
 
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         type: 'assistant',
         content: isQuotaError
-          ? "I've reached my current API quota limit. Please wait a few seconds and try again. If you're using the free tier, there are daily and per-minute limits."
+          ? "The active AI provider hit a rate limit. Please wait a few seconds and try again."
           : error.response?.data?.detail || 'Failed to process your question. Please try again.',
         timestamp: new Date(),
       };
@@ -409,169 +403,132 @@ export default function AskDocumentsPage() {
     toast.success('Chat exported as PDF');
   };
 
+  const selectedDocument = documents.find((doc) => doc.id === selectedDocId);
+
   return (
-    <div className="h-[calc(100vh-140px)] lg:h-[calc(100vh-100px)] flex flex-col">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
-        <div>
-          <h1 className="text-xl font-semibold text-[var(--text-primary)]">
-            AI Assistant
-          </h1>
-          <p className="text-sm text-[var(--text-tertiary)]">
-            Ask questions about your documents
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2">
-          {/* Mode Toggle */}
-          <div className="flex p-0.5 rounded-md bg-[var(--bg-secondary)] border border-[var(--card-border)]">
-            <button
-              onClick={() => setActiveMode('text')}
-              className={cn(
-                'flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium transition-all',
-                activeMode === 'text'
-                  ? 'bg-[var(--primary)] text-white'
-                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]'
-              )}
-            >
-              <Keyboard className="h-3.5 w-3.5" />
-              <span>Text</span>
-            </button>
-            <button
-              onClick={() => setActiveMode('voice')}
-              className={cn(
-                'flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium transition-all',
-                activeMode === 'voice'
-                  ? 'bg-[var(--primary)] text-white'
-                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]'
-              )}
-            >
-              <Volume2 className="h-3.5 w-3.5" />
-              <span>Voice</span>
-            </button>
+    <div className="grid items-start gap-5 xl:grid-cols-[minmax(284px,308px)_minmax(0,1fr)]">
+      <aside className="dashboard-panel overflow-hidden xl:sticky xl:top-28 xl:h-[calc(100vh-156px)]">
+        <div className="panel-content flex h-full min-h-0 flex-col gap-5 overflow-y-auto p-5 lg:p-6">
+          <div>
+            <p className="editorial-kicker">
+              <span className="inline-block h-2 w-2 rounded-full bg-[var(--highlight)]" />
+              AI console
+            </p>
+            <h2 className="mt-3 font-serif text-3xl tracking-[-0.05em] text-[var(--text-primary)]">
+              Grounded study assistant
+            </h2>
+            <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
+              Choose the source scope, pick the citation strategy, and question the library like a working research desk.
+            </p>
           </div>
 
-          {/* Vector Stats */}
-          {vectorStats && (
-            <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-[var(--bg-secondary)] border border-[var(--card-border)]">
-              <Database className="h-3.5 w-3.5 text-[var(--primary)]" />
-              <span className="text-xs text-[var(--text-secondary)]">
-                {vectorStats.total_chunks || 0} chunks
-              </span>
+          <div className="rounded-[1.35rem] border border-[var(--card-border)] bg-[color:color-mix(in_srgb,var(--bg-elevated)_78%,transparent)] p-3">
+            <div className="flex rounded-[1rem] border border-[var(--card-border)] bg-[var(--accent)] p-1">
+              <button
+                onClick={() => setActiveMode('text')}
+                className={cn(
+                  'flex flex-1 items-center justify-center gap-2 rounded-[0.9rem] px-3 py-2 text-sm font-medium transition-all',
+                  activeMode === 'text'
+                    ? 'bg-[var(--primary)] text-[var(--primary-foreground)] shadow-[var(--shadow-glow-blue)]'
+                    : 'text-[var(--text-secondary)]'
+                )}
+              >
+                <Keyboard className="h-4 w-4" />
+                Text
+              </button>
+              <button
+                onClick={() => setActiveMode('voice')}
+                className={cn(
+                  'flex flex-1 items-center justify-center gap-2 rounded-[0.9rem] px-3 py-2 text-sm font-medium transition-all',
+                  activeMode === 'voice'
+                    ? 'bg-[var(--primary)] text-[var(--primary-foreground)] shadow-[var(--shadow-glow-blue)]'
+                    : 'text-[var(--text-secondary)]'
+                )}
+              >
+                <Volume2 className="h-4 w-4" />
+                Voice
+              </button>
             </div>
-          )}
-        </div>
-      </div>
+          </div>
 
-      {/* Document Selector + RAG Mode */}
-      <div className="mb-3 p-3 rounded-lg bg-[var(--card-bg)] border border-[var(--card-border)]">
-        <div className="flex flex-col gap-3">
-          {/* Top row: Document selector + clear */}
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-            <div className="flex-1 w-full">
-              <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">
-                <FileText className="h-3.5 w-3.5 inline mr-1.5" />
-                Filter by Document (Optional)
-              </label>
-              {isLoadingDocs ? (
-                <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
-                  <LoadingSpinner size="sm" />
-                  Loading...
-                </div>
-              ) : (
-                <select
-                  value={selectedDocId}
-                  onChange={(e) => setSelectedDocId(e.target.value)}
-                  className="w-full px-3 py-2 bg-[var(--bg-elevated)] border border-[var(--card-border)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--primary)] text-sm text-[var(--text-primary)]"
-                >
-                  <option value="">All Documents</option>
-                  {documents.map((doc) => (
-                    <option key={doc.id} value={doc.id}>
-                      {doc.title}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </div>
-            {messages.length > 0 && activeMode === 'text' && (
-              <div className="flex items-center gap-1.5 sm:mt-5">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={exportChatAsMarkdown}
-                  title="Export as Markdown"
-                >
-                  <Download className="h-3.5 w-3.5 mr-1" />
-                  <span className="hidden sm:inline">.md</span>
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={exportChatAsPDF}
-                  title="Export as PDF"
-                >
-                  <Download className="h-3.5 w-3.5 mr-1" />
-                  <span className="hidden sm:inline">.pdf</span>
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={clearConversation}
-                >
-                  <Trash2 className="h-3.5 w-3.5 mr-1.5" />
-                  Clear
-                </Button>
+          <div className="rounded-[1.35rem] border border-[var(--card-border)] bg-[color:color-mix(in_srgb,var(--bg-elevated)_78%,transparent)] p-4">
+            <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[var(--text-tertiary)]">
+              Document scope
+            </label>
+            {isLoadingDocs ? (
+              <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
+                <LoadingSpinner size="sm" />
+                Loading documents...
               </div>
+            ) : (
+              <select
+                value={selectedDocId}
+                onChange={(e) => setSelectedDocId(e.target.value)}
+                className="w-full"
+              >
+                <option value="">All Documents</option>
+                {documents.map((doc) => (
+                  <option key={doc.id} value={doc.id}>
+                    {doc.title}
+                  </option>
+                ))}
+              </select>
             )}
+            <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
+              {selectedDocument
+                ? `Focused on “${selectedDocument.title}”.`
+                : 'Searching across every document that is ready for generation.'}
+            </p>
           </div>
 
-          {/* RAG Mode Selector */}
           {activeMode === 'text' && (
-            <div>
-              <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">
-                Citation Mode
+            <div className="rounded-[1.35rem] border border-[var(--card-border)] bg-[color:color-mix(in_srgb,var(--bg-elevated)_78%,transparent)] p-4">
+              <label className="mb-3 block text-xs font-semibold uppercase tracking-[0.16em] text-[var(--text-tertiary)]">
+                Citation mode
               </label>
-              <div className="flex flex-wrap gap-2">
+              <div className="space-y-2">
                 {(Object.keys(MODE_CONFIG) as RAGMode[]).map((mode) => {
                   const config = MODE_CONFIG[mode];
                   const Icon = config.icon;
                   const isActive = ragMode === mode;
+
                   return (
                     <button
                       key={mode}
                       onClick={() => setRagMode(mode)}
                       className={cn(
-                        'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all border',
+                        'flex w-full items-start gap-3 rounded-[1rem] border px-3 py-3 text-left transition-all',
                         isActive
                           ? 'border-[var(--primary)] bg-[var(--primary-light)] text-[var(--primary)]'
-                          : 'border-[var(--card-border)] bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:border-[var(--primary)] hover:text-[var(--text-primary)]'
+                          : 'border-[var(--card-border)] bg-[var(--card-bg-solid)] text-[var(--text-secondary)] hover:border-[var(--card-border-hover)]'
                       )}
                     >
-                      <Icon className="h-3.5 w-3.5" />
-                      {config.label}
+                      <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[color:color-mix(in_srgb,var(--bg-elevated)_78%,transparent)]">
+                        <Icon className="h-4 w-4" />
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block text-sm font-medium">{config.label}</span>
+                        <span className="mt-1 block text-xs leading-5 text-inherit/80">{config.description}</span>
+                      </span>
                     </button>
                   );
                 })}
               </div>
-              <p className="text-[10px] text-[var(--text-muted)] mt-1">
-                {MODE_CONFIG[ragMode].description}
-              </p>
 
-              {/* File Search Index Button */}
               {ragMode === 'file_search' && selectedDocId && (
-                <div className="mt-2 flex items-center gap-2">
+                <div className="mt-4">
                   {fileSearchStatus[selectedDocId] ? (
-                    <span className="flex items-center gap-1 text-xs text-[var(--success)]">
-                      <CheckCircle2 className="h-3.5 w-3.5" />
+                    <div className="flex items-center gap-2 text-sm text-[var(--success)]">
+                      <CheckCircle2 className="h-4 w-4" />
                       Indexed for File Search
-                    </span>
+                    </div>
                   ) : (
                     <Button
                       size="sm"
-                      variant="ghost"
+                      variant="outline"
                       onClick={handleIndexForFileSearch}
                       disabled={fileSearchIndexing}
-                      className="text-xs"
+                      className="w-full justify-center"
                     >
                       {fileSearchIndexing ? (
                         <>
@@ -580,7 +537,7 @@ export default function AskDocumentsPage() {
                         </>
                       ) : (
                         <>
-                          <Upload className="h-3.5 w-3.5 mr-1" />
+                          <Upload className="h-4 w-4" />
                           Index for File Search
                         </>
                       )}
@@ -590,349 +547,379 @@ export default function AskDocumentsPage() {
               )}
 
               {ragMode === 'file_search' && !selectedDocId && (
-                <p className="mt-1.5 text-[10px] text-[var(--warning)] flex items-center gap-1">
-                  <AlertCircle className="h-3 w-3" />
-                  File Search requires a specific document selected
+                <p className="mt-3 flex items-center gap-2 text-xs text-[var(--warning)]">
+                  <AlertCircle className="h-3.5 w-3.5" />
+                  File Search needs a specific document selected first.
                 </p>
               )}
             </div>
           )}
-        </div>
-      </div>
 
-      {/* Voice Chat Mode */}
-      {activeMode === 'voice' && (
-        <div className="flex-1 flex flex-col items-center justify-center rounded-lg bg-[var(--card-bg)] border border-[var(--card-border)] p-6">
-          <div className="w-full max-w-md">
-            <VoiceChat
-              documentId={selectedDocId || undefined}
-              onTranscript={(text) => setQuestion(text)}
-              onResponse={(text) => {
-                const assistantMessage: Message = {
-                  id: Date.now().toString(),
-                  type: 'assistant',
-                  content: text,
-                  timestamp: new Date(),
-                };
-                setMessages((prev) => [...prev, assistantMessage]);
-              }}
-            />
-          </div>
-          <p className="text-xs text-[var(--text-muted)] mt-4 text-center max-w-sm">
-            Speak naturally and get instant answers about your documents.
-          </p>
-        </div>
-      )}
-
-      {/* Text Chat Mode */}
-      {activeMode === 'text' && (
-        <div className="flex-1 flex flex-col min-h-0">
-          {/* Chat Messages Container */}
-          <ChatContainerRoot className="flex-1 overflow-y-auto rounded-lg bg-[var(--card-bg)] border border-[var(--card-border)] mb-2 relative">
-            {messages.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center text-center p-6">
-                <div className="w-12 h-12 rounded-lg bg-[var(--primary-light)] flex items-center justify-center mb-3">
-                  <MessageSquare className="h-6 w-6 text-[var(--primary)]" />
-                </div>
-                <h3 className="text-base font-medium text-[var(--text-primary)] mb-1">
-                  Ask anything about your documents
-                </h3>
-                <p className="text-sm text-[var(--text-tertiary)] max-w-sm mb-4">
-                  Questions are answered using RAG — relevant chunks from your documents generate accurate, cited answers.
-                </p>
-                <div className="grid grid-cols-2 gap-2 max-w-md w-full">
-                  {getSuggestedQuestions().map((suggestion) => (
-                    <button
-                      key={suggestion}
-                      onClick={() => setQuestion(suggestion)}
-                      className="px-3 py-2 text-xs text-left rounded-lg bg-[var(--bg-secondary)] border border-[var(--card-border)] hover:border-[var(--primary)] hover:bg-[var(--primary-light)] transition-all text-[var(--text-secondary)]"
-                    >
-                      <Sparkles className="h-3 w-3 inline mr-1 text-[var(--primary)]" />
-                      {suggestion}
-                    </button>
-                  ))}
-                </div>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+            <div className="rounded-[1.35rem] border border-[var(--card-border)] bg-[color:color-mix(in_srgb,var(--bg-elevated)_78%,transparent)] p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--text-tertiary)]">Document count</p>
+              <p className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-[var(--text-primary)]">{documents.length}</p>
+            </div>
+            {vectorStats && (
+              <div className="rounded-[1.35rem] border border-[var(--card-border)] bg-[color:color-mix(in_srgb,var(--bg-elevated)_78%,transparent)] p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--text-tertiary)]">Chunk inventory</p>
+                <p className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-[var(--text-primary)]">{vectorStats.total_chunks || 0}</p>
               </div>
-            ) : (
-              <ChatContainerContent className="p-4 space-y-4">
-                {messages.map((message) => (
-                  <div
-                    key={message.id}
-                    className={cn(
-                      'flex',
-                      message.type === 'user' ? 'justify-end' : 'justify-start'
-                    )}
-                  >
-                    <div
-                      className={cn(
-                        'max-w-[85%] rounded-xl px-4 py-3 group relative',
-                        message.type === 'user'
-                          ? 'bg-[var(--primary)] text-white'
-                          : 'bg-[var(--bg-secondary)] border border-[var(--card-border)]'
-                      )}
-                    >
-                      {/* Mode badge for assistant messages */}
-                      {message.type === 'assistant' && message.mode && (
-                        <div className="flex items-center gap-1.5 mb-2">
-                          {(() => {
-                            const modeKey = message.mode as RAGMode;
-                            const config = MODE_CONFIG[modeKey];
-                            if (!config) return null;
-                            const Icon = config.icon;
-                            return (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-medium bg-[var(--bg-elevated)] text-[var(--text-secondary)] border border-[var(--card-border)]">
-                                <Icon className="h-2.5 w-2.5" />
-                                {config.label}
-                              </span>
-                            );
-                          })()}
-                        </div>
-                      )}
+            )}
+          </div>
 
-                      {/* Message Content */}
-                      {message.type === 'assistant' ? (
-                        <CitedMarkdown
-                          content={message.content}
-                          sources={message.sources || []}
-                          messageId={message.id}
-                          mode={message.mode}
-                          groundingMetadata={message.groundingMetadata}
-                          onCitationClick={(idx) => {
-                            if (!expandedSources.has(message.id)) {
-                              setExpandedSources(prev => new Set(prev).add(message.id));
-                            }
-                            setTimeout(() => {
-                              const el = document.getElementById(`source-${message.id}-${idx}`);
-                              el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                              el?.classList.add('ring-2', 'ring-[var(--primary)]');
-                              setTimeout(() => el?.classList.remove('ring-2', 'ring-[var(--primary)]'), 2000);
-                            }, 100);
-                          }}
-                        />
-                      ) : (
-                        <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-                      )}
+          {messages.length > 0 && activeMode === 'text' && (
+            <div className="mt-auto grid gap-2 sm:grid-cols-3 xl:grid-cols-1">
+              <Button variant="outline" size="sm" onClick={exportChatAsMarkdown} className="justify-center">
+                <Download className="h-4 w-4" />
+                Export .md
+              </Button>
+              <Button variant="outline" size="sm" onClick={exportChatAsPDF} className="justify-center">
+                <Download className="h-4 w-4" />
+                Export .pdf
+              </Button>
+              <Button variant="ghost" size="sm" onClick={clearConversation} className="justify-center">
+                <Trash2 className="h-4 w-4" />
+                Clear session
+              </Button>
+            </div>
+          )}
+        </div>
+      </aside>
 
-                      {/* Copy button */}
-                      <button
-                        onClick={() => copyMessage(message.content)}
-                        className={cn(
-                          'absolute top-2 right-2 p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity',
-                          message.type === 'user'
-                            ? 'hover:bg-white/20 text-white/70'
-                            : 'hover:bg-[var(--bg-elevated)] text-[var(--text-tertiary)]'
-                        )}
-                        title="Copy message"
-                      >
-                        <Copy className="h-3.5 w-3.5" />
-                      </button>
+      <section className="flex min-h-[calc(100vh-156px)] min-w-0 flex-col">
+        <div className="dashboard-panel flex min-h-[calc(100vh-156px)] min-w-0 flex-col overflow-hidden">
+          <div className="panel-content flex items-center justify-between gap-4 border-b border-[var(--card-border)] px-5 py-4 lg:px-6">
+            <div>
+              <p className="editorial-kicker">
+                <span className="inline-block h-2 w-2 rounded-full bg-[var(--primary)]" />
+                Retrieval session
+              </p>
+              <h3 className="mt-2 font-serif text-2xl tracking-[-0.04em] text-[var(--text-primary)]">
+                {activeMode === 'voice' ? 'Voice assistant' : selectedDocument?.title || 'All documents'}
+              </h3>
+              <p className="mt-1 text-sm text-[var(--text-secondary)]">
+                {activeMode === 'voice'
+                  ? 'Speak naturally and keep the response grounded in your sources.'
+                  : MODE_CONFIG[ragMode].description}
+              </p>
+            </div>
 
-                      {/* NLI Verification Summary */}
-                      {message.type === 'assistant' && message.verificationSummary && (
-                        <div className="mt-3 pt-3 border-t border-[var(--card-border)]">
-                          <button
-                            onClick={() => toggleVerifications(message.id)}
-                            className="flex items-center gap-2 text-xs w-full"
-                          >
-                            <ShieldCheck className="h-3.5 w-3.5 text-[var(--notes)]" />
-                            <span className="text-[var(--text-secondary)]">
-                              Verification:
-                            </span>
-                            <span className="text-[var(--success)] font-medium">
-                              {message.verificationSummary.verified} verified
-                            </span>
-                            {message.verificationSummary.failed > 0 && (
-                              <span className="text-[var(--danger)] font-medium">
-                                {message.verificationSummary.failed} failed
-                              </span>
-                            )}
-                            <span className={cn(
-                              'ml-auto px-1.5 py-0.5 rounded-full text-[9px] font-bold',
-                              message.verificationSummary.score >= 0.8
-                                ? 'bg-[var(--success-bg)] text-[var(--success)]'
-                                : message.verificationSummary.score >= 0.5
-                                  ? 'bg-[var(--warning-bg)] text-[var(--warning)]'
-                                  : 'bg-[var(--danger-bg)] text-[var(--danger)]'
-                            )}>
-                              {Math.round(message.verificationSummary.score * 100)}%
-                            </span>
-                            {expandedVerifications.has(message.id) ? (
-                              <ChevronUp className="h-3 w-3 text-[var(--text-muted)]" />
-                            ) : (
-                              <ChevronDown className="h-3 w-3 text-[var(--text-muted)]" />
-                            )}
-                          </button>
+            {activeMode === 'text' && (
+              <div className="signal-pill hidden sm:inline-flex">
+                {messages.length} message{messages.length === 1 ? '' : 's'}
+              </div>
+            )}
+          </div>
 
-                          {expandedVerifications.has(message.id) && message.verifiedCitations && (
-                            <div className="mt-2 space-y-1.5 animate-in fade-in slide-in-from-top-1 duration-200">
-                              {message.verifiedCitations.map((vc, idx) => (
-                                <div
-                                  key={idx}
-                                  className={cn(
-                                    'p-2 rounded-md text-xs border',
-                                    vc.is_supported
-                                      ? 'bg-[var(--success-bg)] border-[var(--success)]/20'
-                                      : vc.is_supported === false
-                                        ? 'bg-[var(--danger-bg)] border-[var(--danger)]/20'
-                                        : 'bg-[var(--bg-elevated)] border-[var(--card-border)]'
-                                  )}
-                                >
-                                  <div className="flex items-start gap-1.5">
-                                    {vc.is_supported ? (
-                                      <CheckCircle2 className="h-3.5 w-3.5 text-[var(--success)] shrink-0 mt-0.5" />
-                                    ) : vc.is_supported === false ? (
-                                      <XCircle className="h-3.5 w-3.5 text-[var(--danger)] shrink-0 mt-0.5" />
-                                    ) : (
-                                      <AlertCircle className="h-3.5 w-3.5 text-[var(--text-muted)] shrink-0 mt-0.5" />
-                                    )}
-                                    <div className="min-w-0">
-                                      <p className="text-[var(--text-primary)] font-medium truncate">
-                                        [{vc.source_index}] &ldquo;{vc.claim}&rdquo;
-                                      </p>
-                                      <p className="text-[var(--text-tertiary)] mt-0.5 line-clamp-2">
-                                        {vc.reasoning}
-                                      </p>
-                                      {vc.confidence > 0 && (
-                                        <span className="text-[var(--text-muted)] text-[9px]">
-                                          Confidence: {Math.round(vc.confidence * 100)}%
-                                        </span>
-                                      )}
-                                    </div>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      )}
+          {activeMode === 'voice' && (
+            <div className="panel-content flex flex-1 flex-col items-center justify-center p-6">
+              <div className="w-full max-w-xl rounded-[1.8rem] border border-[var(--card-border)] bg-[color:color-mix(in_srgb,var(--bg-elevated)_82%,transparent)] p-6 shadow-[var(--card-shadow)]">
+                <VoiceChat
+                  documentId={selectedDocId || undefined}
+                  onTranscript={(text) => setQuestion(text)}
+                  onResponse={(text) => {
+                    const assistantMessage: Message = {
+                      id: Date.now().toString(),
+                      type: 'assistant',
+                      content: text,
+                      timestamp: new Date(),
+                    };
+                    setMessages((prev) => [...prev, assistantMessage]);
+                  }}
+                />
+              </div>
+              <p className="mt-4 max-w-md text-center text-sm leading-6 text-[var(--text-secondary)]">
+                Voice mode is best for quick verbal recall checks and focused document walkthroughs.
+              </p>
+            </div>
+          )}
 
-                      {/* Source Citations */}
-                      {message.type === 'assistant' && message.sources && message.sources.length > 0 && (
-                        <div className={cn(
-                          'mt-3 pt-3 border-t border-[var(--card-border)]',
-                          message.verificationSummary ? '' : ''
-                        )}>
-                          <button
-                            onClick={() => toggleSources(message.id)}
-                            className="flex items-center gap-1 text-xs text-[var(--primary)] hover:underline"
-                          >
-                            <BookOpen className="h-3 w-3" />
-                            {expandedSources.has(message.id) ? 'Hide' : 'View'} {message.sources.length} source{message.sources.length > 1 ? 's' : ''}
-                            {expandedSources.has(message.id) ? (
-                              <ChevronUp className="h-3 w-3" />
-                            ) : (
-                              <ChevronDown className="h-3 w-3" />
-                            )}
-                          </button>
-
-                          {expandedSources.has(message.id) && (
-                            <div className="mt-2 space-y-2 animate-in fade-in slide-in-from-top-1 duration-200">
-                              {message.sources.map((source, idx) => (
-                                <SourceCard
-                                  key={idx}
-                                  source={source}
-                                  index={idx}
-                                  messageId={message.id}
-                                />
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      <p className={cn(
-                        'text-[10px] mt-2',
-                        message.type === 'user' ? 'text-white/60' : 'text-[var(--text-muted)]'
-                      )}>
-                        {message.timestamp.toLocaleTimeString()}
-                      </p>
+          {activeMode === 'text' && (
+            <>
+              <ChatContainerRoot className="paper-grid relative min-h-0 flex-1 overflow-y-auto bg-transparent">
+                {messages.length === 0 ? (
+                  <div className="panel-content flex h-full flex-col items-center justify-center p-8 text-center">
+                    <div className="flex h-16 w-16 items-center justify-center rounded-[1.6rem] bg-[var(--primary-light)] text-[var(--primary)]">
+                      <MessageSquare className="h-7 w-7" />
+                    </div>
+                    <h3 className="mt-6 font-serif text-3xl tracking-[-0.04em] text-[var(--text-primary)]">
+                      Ask anything about your documents
+                    </h3>
+                    <p className="mt-3 max-w-xl text-base leading-7 text-[var(--text-secondary)]">
+                      Ask for summaries, definitions, explanations, comparisons, or citations. The assistant will answer using retrieved source chunks from your library.
+                    </p>
+                    <div className="mt-6 grid w-full max-w-2xl gap-3 sm:grid-cols-2">
+                      {getSuggestedQuestions().map((suggestion) => (
+                        <button
+                          key={suggestion}
+                          onClick={() => setQuestion(suggestion)}
+                          className="rounded-[1.2rem] border border-[var(--card-border)] bg-[color:color-mix(in_srgb,var(--bg-elevated)_80%,transparent)] px-4 py-3 text-left text-sm text-[var(--text-secondary)] transition-all hover:-translate-y-0.5 hover:border-[var(--card-border-hover)] hover:text-[var(--text-primary)]"
+                        >
+                          <Sparkles className="mr-2 inline h-4 w-4 text-[var(--primary)]" />
+                          {suggestion}
+                        </button>
+                      ))}
                     </div>
                   </div>
-                ))}
+                ) : (
+                  <ChatContainerContent className="panel-content space-y-5 p-5 lg:p-6">
+                    {messages.map((message) => (
+                      <div
+                        key={message.id}
+                        className={cn('flex', message.type === 'user' ? 'justify-end' : 'justify-start')}
+                      >
+                        <div
+                          className={cn(
+                            'group relative max-w-[86%] rounded-[1.5rem] px-4 py-4 shadow-sm',
+                            message.type === 'user'
+                              ? 'bg-[linear-gradient(135deg,var(--primary),var(--highlight))] text-[var(--primary-foreground)] shadow-[var(--shadow-glow-blue)]'
+                              : 'border border-[var(--card-border)] bg-[color:color-mix(in_srgb,var(--bg-elevated)_82%,transparent)]'
+                          )}
+                        >
+                          {message.type === 'assistant' && message.mode && (
+                            <div className="mb-3 flex items-center gap-1.5">
+                              {(() => {
+                                const modeKey = message.mode as RAGMode;
+                                const config = MODE_CONFIG[modeKey];
+                                if (!config) return null;
+                                const Icon = config.icon;
+                                return (
+                                  <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--card-border)] bg-[var(--card-bg-solid)] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-secondary)]">
+                                    <Icon className="h-3 w-3" />
+                                    {config.label}
+                                  </span>
+                                );
+                              })()}
+                            </div>
+                          )}
 
-                {isLoading && (
-                  <Message className="justify-start gap-2">
-                    <div className="w-8 h-8 rounded-lg bg-[var(--primary)] flex items-center justify-center shrink-0 mt-1">
-                      <Bot className="h-4 w-4 text-white animate-pulse" />
-                    </div>
-                    <MessageContent className="bg-[var(--bg-secondary)] border border-[var(--card-border)] rounded-xl px-4 py-3 flex-1 max-w-[400px]">
-                      <div className="space-y-3">
-                        <div className="flex items-center gap-2">
-                          <LoadingSpinner size="sm" />
-                          <span className="text-sm text-[var(--text-secondary)] font-medium">
-                            {ragMode === 'nli_verification'
-                              ? 'Analyzing & Verifying Citations...'
-                              : ragMode === 'file_search'
-                                ? 'Searching with Google File Search...'
-                                : 'Analyzing Documents...'}
-                          </span>
+                          {message.type === 'assistant' ? (
+                            <CitedMarkdown
+                              content={message.content}
+                              sources={message.sources || []}
+                              messageId={message.id}
+                              mode={message.mode}
+                              groundingMetadata={message.groundingMetadata}
+                              onCitationClick={(idx) => {
+                                if (!expandedSources.has(message.id)) {
+                                  setExpandedSources((prev) => new Set(prev).add(message.id));
+                                }
+                                setTimeout(() => {
+                                  const el = document.getElementById(`source-${message.id}-${idx}`);
+                                  el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                  el?.classList.add('ring-2', 'ring-[var(--primary)]');
+                                  setTimeout(() => el?.classList.remove('ring-2', 'ring-[var(--primary)]'), 2000);
+                                }, 100);
+                              }}
+                            />
+                          ) : (
+                            <p className="whitespace-pre-wrap text-sm leading-7">{message.content}</p>
+                          )}
+
+                          <button
+                            onClick={() => copyMessage(message.content)}
+                            className={cn(
+                              'absolute right-2 top-2 rounded-xl p-1.5 opacity-0 transition-opacity group-hover:opacity-100',
+                              message.type === 'user'
+                                ? 'text-white/70 hover:bg-white/20'
+                                : 'text-[var(--text-tertiary)] hover:bg-[var(--accent)]'
+                            )}
+                            title="Copy message"
+                          >
+                            <Copy className="h-3.5 w-3.5" />
+                          </button>
+
+                          {message.type === 'assistant' && message.verificationSummary && (
+                            <div className="mt-4 border-t border-[var(--card-border)] pt-4">
+                              <button
+                                onClick={() => toggleVerifications(message.id)}
+                                className="flex w-full items-center gap-2 text-xs"
+                              >
+                                <ShieldCheck className="h-3.5 w-3.5 text-[var(--notes)]" />
+                                <span className="text-[var(--text-secondary)]">Verification</span>
+                                <span className="font-medium text-[var(--success)]">
+                                  {message.verificationSummary.verified} verified
+                                </span>
+                                {message.verificationSummary.failed > 0 && (
+                                  <span className="font-medium text-[var(--danger)]">
+                                    {message.verificationSummary.failed} failed
+                                  </span>
+                                )}
+                                <span
+                                  className={cn(
+                                    'ml-auto rounded-full px-2 py-0.5 text-[9px] font-bold',
+                                    message.verificationSummary.score >= 0.8
+                                      ? 'bg-[var(--success-bg)] text-[var(--success)]'
+                                      : message.verificationSummary.score >= 0.5
+                                        ? 'bg-[var(--warning-bg)] text-[var(--warning)]'
+                                        : 'bg-[var(--danger-bg)] text-[var(--danger)]'
+                                  )}
+                                >
+                                  {Math.round(message.verificationSummary.score * 100)}%
+                                </span>
+                                {expandedVerifications.has(message.id) ? (
+                                  <ChevronUp className="h-3 w-3 text-[var(--text-muted)]" />
+                                ) : (
+                                  <ChevronDown className="h-3 w-3 text-[var(--text-muted)]" />
+                                )}
+                              </button>
+
+                              {expandedVerifications.has(message.id) && message.verifiedCitations && (
+                                <div className="mt-3 space-y-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                                  {message.verifiedCitations.map((vc, idx) => (
+                                    <div
+                                      key={idx}
+                                      className={cn(
+                                        'rounded-[1rem] border p-3 text-xs',
+                                        vc.is_supported
+                                          ? 'border-[var(--success-border)] bg-[var(--success-bg)]'
+                                          : vc.is_supported === false
+                                            ? 'border-[var(--error-border)] bg-[var(--danger-bg)]'
+                                            : 'border-[var(--card-border)] bg-[var(--card-bg-solid)]'
+                                      )}
+                                    >
+                                      <div className="flex items-start gap-2">
+                                        {vc.is_supported ? (
+                                          <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--success)]" />
+                                        ) : vc.is_supported === false ? (
+                                          <XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--danger)]" />
+                                        ) : (
+                                          <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--text-muted)]" />
+                                        )}
+                                        <div className="min-w-0">
+                                          <p className="truncate font-medium text-[var(--text-primary)]">
+                                            [{vc.source_index}] &ldquo;{vc.claim}&rdquo;
+                                          </p>
+                                          <p className="mt-1 line-clamp-2 text-[var(--text-tertiary)]">{vc.reasoning}</p>
+                                          {vc.confidence > 0 && (
+                                            <span className="mt-1 inline-block text-[9px] text-[var(--text-muted)]">
+                                              Confidence: {Math.round(vc.confidence * 100)}%
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {message.type === 'assistant' && message.sources && message.sources.length > 0 && (
+                            <div className="mt-4 border-t border-[var(--card-border)] pt-4">
+                              <button
+                                onClick={() => toggleSources(message.id)}
+                                className="flex items-center gap-2 text-xs text-[var(--primary)] hover:underline"
+                              >
+                                <BookOpen className="h-3.5 w-3.5" />
+                                {expandedSources.has(message.id) ? 'Hide' : 'View'} {message.sources.length} source{message.sources.length > 1 ? 's' : ''}
+                                {expandedSources.has(message.id) ? (
+                                  <ChevronUp className="h-3 w-3" />
+                                ) : (
+                                  <ChevronDown className="h-3 w-3" />
+                                )}
+                              </button>
+
+                              {expandedSources.has(message.id) && (
+                                <div className="mt-3 space-y-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                                  {message.sources.map((source, idx) => (
+                                    <SourceCard key={idx} source={source} index={idx} messageId={message.id} />
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          <p className={cn('mt-3 text-[10px]', message.type === 'user' ? 'text-white/65' : 'text-[var(--text-muted)]')}>
+                            {message.timestamp.toLocaleTimeString()}
+                          </p>
                         </div>
-                        {ragMode === 'nli_verification' && (
-                          <Tool
-                            toolPart={{
-                              type: "NLI Reasoning",
-                              state: "input-streaming",
-                            }}
-                            className="mt-2"
-                          />
-                        )}
                       </div>
-                    </MessageContent>
-                  </Message>
-                )}
+                    ))}
 
-                <ChatContainerScrollAnchor />
-                <div className="absolute right-4 bottom-4">
-                  <ScrollButton className="shadow-sm border-[var(--card-border)] bg-[var(--card-bg)] text-[var(--text-primary)] hover:bg-[var(--bg-secondary)]" hover-bg="var(--bg-secondary)" />
-                </div>
-              </ChatContainerContent>
-            )}
-          </ChatContainerRoot>
-
-          {/* Input Form */}
-          <div className="shrink-0 pt-2">
-            <PromptInput
-              value={question}
-              onValueChange={setQuestion}
-              onSubmit={() => {
-                if (question.trim()) handleSubmit();
-              }}
-              isLoading={isLoading}
-              className="w-full bg-[var(--card-bg)] border border-[var(--card-border)] rounded-2xl shadow-sm px-2 py-1 flex flex-row items-end"
-            >
-              <PromptInputTextarea
-                placeholder="Ask a question about your documents..."
-                disabled={isLoading}
-                className="min-h-[44px] px-3 py-2 bg-transparent border-none focus:ring-0 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] flex-1"
-              />
-              <PromptInputActions className="pb-1 pr-1">
-                <PromptInputAction
-                  tooltip={isLoading ? "Stop generation" : "Send message"}
-                >
-                  <Button
-                    type="button"
-                    onClick={() => {
-                      if (!isLoading && question.trim()) {
-                        handleSubmit();
-                      }
-                    }}
-                    variant="default"
-                    size="icon"
-                    className="h-8 w-8 rounded-full bg-[var(--primary)] hover:bg-[var(--primary)]/90 text-white"
-                    disabled={!isLoading && !question.trim()}
-                  >
-                    {isLoading ? (
-                      <Square className="h-4 w-4 fill-current" />
-                    ) : (
-                      <ArrowUp className="h-5 w-5" />
+                    {isLoading && (
+                      <Message className="justify-start gap-2">
+                        <div className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-[var(--primary)] text-[var(--primary-foreground)]">
+                          <Bot className="h-4 w-4 animate-pulse" />
+                        </div>
+                        <MessageContent className="max-w-[440px] rounded-[1.4rem] border border-[var(--card-border)] bg-[color:color-mix(in_srgb,var(--bg-elevated)_82%,transparent)] px-4 py-3">
+                          <div className="space-y-3">
+                            <div className="flex items-center gap-2">
+                              <LoadingSpinner size="sm" />
+                              <span className="text-sm font-medium text-[var(--text-secondary)]">
+                                {ragMode === 'nli_verification'
+                                  ? 'Analyzing and verifying citations...'
+                                  : ragMode === 'file_search'
+                                    ? 'Searching with File Search...'
+                                    : 'Analyzing documents...'}
+                              </span>
+                            </div>
+                            {ragMode === 'nli_verification' && (
+                              <Tool
+                                toolPart={{
+                                  type: 'NLI Reasoning',
+                                  state: 'input-streaming',
+                                }}
+                                className="mt-2"
+                              />
+                            )}
+                          </div>
+                        </MessageContent>
+                      </Message>
                     )}
-                  </Button>
-                </PromptInputAction>
-              </PromptInputActions>
-            </PromptInput>
-          </div>
+
+                    <ChatContainerScrollAnchor />
+                    <div className="absolute bottom-4 right-4">
+                      <ScrollButton className="border-[var(--card-border)] bg-[var(--card-bg)] text-[var(--text-primary)] shadow-sm hover:bg-[var(--accent)]" />
+                    </div>
+                  </ChatContainerContent>
+                )}
+              </ChatContainerRoot>
+
+              <div className="sticky bottom-0 z-10 border-t border-[var(--card-border)] bg-[color:color-mix(in_srgb,var(--card-bg-solid)_88%,transparent)] p-4 backdrop-blur-xl lg:p-5">
+                <PromptInput
+                  value={question}
+                  onValueChange={setQuestion}
+                  onSubmit={() => {
+                    if (question.trim()) handleSubmit();
+                  }}
+                  isLoading={isLoading}
+                  className="w-full rounded-[1.6rem] border border-[var(--card-border)] bg-[color:color-mix(in_srgb,var(--bg-elevated)_82%,transparent)] px-2 py-1.5 shadow-[var(--card-shadow)]"
+                >
+                  <PromptInputTextarea
+                    placeholder="Ask a question about your documents..."
+                    disabled={isLoading}
+                    className="min-h-[50px] flex-1 border-none bg-transparent px-3 py-2 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:ring-0"
+                  />
+                  <PromptInputActions className="pb-1 pr-1">
+                    <PromptInputAction tooltip={isLoading ? 'Stop generation' : 'Send message'}>
+                      <Button
+                        type="button"
+                        onClick={() => {
+                          if (!isLoading && question.trim()) {
+                            handleSubmit();
+                          }
+                        }}
+                        variant="default"
+                        size="icon"
+                        className="h-10 w-10 rounded-full"
+                        disabled={!isLoading && !question.trim()}
+                      >
+                        {isLoading ? (
+                          <Square className="h-4 w-4 fill-current" />
+                        ) : (
+                          <ArrowUp className="h-5 w-5" />
+                        )}
+                      </Button>
+                    </PromptInputAction>
+                  </PromptInputActions>
+                </PromptInput>
+              </div>
+            </>
+          )}
         </div>
-      )}
+      </section>
     </div>
   );
 }

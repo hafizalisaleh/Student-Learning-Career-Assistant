@@ -182,6 +182,7 @@ export default function KnowledgeGraphPage() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
 
   const chatPanelRef = useRef<HTMLDivElement>(null);
+  const lastNodeSelectionRef = useRef<{ topic: string; at: number } | null>(null);
 
   const handleSendChat = useCallback(async () => {
     if (!chatInput.trim()) return;
@@ -340,6 +341,12 @@ export default function KnowledgeGraphPage() {
       const selectedNode = nodes[0];
       const topic = selectedNode.topic;
       if (topic && topic !== 'Knowledge Graph') {
+        const now = Date.now();
+        const lastSelection = lastNodeSelectionRef.current;
+        if (lastSelection && lastSelection.topic === topic && now - lastSelection.at < 700) {
+          return;
+        }
+        lastNodeSelectionRef.current = { topic, at: now };
         askAIAboutNode(topic);
       }
     }

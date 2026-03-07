@@ -12,17 +12,17 @@ interface EmptyStateProps {
 
 export function EmptyState({ icon: Icon, title, description, action }: EmptyStateProps) {
   return (
-    <div className="p-12 rounded-2xl bg-[var(--card-bg)] border border-dashed border-[var(--card-border)] text-center">
-      <div className="w-12 h-12 rounded-full bg-[var(--bg-tertiary)] flex items-center justify-center mx-auto mb-4">
-        <Icon className="h-6 w-6 text-[var(--text-muted)]" />
+    <div className="rounded-[1.8rem] border border-dashed border-[var(--card-border)] bg-[color:color-mix(in_srgb,var(--bg-elevated)_82%,transparent)] p-12 text-center shadow-[var(--card-shadow)]">
+      <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-[1.4rem] border border-[var(--card-border)] bg-[var(--accent)] text-[var(--primary)]">
+        <Icon className="h-6 w-6" />
       </div>
-      <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-2">
+      <h3 className="font-serif text-2xl tracking-[-0.04em] text-[var(--text-primary)]">
         {title}
       </h3>
-      <p className="text-[var(--text-secondary)] mb-6">
+      <p className="mx-auto mt-3 max-w-xl text-sm leading-7 text-[var(--text-secondary)]">
         {description}
       </p>
-      {action}
+      {action ? <div className="mt-6">{action}</div> : null}
     </div>
   );
 }

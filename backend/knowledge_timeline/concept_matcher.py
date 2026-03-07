@@ -170,7 +170,6 @@ class ConceptMatcher:
             db.add(new_concept)
             db.flush()
 
-            # Store embedding in ChromaDB
             self._store_concept_embedding(new_concept, embedding)
 
             # Create relationship link
@@ -205,20 +204,41 @@ class ConceptMatcher:
         return new_concept.id, "new"
 
     def _store_concept_embedding(self, concept, embedding: List[float]):
-        """Store a concept's embedding in the slca_concepts ChromaDB collection"""
+        """Store a concept's embedding in PGVector chunks table as a special concept chunk."""
         try:
+            import json
+            from sqlalchemy import text as sql_text
+            from config.database import SessionLocal
+
             concept_id_str = str(concept.id)
-            self.vector_store.concepts_collection.upsert(
-                ids=[concept_id_str],
-                embeddings=[embedding],
-                documents=[concept.canonical_name],
-                metadatas=[{
-                    "concept_id": concept_id_str,
-                    "canonical_name": concept.canonical_name,
-                    "domain": concept.domain or ""
-                }]
-            )
-            concept.embedding_id = concept_id_str
+            embedding_str = '[' + ','.join(map(str, embedding)) + ']'
+
+            db = SessionLocal()
+            try:
+                # Store as a concept chunk with special metadata
+                db.execute(sql_text("""
+                    INSERT INTO chunks (document_id, content, embedding, chunk_index, metadata, token_count)
+                    VALUES (CAST(:doc_id AS uuid), :content, CAST(:embedding AS vector), 0, CAST(:metadata AS jsonb), :token_count)
+                    ON CONFLICT DO NOTHING
+                """), {
+                    "doc_id": concept_id_str,
+                    "content": concept.canonical_name,
+                    "embedding": embedding_str,
+                    "metadata": json.dumps({
+                        "concept_id": concept_id_str,
+                        "canonical_name": concept.canonical_name,
+                        "domain": concept.domain or "",
+                        "type": "concept"
+                    }),
+                    "token_count": len(concept.canonical_name.split())
+                })
+                db.commit()
+                concept.embedding_id = concept_id_str
+            except Exception:
+                db.rollback()
+                raise
+            finally:
+                db.close()
         except Exception as e:
             logger.warning(f"Failed to store concept embedding: {e}")
 

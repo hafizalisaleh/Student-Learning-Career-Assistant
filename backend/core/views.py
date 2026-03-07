@@ -4,6 +4,7 @@ Vector Store and RAG API endpoints
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from typing import Optional, List, Any
+from config.settings import settings
 from users.auth import get_current_user
 from users.models import User
 from core.rag_pipeline import rag_pipeline
@@ -344,6 +345,9 @@ def reprocess_document_embeddings(
             doc.doc_metadata = doc.doc_metadata or {}
             doc.doc_metadata["embeddings_stored"] = True
             doc.doc_metadata["chunk_count"] = result.get("chunk_count", 0)
+            doc.doc_metadata["docling_markdown_path"] = result.get("markdown_path")
+            if result.get("text"):
+                doc.extracted_text = result.get("text")
             db.commit()
 
         return {
@@ -441,6 +445,48 @@ def file_search_status(
         "indexed": store_name is not None,
         "store_name": store_name
     }
+
+
+# --- Vision Query ---
+
+class VisionQueryRequest(BaseModel):
+    """Vision-aware RAG query request"""
+    question: str
+    document_id: Optional[str] = None
+    n_results: int = settings.VISION_QUERY_DEFAULT_LIMIT
+
+
+@router.post("/vision-query")
+def vision_query(
+    request: VisionQueryRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Vision-aware RAG query. Retrieves chunks, enriches with tables/images
+    from source documents, and routes to vision model when needed.
+    """
+    try:
+        from core.vision_service import vision_service
+
+        logger.info(f"Vision query from {current_user.email}: {request.question[:100]}")
+        return vision_service.answer_question(
+            query=request.question,
+            document_id=request.document_id,
+            user_id=str(current_user.id),
+            limit=request.n_results,
+        )
+
+    except Exception as e:
+        logger.error(f"Vision query error: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return {
+            "success": False,
+            "error": str(e),
+            "answer": f"Error: {str(e)}",
+            "mode": "vision",
+            "vision_used": False
+        }
 
 
 # --- Content Revision ---

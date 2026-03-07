@@ -38,11 +38,46 @@ class Settings(BaseSettings):
     # AI Services
     GOOGLE_API_KEY: str = ""
     GEMINI_MODEL: str = "gemini-2.5-flash"
-    GEMINI_EMBEDDING_MODEL: str = "models/gemini-embedding-001"
-    
-    # Groq Fallback
+    GEMINI_EMBEDDING_MODEL: str = "models/gemini-embedding-001"  # Legacy, kept for compatibility
+
+    # Groq
     GROQ_API_KEY: str = ""
     GROQ_MODEL: str = "llama-3.3-70b-versatile"
+    GROQ_VISION_MODEL: str = "meta-llama/llama-4-scout-17b-16e-instruct"
+
+    # Provider routing for Docling RAG
+    RAG_LLM_PROVIDER: str = "groq"  # gemini | groq | ollama
+    RAG_VISION_PROVIDER: str = "groq"  # groq | ollama | gemini
+    RAG_VISION_MODE: str = "auto"  # auto | always | off
+
+    # Ollama
+    OLLAMA_HOST: str = "http://localhost:11434"
+    OLLAMA_MODEL: str = "qwen3.5:0.8b"
+    OLLAMA_VISION_MODEL: str = "qwen3.5:0.8b"
+    OLLAMA_NUM_CTX: int = 16384
+
+    # Vision/debug artifacts
+    VISION_RESPONSES_MD: str = "runtime/vision_responses.md"
+    VISION_CACHE_DIR: str = ".vision_cache"
+    VISION_QUERY_DEFAULT_LIMIT: int = 6
+    VISION_MAX_IMAGES: int = 3
+
+    # Local Embeddings (replaces Gemini embeddings)
+    EMBEDDING_MODEL: str = "BAAI/bge-small-en-v1.5"
+    EMBEDDING_DIMENSION: int = 384
+    EMBEDDING_DEVICE: str = "auto"  # auto, cpu, cuda, mps
+
+    # Docling ingestion behavior
+    DOCLING_HYBRID_TOKENIZER: str = "sentence-transformers/all-MiniLM-L6-v2"
+    DOCLING_HYBRID_MAX_TOKENS: int = 128
+    DOCLING_HYBRID_MERGE_PEERS: bool = False
+    DOCLING_FORMULA_ENRICHMENT: bool = True
+    DOCLING_ENABLE_PDF_PAGE_OCR: bool = True
+    DOCLING_PDF_OCR_DPI: int = 200
+    DOCLING_PDF_OCR_MIN_CHARS: int = 20
+    DOCLING_IMAGE_SCALE: float = 1.5
+    DOCLING_GENERATE_PICTURE_IMAGES: bool = True
+    DOCLING_GENERATE_TABLE_IMAGES: bool = True
     
     # External APIs (Optional - will use defaults if not in .env)
     SUPADATA_API_KEY: str = ""
@@ -72,8 +107,7 @@ class Settings(BaseSettings):
         """Get OCR API secret with fallback to default"""
         return self.OCR_API_SECRET or "197a54dd-8420-11f0-a2aa-10bf487fdf8e"
     
-    # Vector Database
-    VECTOR_DB_PATH: str = "./vector_store"
+    # Vector Database (PGVector - uses same DATABASE_URL)
     
     # File Upload Configuration
     MAX_FILE_SIZE_MB: int = 50
@@ -93,10 +127,14 @@ class Settings(BaseSettings):
     @property
     def cors_origins(self) -> List[str]:
         """Get CORS origins list"""
-        return [
+        origins = {
+            self.FRONTEND_URL.rstrip("/"),
             "http://localhost:3000",
             "http://localhost:3001",
-        ]
+            "http://127.0.0.1:3000",
+            "http://127.0.0.1:3001",
+        }
+        return sorted(origin for origin in origins if origin)
     
     @property
     def allowed_extensions_list(self) -> List[str]:

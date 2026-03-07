@@ -1,8 +1,6 @@
 """
 Resume parser for PDF and DOCX files with AI-powered extraction
 """
-import PyPDF2
-import pdfplumber
 from docx import Document
 from typing import Dict, Any, List
 import re
@@ -11,14 +9,13 @@ from utils.gemini_client import gemini_client
 
 class ResumeParser:
     """Parser for extracting structured data from resumes using AI"""
-    
+
     def __init__(self):
         self.gemini = gemini_client
-    
+
     def parse_pdf(self, file_path: str) -> Dict[str, Any]:
         """
-        Parse PDF resume with AI enhancement
-        Uses PyPDF2 first, falls back to pdfplumber if that fails
+        Parse PDF resume with AI enhancement using Docling.
 
         Args:
             file_path: Path to PDF file
@@ -28,61 +25,35 @@ class ResumeParser:
         """
         text = ""
 
-        # Try PyPDF2 first
         try:
-            text = self._parse_pdf_pypdf2(file_path)
+            text = self._parse_pdf_docling(file_path)
         except Exception as e:
-            print(f"PyPDF2 failed: {e}, trying pdfplumber...")
-            # Fallback to pdfplumber
+            # Fallback to PyMuPDF
             try:
-                text = self._parse_pdf_pdfplumber(file_path)
+                text = self._parse_pdf_pymupdf(file_path)
             except Exception as e2:
-                raise ValueError(f"Could not read PDF file. The file may be corrupted or in an unsupported format. Please try converting to DOCX or a different PDF.")
+                raise ValueError(f"Could not read PDF file. The file may be corrupted or in an unsupported format.")
 
-        # Check if we extracted any text
         if not text or len(text.strip()) < 50:
             raise ValueError("Could not extract text from PDF. The PDF may be scanned/image-based. Please upload a text-based PDF or DOCX file.")
 
         return self._extract_structured_data(text)
 
-    def _parse_pdf_pypdf2(self, file_path: str) -> str:
-        """Parse PDF using PyPDF2"""
+    def _parse_pdf_docling(self, file_path: str) -> str:
+        """Parse PDF using Docling for structured extraction."""
+        from docling.document_converter import DocumentConverter
+        converter = DocumentConverter()
+        result = converter.convert(file_path)
+        return result.document.export_to_markdown()
+
+    def _parse_pdf_pymupdf(self, file_path: str) -> str:
+        """Parse PDF using PyMuPDF (fallback parser)."""
+        import fitz
         text = ""
-        with open(file_path, 'rb') as file:
-            pdf_reader = PyPDF2.PdfReader(file)
-
-            # Check if PDF is encrypted
-            if pdf_reader.is_encrypted:
-                try:
-                    pdf_reader.decrypt('')  # Try empty password
-                except Exception:
-                    raise ValueError("PDF is password protected. Please upload an unprotected PDF.")
-
-            for page in pdf_reader.pages:
-                page_text = page.extract_text()
-                if page_text:
-                    text += page_text + "\n"
-
-        return text
-
-    def _parse_pdf_pdfplumber(self, file_path: str) -> str:
-        """Parse PDF using pdfplumber (fallback parser)"""
-        text = ""
-        with pdfplumber.open(file_path) as pdf:
-            for page in pdf.pages:
-                page_text = page.extract_text()
-                if page_text:
-                    text += page_text + "\n"
-
-                # Also try to extract text from tables
-                tables = page.extract_tables()
-                for table in tables:
-                    for row in table:
-                        if row:
-                            row_text = ' '.join([cell or '' for cell in row])
-                            if row_text.strip():
-                                text += row_text + "\n"
-
+        doc = fitz.open(file_path)
+        for page in doc:
+            text += page.get_text() + "\n"
+        doc.close()
         return text
     
     def parse_docx(self, file_path: str) -> Dict[str, Any]:

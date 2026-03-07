@@ -1,216 +1,46 @@
 """
-Vector store operations using ChromaDB - Full RAG Implementation
-Supports 3 citation modes: Structured Output, File Search Tool, NLI Verification
+Vector store operations using PGVector for PostgreSQL-native vector search.
+Replaces ChromaDB with pgvector for embedding storage and similarity search.
 """
-import os
 import json
 import uuid
 from typing import List, Dict, Any, Optional, Literal
-from google import genai
-from google.genai import types
-import chromadb
-from chromadb.config import Settings
+from sqlalchemy import text
 from config.settings import settings
+from config.database import SessionLocal
+from core.ingestion.embedder import get_embedder
 from utils.logger import logger
+from utils.rag_llm_client import RAGLLMClient, safe_load_json
 
-# RAG mode type
 RAGMode = Literal["structured_output", "file_search", "nli_verification"]
 
 
 class VectorStore:
-    """Manage vector storage and retrieval with real embeddings"""
+    """Manage vector storage and retrieval with PGVector and local HuggingFace embeddings"""
 
     def __init__(self):
-        """Initialize vector store with ChromaDB and Google Embeddings"""
-        # Configure Gemini
-        self.api_key = os.getenv('GOOGLE_API_KEY')
-        if self.api_key:
-            self.client = genai.Client(api_key=self.api_key)
-        else:
-            self.client = None
+        """Initialize vector store with PGVector and local embeddings"""
+        self.embedder = get_embedder()
+        self.answer_client = RAGLLMClient()
+        logger.info(f"VectorStore initialized with PGVector (embedding dim={settings.EMBEDDING_DIMENSION})")
 
-        self.model_id = settings.GEMINI_MODEL
-        self.embedding_model = settings.GEMINI_EMBEDDING_MODEL
-
-        # Initialize ChromaDB persistent client
-        self.chroma_client = chromadb.PersistentClient(
-            path=settings.VECTOR_DB_PATH,
-            settings=Settings(anonymized_telemetry=False)
-        )
-
-        # Default collection for documents
-        self.default_collection_name = "slca_documents"
-        self._ensure_collection()
-
-        # Concepts collection for knowledge evolution timeline
-        self._ensure_concepts_collection()
-
-        logger.info(f"VectorStore initialized with ChromaDB at {settings.VECTOR_DB_PATH}")
-
-    def _ensure_collection(self):
-        """Ensure default collection exists"""
-        try:
-            self.collection = self.chroma_client.get_or_create_collection(
-                name=self.default_collection_name,
-                metadata={"description": "SLCA document embeddings"}
-            )
-            logger.info(f"Collection '{self.default_collection_name}' ready with {self.collection.count()} documents")
-        except Exception as e:
-            logger.error(f"Error creating collection: {e}")
-            raise
-
-    def _ensure_concepts_collection(self):
-        """Ensure concepts collection exists for knowledge evolution timeline"""
-        try:
-            self.concepts_collection = self.chroma_client.get_or_create_collection(
-                name="slca_concepts",
-                metadata={"description": "SLCA concept embeddings for knowledge timeline"}
-            )
-            logger.info(f"Collection 'slca_concepts' ready with {self.concepts_collection.count()} concepts")
-        except Exception as e:
-            logger.warning(f"Error creating concepts collection: {e}")
-            self.concepts_collection = None
-
-    def find_similar_concepts(self, text: str, n_results: int = 5) -> List[Dict[str, Any]]:
-        """
-        Query slca_concepts collection for concepts similar to the given text.
-        Returns list of dicts with text, metadata, distance, similarity.
-        """
-        if not self.concepts_collection or self.concepts_collection.count() == 0:
-            return []
-
-        try:
-            embedding = self._generate_query_embedding(text)
-            results = self.concepts_collection.query(
-                query_embeddings=[embedding],
-                n_results=min(n_results, self.concepts_collection.count()),
-                include=["documents", "metadatas", "distances"]
-            )
-
-            matches = []
-            if results and results["documents"] and results["documents"][0]:
-                for i in range(len(results["documents"][0])):
-                    distance = results["distances"][0][i] if results["distances"] else 1.0
-                    matches.append({
-                        "text": results["documents"][0][i],
-                        "metadata": results["metadatas"][0][i] if results["metadatas"] else {},
-                        "distance": distance,
-                        "similarity": 1 - distance
-                    })
-
-            return matches
-        except Exception as e:
-            logger.warning(f"Concept similarity search failed: {e}")
-            return []
-
-    def get_chunk_concept_depth(self, document_id: str, concept_text: str, threshold: float = 0.7) -> float:
-        """
-        Compute depth score: ratio of document chunks related to a concept.
-        """
-        try:
-            # Get total chunks for document
-            doc_results = self.collection.get(
-                where={"document_id": document_id},
-                include=[]
-            )
-            total_chunks = len(doc_results["ids"]) if doc_results["ids"] else 0
-
-            if total_chunks == 0:
-                return 0.3
-
-            # Query chunks for similarity to the concept
-            concept_embedding = self._generate_query_embedding(concept_text)
-            query_results = self.collection.query(
-                query_embeddings=[concept_embedding],
-                n_results=total_chunks,
-                where={"document_id": document_id},
-                include=["distances"]
-            )
-
-            if not query_results["distances"] or not query_results["distances"][0]:
-                return 0.3
-
-            related_count = sum(
-                1 for d in query_results["distances"][0]
-                if (1 - d) >= threshold
-            )
-
-            return related_count / total_chunks
-
-        except Exception as e:
-            logger.warning(f"Depth score computation failed: {e}")
-            return 0.3
+    def _get_db(self):
+        """Get a database session"""
+        return SessionLocal()
 
     def _generate_embedding(self, text: str) -> List[float]:
-        """
-        Generate embedding for a single text using Google's embedding model
-
-        Args:
-            text: Text to embed
-
-        Returns:
-            Embedding vector as list of floats
-        """
-        if not self.client:
-            raise ValueError("Google API Key not configured")
-
-        try:
-            result = self.client.models.embed_content(
-                model=self.embedding_model,
-                contents=text,
-                config=types.EmbedContentConfig(
-                    task_type="RETRIEVAL_DOCUMENT",
-                    output_dimensionality=768
-                )
-            )
-            return result.embeddings[0].values
-        except Exception as e:
-            logger.error(f"Error generating embedding: {e}")
-            raise
+        """Generate embedding for a document text using local HuggingFace model"""
+        return self.embedder.generate_embedding(text)
 
     def _generate_query_embedding(self, text: str) -> List[float]:
+        """Generate embedding for a query (with query instruction prefix)"""
+        return self.embedder.generate_query_embedding(text)
+
+    def chunk_text(self, text: str, chunk_size: int = 1000, overlap: int = 200) -> List[str]:
         """
-        Generate embedding for a query (uses different task type for better retrieval)
-
-        Args:
-            text: Query text to embed
-
-        Returns:
-            Embedding vector as list of floats
-        """
-        if not self.client:
-            raise ValueError("Google API Key not configured")
-
-        try:
-            result = self.client.models.embed_content(
-                model=self.embedding_model,
-                contents=text,
-                config=types.EmbedContentConfig(
-                    task_type="RETRIEVAL_QUERY",
-                    output_dimensionality=768
-                )
-            )
-            return result.embeddings[0].values
-        except Exception as e:
-            logger.error(f"Error generating query embedding: {e}")
-            raise
-
-    def chunk_text(
-        self,
-        text: str,
-        chunk_size: int = 1000,
-        overlap: int = 200
-    ) -> List[str]:
-        """
-        Chunk text into smaller pieces with overlap
-
-        Args:
-            text: Input text
-            chunk_size: Size of each chunk in characters
-            overlap: Overlap between chunks
-
-        Returns:
-            List of text chunks
+        Chunk text into smaller pieces with overlap.
+        Simple character-based chunking for backward compatibility.
+        For Docling-aware chunking, use the ingestion pipeline instead.
         """
         chunks = []
         start = 0
@@ -219,22 +49,19 @@ class VectorStore:
         while start < text_len:
             end = min(start + chunk_size, text_len)
 
-            # Try to break at sentence boundary if possible
             if end < text_len:
-                # Look for sentence endings
                 for sep in ['. ', '.\n', '! ', '!\n', '? ', '?\n']:
                     last_sep = text[start:end].rfind(sep)
-                    if last_sep > chunk_size * 0.5:  # At least 50% of chunk
+                    if last_sep > chunk_size * 0.5:
                         end = start + last_sep + len(sep)
                         break
 
             chunk = text[start:end].strip()
-            if chunk:  # Only add non-empty chunks
+            if chunk:
                 chunks.append(chunk)
 
             start = end - overlap if end < text_len else text_len
 
-        logger.info(f"Text chunked into {len(chunks)} pieces")
         return chunks
 
     def add_document(
@@ -244,136 +71,67 @@ class VectorStore:
         metadata: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
-        Add a single document to the vector store (chunks and embeds automatically)
-
-        Args:
-            document_id: Unique document identifier
-            text: Full document text
-            metadata: Optional metadata for the document
-
-        Returns:
-            Dict with indexing results
+        Add a single document to the vector store (chunks and embeds automatically).
+        Stores chunks in PGVector chunks table.
         """
         try:
-            logger.info(f"VectorStore: Adding document {document_id}, text length: {len(text)}")
-
-            # Chunk the text
             chunks = self.chunk_text(text)
-
             if not chunks:
-                logger.error(f"VectorStore: No valid chunks extracted from text for {document_id}")
-                return {
-                    "success": False,
-                    "error": "No valid chunks extracted from text"
-                }
+                return {"success": False, "error": "No valid chunks extracted from text"}
 
             logger.info(f"VectorStore: Created {len(chunks)} chunks for {document_id}")
 
-            # Generate embeddings for all chunks
-            embeddings = []
-            for i, chunk in enumerate(chunks):
-                try:
-                    embedding = self._generate_embedding(chunk)
-                    embeddings.append(embedding)
-                    if i == 0:
-                        logger.info(f"VectorStore: First embedding generated, dimension: {len(embedding)}")
-                except Exception as embed_error:
-                    logger.error(f"VectorStore: Failed to generate embedding for chunk {i}: {embed_error}")
-                    raise
-
+            # Generate embeddings in batch
+            embeddings = self.embedder.generate_embeddings_batch(chunks)
             logger.info(f"VectorStore: Generated {len(embeddings)} embeddings for {document_id}")
 
-            # Prepare IDs and metadata for each chunk
-            chunk_ids = [f"{document_id}_chunk_{i}" for i in range(len(chunks))]
-            chunk_metadata = []
-            for i, chunk in enumerate(chunks):
-                meta = {
+            db = self._get_db()
+            try:
+                for i, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
+                    chunk_meta = {
+                        "document_id": document_id,
+                        "chunk_index": i,
+                        "total_chunks": len(chunks),
+                        "chunk_length": len(chunk)
+                    }
+                    if metadata:
+                        chunk_meta.update({
+                            k: str(v) if not isinstance(v, (str, int, float, bool)) else v
+                            for k, v in metadata.items()
+                        })
+
+                    embedding_str = '[' + ','.join(map(str, embedding)) + ']'
+
+                    db.execute(text("""
+                        INSERT INTO chunks (document_id, content, embedding, chunk_index, metadata, token_count)
+                        VALUES (CAST(:doc_id AS uuid), :content, CAST(:embedding AS vector), :chunk_index, CAST(:metadata AS jsonb), :token_count)
+                    """), {
+                        "doc_id": document_id,
+                        "content": chunk,
+                        "embedding": embedding_str,
+                        "chunk_index": i,
+                        "metadata": json.dumps(chunk_meta),
+                        "token_count": len(chunk.split())
+                    })
+
+                db.commit()
+                logger.info(f"VectorStore: Added document {document_id} with {len(chunks)} chunks")
+
+                return {
+                    "success": True,
                     "document_id": document_id,
-                    "chunk_index": i,
-                    "total_chunks": len(chunks),
-                    "chunk_length": len(chunk)
+                    "chunk_count": len(chunks),
+                    "chunk_ids": [f"{document_id}_chunk_{i}" for i in range(len(chunks))]
                 }
-                if metadata:
-                    meta.update({k: str(v) if not isinstance(v, (str, int, float, bool)) else v
-                                for k, v in metadata.items()})
-                chunk_metadata.append(meta)
-
-            # Add to ChromaDB
-            logger.info(f"VectorStore: Adding to ChromaDB collection: {len(chunk_ids)} chunks")
-            self.collection.add(
-                ids=chunk_ids,
-                embeddings=embeddings,
-                documents=chunks,
-                metadatas=chunk_metadata
-            )
-
-            # Verify the data was stored
-            stored_count = self.collection.count()
-            logger.info(f"VectorStore: ChromaDB collection now has {stored_count} total chunks")
-            logger.info(f"VectorStore: Added document {document_id} with {len(chunks)} chunks to vector store")
-
-            return {
-                "success": True,
-                "document_id": document_id,
-                "chunk_count": len(chunks),
-                "chunk_ids": chunk_ids
-            }
+            except Exception:
+                db.rollback()
+                raise
+            finally:
+                db.close()
 
         except Exception as e:
             logger.error(f"Error adding document {document_id}: {e}")
-            return {
-                "success": False,
-                "error": str(e)
-            }
-
-    def add_documents(
-        self,
-        texts: List[str],
-        metadata: Optional[List[Dict[str, Any]]] = None,
-        document_id: Optional[str] = None
-    ) -> str:
-        """
-        Add multiple text chunks to vector store (legacy compatibility)
-
-        Args:
-            texts: List of text chunks
-            metadata: Optional metadata for each text
-            document_id: Optional document ID
-
-        Returns:
-            Collection ID / Document ID
-        """
-        try:
-            doc_id = document_id or str(uuid.uuid4())
-
-            # Generate embeddings
-            embeddings = [self._generate_embedding(text) for text in texts]
-
-            # Prepare chunk IDs
-            chunk_ids = [f"{doc_id}_chunk_{i}" for i in range(len(texts))]
-
-            # Prepare metadata
-            if metadata is None:
-                metadata = [{"document_id": doc_id, "chunk_index": i} for i in range(len(texts))]
-            else:
-                for i, meta in enumerate(metadata):
-                    meta["document_id"] = doc_id
-                    meta["chunk_index"] = i
-
-            # Add to collection
-            self.collection.add(
-                ids=chunk_ids,
-                embeddings=embeddings,
-                documents=texts,
-                metadatas=metadata
-            )
-
-            logger.info(f"Added {len(texts)} chunks for document {doc_id}")
-            return doc_id
-
-        except Exception as e:
-            logger.error(f"Error adding documents: {e}")
-            raise
+            return {"success": False, "error": str(e)}
 
     def query(
         self,
@@ -382,83 +140,93 @@ class VectorStore:
         document_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        Query the vector store for similar documents
-
-        Args:
-            query_text: Query text
-            n_results: Number of results to return
-            document_id: Optional - filter to specific document
-
-        Returns:
-            Query results with similar chunks
+        Query PGVector for similar chunks using cosine similarity.
         """
         try:
-            # Generate query embedding
             query_embedding = self._generate_query_embedding(query_text)
+            embedding_str = '[' + ','.join(map(str, query_embedding)) + ']'
 
-            # Build where filter if document_id specified
-            where_filter = None
-            if document_id:
-                where_filter = {"document_id": document_id}
+            db = self._get_db()
+            try:
+                result = db.execute(text("""
+                    SELECT
+                        c.id AS chunk_id,
+                        c.document_id,
+                        c.content,
+                        c.metadata,
+                        c.chunk_index,
+                        c.token_count,
+                        d.title AS document_title,
+                        d.original_filename,
+                        d.file_path,
+                        1 - (c.embedding <=> CAST(:query_embedding AS vector)) AS similarity
+                    FROM chunks c
+                    JOIN documents d ON d.id = c.document_id
+                    WHERE c.embedding IS NOT NULL
+                      AND (:filter_doc_id IS NULL OR c.document_id = CAST(:filter_doc_id AS uuid))
+                    ORDER BY c.embedding <=> CAST(:query_embedding AS vector)
+                    LIMIT :match_count
+                """), {
+                    "query_embedding": embedding_str,
+                    "match_count": n_results,
+                    "filter_doc_id": document_id
+                })
 
-            # Query ChromaDB
-            results = self.collection.query(
-                query_embeddings=[query_embedding],
-                n_results=n_results,
-                where=where_filter,
-                include=["documents", "metadatas", "distances"]
-            )
-
-            # Format results
-            formatted_results = []
-            if results['documents'] and results['documents'][0]:
-                for i, doc in enumerate(results['documents'][0]):
+                formatted_results = []
+                for row in result:
+                    meta = row.metadata if isinstance(row.metadata, dict) else json.loads(row.metadata or '{}')
+                    meta = {
+                        **meta,
+                        "chunk_index": row.chunk_index,
+                        "document_id": str(row.document_id),
+                        "document_title": row.document_title,
+                        "document_source": row.file_path or row.original_filename or row.document_title,
+                    }
                     formatted_results.append({
-                        "text": doc,
-                        "metadata": results['metadatas'][0][i] if results['metadatas'] else {},
-                        "distance": results['distances'][0][i] if results['distances'] else None,
-                        "similarity": 1 - results['distances'][0][i] if results['distances'] else None
+                        "text": row.content,
+                        "metadata": meta,
+                        "distance": 1 - row.similarity,
+                        "similarity": row.similarity
                     })
 
-            logger.info(f"Query returned {len(formatted_results)} results")
-
-            return {
-                "success": True,
-                "query": query_text,
-                "results": formatted_results,
-                "count": len(formatted_results)
-            }
+                logger.info(f"Query returned {len(formatted_results)} results")
+                return {
+                    "success": True,
+                    "query": query_text,
+                    "results": formatted_results,
+                    "count": len(formatted_results)
+                }
+            finally:
+                db.close()
 
         except Exception as e:
             logger.error(f"Error querying vector store: {e}")
-            return {
-                "success": False,
-                "error": str(e),
-                "results": []
-            }
+            return {"success": False, "error": str(e), "results": []}
 
     def query_with_context(
         self,
         query_text: str,
         n_results: int = 5,
         document_id: Optional[str] = None
-    ) -> str:
-        """
-        Query and return combined context for RAG with metadata references
-        """
+    ) -> Dict[str, Any]:
+        """Query and return combined context string for RAG."""
         results = self.query(query_text, n_results, document_id)
 
         if not results.get("success") or not results.get("results"):
-            return ""
+            return {"context": "", "results": []}
 
-        # Combine relevant chunks with metadata info for Gemini
         context_parts = []
         for i, result in enumerate(results["results"]):
             meta = result.get("metadata", {})
-            page = meta.get("page_number", "Unknown")
-            context_parts.append(f"[Source {i+1}, Page {page}]: {result['text']}")
+            pages = meta.get("page_numbers") or []
+            page_label = ", ".join(str(page) for page in pages) if pages else meta.get("page_number", "Unknown")
+            title = meta.get("document_title", f"Source {i+1}")
+            modality = meta.get("source_modality") or meta.get("chunk_method") or "text"
+            context_parts.append(
+                f"[Source {i+1} | {title} | pages={page_label} | modality={modality}]\n{result['text']}"
+            )
 
-        return "\n\n".join(context_parts)
+        return {"context": "\n\n".join(context_parts), "results": results["results"]}
 
     def rag_query(
         self,
@@ -468,12 +236,7 @@ class VectorStore:
         mode: RAGMode = "structured_output"
     ) -> Dict[str, Any]:
         """
-        Full RAG query with multiple citation modes.
-
-        Modes:
-            - structured_output: ChromaDB + Gemini JSON schema for structurally enforced citations
-            - file_search: Gemini File Search API with grounding metadata (API-level citations)
-            - nli_verification: ChromaDB + structured output + NLI verification pass
+        Full RAG query: retrieves context from PGVector, generates answer with Groq.
         """
         logger.info(f"RAG query mode={mode}, question={question[:80]}")
 
@@ -490,12 +253,11 @@ class VectorStore:
         n_results: int = 5,
         document_id: Optional[str] = None
     ) -> Dict[str, Any]:
-        """
-        Structured Output mode: ChromaDB retrieval + Gemini with JSON schema.
-        Forces the model to return a structured JSON with answer and citations.
-        """
+        """Structured output mode with provider-aware answer generation."""
         try:
-            context = self.query_with_context(question, n_results, document_id)
+            retrieval = self.query_with_context(question, n_results, document_id)
+            context = retrieval.get("context", "")
+            sources = retrieval.get("results", [])
 
             if not context:
                 return {
@@ -505,10 +267,6 @@ class VectorStore:
                     "mode": "structured_output"
                 }
 
-            if not self.client:
-                raise ValueError("Google API Key not configured")
-
-            # Define the JSON schema for structured citations
             citation_schema = {
                 "type": "object",
                 "properties": {
@@ -521,18 +279,9 @@ class VectorStore:
                         "items": {
                             "type": "object",
                             "properties": {
-                                "source_index": {
-                                    "type": "integer",
-                                    "description": "The source number (1-based) being cited"
-                                },
-                                "claim": {
-                                    "type": "string",
-                                    "description": "The specific claim or statement from the answer that this citation supports"
-                                },
-                                "source_quote": {
-                                    "type": "string",
-                                    "description": "The exact quote from the source that supports this claim"
-                                }
+                                "source_index": {"type": "integer"},
+                                "claim": {"type": "string"},
+                                "source_quote": {"type": "string"}
                             },
                             "required": ["source_index", "claim", "source_quote"]
                         }
@@ -557,54 +306,55 @@ Context:
 
 Question: {question}"""
 
-            try:
-                response = self.client.models.generate_content(
-                    model=self.model_id,
-                    contents=prompt,
-                    config=types.GenerateContentConfig(
-                        response_mime_type="application/json",
-                        response_json_schema=citation_schema
-                    )
-                )
-                response_text = response.text
-                mode = "structured_output"
-            except Exception as e:
-                error_str = str(e)
-                if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
-                    from utils.groq_client import groq_client
-                    from config.settings import settings
-                    logger.info(f"RAG query: Gemini quota exceeded. Falling back to Groq ({settings.GROQ_MODEL})...")
-                    # Fallback to Groq with JSON mode
-                    # Make prompt even more explicit for Groq to ensure it uses the correct keys
-                    groq_prompt = prompt + f"\n\nResponse Schema: {json.dumps(citation_schema)}"
-                    response_text = groq_client.generate_text(groq_prompt, use_json=True)
-                    mode = "structured_output_groq"
-                else:
-                    raise e
+            mode = "structured_output"
+            response_text = self.answer_client.generate_json(
+                prompt=prompt,
+                temperature=0.2,
+                max_tokens=1500,
+                schema=citation_schema,
+            )
 
-            # Parse the structured response
+            # Parse structured response
             try:
-                # Strip markdown blocks if present (common with some models despite JSON mode)
-                cleaned_response = response_text.strip()
-                if cleaned_response.startswith("```json"):
-                    cleaned_response = cleaned_response.replace("```json", "", 1).rsplit("```", 1)[0].strip()
-                elif cleaned_response.startswith("```"):
-                    cleaned_response = cleaned_response.replace("```", "", 1).rsplit("```", 1)[0].strip()
-                
-                structured = json.loads(cleaned_response)
+                structured = safe_load_json(response_text)
                 answer = structured.get("answer", "")
                 citations = structured.get("citations", [])
-            except (json.JSONDecodeError, AttributeError):
-                # Fallback: use raw text if JSON parsing fails
+            except Exception:
                 answer = response_text
                 citations = []
 
-            query_results = self.query(question, n_results, document_id)
+            if not (answer or "").strip():
+                logger.warning(
+                    "Structured output provider returned an empty answer; falling back to plain-text synthesis"
+                )
+                fallback_prompt = f"""You are a helpful study assistant. Using ONLY the provided context, answer the user's question accurately.
+
+CITATION RULES (MANDATORY):
+- You MUST cite sources using numbered references [1], [2], [3] etc. that match the source numbers in the context below.
+- Place citations INLINE immediately after the claim they support, e.g. "The cell membrane is semi-permeable [1]."
+- If multiple sources support one claim, cite them all together: [1][3].
+- Every factual statement MUST have at least one citation.
+- Use Markdown formatting for your answer (bold, headers, lists).
+- If the answer is not in the context, clearly state that.
+- Return only the final answer in Markdown, not JSON.
+
+Context:
+{context}
+
+Question: {question}"""
+                answer = self.answer_client.generate_text(
+                    prompt=fallback_prompt,
+                    temperature=0.2,
+                    max_tokens=1500,
+                ).strip()
+
+            if not (answer or "").strip():
+                answer = "I found relevant source material, but the answer generator returned an empty response. Please try again."
 
             return {
                 "success": True,
                 "answer": answer,
-                "sources": query_results.get("results", []),
+                "sources": sources,
                 "citations_metadata": citations,
                 "context_used": context[:500] + "..." if len(context) > 500 else context,
                 "mode": mode
@@ -614,8 +364,7 @@ Question: {question}"""
             error_str = str(e)
             user_msg = f"Error generating answer: {error_str}"
             if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
-                user_msg = "Gemini API quota exceeded. Please wait a few seconds or try again later. (Free tier limits apply)"
-            
+                user_msg = "API quota exceeded. Please wait a few seconds or try again later."
             logger.error(f"Error in structured output RAG: {error_str}")
             return {
                 "success": False,
@@ -624,73 +373,9 @@ Question: {question}"""
                 "mode": "structured_output"
             }
 
-    def _rag_file_search(
-        self,
-        question: str,
-        document_id: Optional[str] = None
-    ) -> Dict[str, Any]:
-        """
-        File Search Tool mode: Uses Gemini's managed RAG with grounding metadata.
-        Returns API-level structurally enforced citations (like NotebookLM).
-        """
-        try:
-            from core.file_search_manager import file_search_manager
-
-            if not document_id:
-                return {
-                    "success": False,
-                    "error": "File Search mode requires a specific document to be selected.",
-                    "answer": "Please select a specific document to use File Search mode. This mode uses Google's managed RAG which requires a document-specific search store.",
-                    "mode": "file_search"
-                }
-
-            result = file_search_manager.query_with_grounding(
-                question=question,
-                document_id=document_id
-            )
-
-            if not result.get("success"):
-                # If no store exists, try to create one
-                if "No file search store found" in result.get("error", ""):
-                    return {
-                        "success": False,
-                        "error": "This document hasn't been indexed for File Search yet. Please use 'Index for File Search' first.",
-                        "answer": "This document needs to be indexed for File Search mode first. The document must be uploaded to Google's managed RAG system. Please index it first, then try again.",
-                        "mode": "file_search"
-                    }
-                return {**result, "mode": "file_search"}
-
-            # Convert grounding chunks to source format for frontend compatibility
-            sources = []
-            for i, chunk in enumerate(result.get("grounding_chunks", [])):
-                sources.append({
-                    "text": chunk.get("title", f"Source {i+1}"),
-                    "metadata": {
-                        "uri": chunk.get("uri", ""),
-                        "title": chunk.get("title", ""),
-                        "type": chunk.get("type", "retrieved")
-                    },
-                    "similarity": None
-                })
-
-            return {
-                "success": True,
-                "answer": result.get("answer", ""),
-                "sources": sources,
-                "grounding_metadata": result.get("grounding_metadata"),
-                "mode": "file_search"
-            }
-
-        except Exception as e:
-            logger.error(f"Error in file search RAG: {e}")
-            import traceback
-            logger.error(traceback.format_exc())
-            return {
-                "success": False,
-                "error": str(e),
-                "answer": f"Error generating answer: {str(e)}",
-                "mode": "file_search"
-            }
+    def _rag_file_search(self, question: str, document_id: Optional[str] = None) -> Dict[str, Any]:
+        """File Search mode placeholder - uses standard retrieval."""
+        return self._rag_structured_output(question, 5, document_id)
 
     def _rag_nli_verified(
         self,
@@ -698,13 +383,8 @@ Question: {question}"""
         n_results: int = 5,
         document_id: Optional[str] = None
     ) -> Dict[str, Any]:
-        """
-        NLI Verification mode: Structured output + second verification pass.
-        Each citation is verified by a separate Gemini call to check if the
-        source actually supports the claim.
-        """
+        """NLI Verification mode: structured output + second verification pass."""
         try:
-            # Step 1: Get structured output response first
             structured_result = self._rag_structured_output(question, n_results, document_id)
 
             if not structured_result.get("success"):
@@ -713,41 +393,16 @@ Question: {question}"""
             citations = structured_result.get("citations_metadata", [])
             sources = structured_result.get("sources", [])
 
-            if not citations or not self.client:
-                return {
-                    **structured_result,
-                    "verified_citations": [],
-                    "mode": "nli_verification"
-                }
+            if not citations:
+                return {**structured_result, "verified_citations": [], "mode": "nli_verification"}
 
-            # Step 2: Verify each citation with NLI
             verified_citations = []
-            nli_schema = {
-                "type": "object",
-                "properties": {
-                    "is_supported": {
-                        "type": "boolean",
-                        "description": "Whether the source text actually supports the claim"
-                    },
-                    "confidence": {
-                        "type": "number",
-                        "description": "Confidence score from 0.0 to 1.0"
-                    },
-                    "reasoning": {
-                        "type": "string",
-                        "description": "Brief explanation of why the source does or does not support the claim"
-                    }
-                },
-                "required": ["is_supported", "confidence", "reasoning"]
-            }
-
             for citation in citations:
                 source_idx = citation.get("source_index", 0) - 1
                 claim = citation.get("claim", "")
                 source_quote = citation.get("source_quote", "")
-
-                # Get full source text if available
                 source_text = source_quote
+
                 if 0 <= source_idx < len(sources):
                     source_text = sources[source_idx].get("text", source_quote)
 
@@ -755,24 +410,26 @@ Question: {question}"""
                     continue
 
                 try:
-                    nli_prompt = f"""You are a fact-checking assistant. Determine if the following source passage actually supports the given claim. Be strict - the source must contain information that directly supports the claim.
+                    nli_prompt = f"""Determine if the source passage supports the claim. Return JSON with: is_supported (bool), confidence (0-1), reasoning (string).
 
 Claim: "{claim}"
-
 Source passage: "{source_text}"
-
-Does the source passage support this claim?"""
-
-                    nli_response = self.client.models.generate_content(
-                        model=self.model_id,
-                        contents=nli_prompt,
-                        config=types.GenerateContentConfig(
-                            response_mime_type="application/json",
-                            response_json_schema=nli_schema
-                        )
+"""
+                    nli_response = self.answer_client.generate_json(
+                        prompt=nli_prompt,
+                        temperature=0.0,
+                        max_tokens=400,
+                        schema={
+                            "type": "object",
+                            "properties": {
+                                "is_supported": {"type": "boolean"},
+                                "confidence": {"type": "number"},
+                                "reasoning": {"type": "string"},
+                            },
+                            "required": ["is_supported", "confidence", "reasoning"],
+                        },
                     )
-
-                    nli_result = json.loads(nli_response.text)
+                    nli_result = safe_load_json(nli_response)
                     verified_citations.append({
                         "source_index": citation.get("source_index"),
                         "claim": claim,
@@ -781,9 +438,8 @@ Does the source passage support this claim?"""
                         "confidence": nli_result.get("confidence", 0.0),
                         "reasoning": nli_result.get("reasoning", "")
                     })
-
                 except Exception as nli_err:
-                    logger.warning(f"NLI verification failed for citation: {nli_err}")
+                    logger.warning(f"NLI verification failed: {nli_err}")
                     verified_citations.append({
                         "source_index": citation.get("source_index"),
                         "claim": claim,
@@ -793,18 +449,15 @@ Does the source passage support this claim?"""
                         "reasoning": f"Verification failed: {str(nli_err)}"
                     })
 
-            # Filter answer: remove citations that failed verification
-            answer = structured_result.get("answer", "")
-            failed_indices = set()
-            for vc in verified_citations:
-                if vc.get("is_supported") is False and vc.get("confidence", 0) < 0.5:
-                    failed_indices.add(vc.get("source_index"))
-
-            # Mark failed citations in the answer
             import re
+            answer = structured_result.get("answer", "")
+            failed_indices = {
+                vc.get("source_index")
+                for vc in verified_citations
+                if vc.get("is_supported") is False and vc.get("confidence", 0) < 0.5
+            }
             if failed_indices:
                 for idx in failed_indices:
-                    # Add strikethrough marker for failed citations
                     answer = answer.replace(f"[{idx}]", f"[~~{idx}~~]")
 
             verified_count = sum(1 for vc in verified_citations if vc.get("is_supported"))
@@ -836,168 +489,183 @@ Does the source passage support this claim?"""
             }
 
     def get_document_chunks(self, document_id: str) -> Dict[str, Any]:
-        """
-        Get all chunks for a specific document
-
-        Args:
-            document_id: Document ID
-
-        Returns:
-            Dict with all chunks and their metadata
-        """
+        """Get all chunks for a specific document from PGVector."""
         try:
-            results = self.collection.get(
-                where={"document_id": document_id},
-                include=["documents", "metadatas", "embeddings"]
-            )
+            db = self._get_db()
+            try:
+                result = db.execute(text("""
+                    SELECT id, content, chunk_index, metadata, token_count
+                    FROM chunks
+                    WHERE document_id = CAST(:doc_id AS uuid)
+                    ORDER BY chunk_index
+                """), {"doc_id": document_id})
 
-            chunks = []
-            if results['ids']:
-                for i, chunk_id in enumerate(results['ids']):
-                    chunk_data = {
-                        "id": chunk_id,
-                        "text": results['documents'][i] if results['documents'] else None,
-                        "metadata": results['metadatas'][i] if results['metadatas'] else {},
-                    }
-                    # Include embedding preview (first 10 dimensions)
-                    if results['embeddings']:
-                        chunk_data["embedding_preview"] = results['embeddings'][i][:10]
-                        chunk_data["embedding_dimensions"] = len(results['embeddings'][i])
-                    chunks.append(chunk_data)
+                chunks = []
+                for row in result:
+                    meta = row.metadata if isinstance(row.metadata, dict) else json.loads(row.metadata or '{}')
+                    chunks.append({
+                        "id": str(row.id),
+                        "text": row.content,
+                        "metadata": meta
+                    })
 
-            return {
-                "success": True,
-                "document_id": document_id,
-                "chunk_count": len(chunks),
-                "chunks": chunks
-            }
+                return {
+                    "success": True,
+                    "document_id": document_id,
+                    "chunk_count": len(chunks),
+                    "chunks": chunks
+                }
+            finally:
+                db.close()
 
         except Exception as e:
             logger.error(f"Error getting document chunks: {e}")
-            return {
-                "success": False,
-                "error": str(e)
-            }
+            return {"success": False, "error": str(e)}
 
     def get_collection_stats(self) -> Dict[str, Any]:
-        """
-        Get statistics about the vector store collection
-
-        Returns:
-            Dict with collection statistics
-        """
+        """Get statistics about the PGVector store."""
         try:
-            count = self.collection.count()
+            db = self._get_db()
+            try:
+                chunk_count = db.execute(text("SELECT COUNT(*) FROM chunks")).scalar()
+                doc_count = db.execute(text("SELECT COUNT(DISTINCT document_id) FROM chunks")).scalar()
+                doc_ids_result = db.execute(text("SELECT DISTINCT document_id::text FROM chunks LIMIT 100"))
+                doc_ids = [row[0] for row in doc_ids_result]
 
-            # Get sample to understand structure
-            sample = self.collection.peek(limit=5)
-
-            # Get unique document IDs
-            all_data = self.collection.get(include=["metadatas"])
-            unique_docs = set()
-            if all_data['metadatas']:
-                for meta in all_data['metadatas']:
-                    if meta and 'document_id' in meta:
-                        unique_docs.add(meta['document_id'])
-
-            return {
-                "success": True,
-                "collection_name": self.default_collection_name,
-                "total_chunks": count,
-                "unique_documents": len(unique_docs),
-                "document_ids": list(unique_docs),
-                "sample_ids": sample['ids'][:5] if sample['ids'] else []
-            }
+                return {
+                    "success": True,
+                    "collection_name": "pgvector_chunks",
+                    "total_chunks": chunk_count or 0,
+                    "unique_documents": doc_count or 0,
+                    "document_ids": doc_ids,
+                    "sample_ids": doc_ids[:5]
+                }
+            finally:
+                db.close()
 
         except Exception as e:
             logger.error(f"Error getting collection stats: {e}")
-            return {
-                "success": False,
-                "error": str(e)
-            }
+            return {"success": False, "error": str(e)}
 
     def delete_document(self, document_id: str) -> Dict[str, Any]:
-        """
-        Delete all chunks for a document from the vector store
-
-        Args:
-            document_id: Document ID to delete
-
-        Returns:
-            Dict with deletion result
-        """
+        """Delete all chunks for a document from PGVector."""
         try:
-            # Get all chunk IDs for this document
-            results = self.collection.get(
-                where={"document_id": document_id}
-            )
+            db = self._get_db()
+            try:
+                result = db.execute(text("""
+                    DELETE FROM chunks WHERE document_id = CAST(:doc_id AS uuid)
+                """), {"doc_id": document_id})
+                db.commit()
+                deleted = result.rowcount
 
-            if results['ids']:
-                self.collection.delete(ids=results['ids'])
-                logger.info(f"Deleted {len(results['ids'])} chunks for document {document_id}")
-                return {
-                    "success": True,
-                    "deleted_chunks": len(results['ids'])
-                }
-            else:
-                return {
-                    "success": True,
-                    "deleted_chunks": 0,
-                    "message": "No chunks found for document"
-                }
+                logger.info(f"Deleted {deleted} chunks for document {document_id}")
+                return {"success": True, "deleted_chunks": deleted}
+            except Exception:
+                db.rollback()
+                raise
+            finally:
+                db.close()
 
         except Exception as e:
             logger.error(f"Error deleting document {document_id}: {e}")
-            return {
-                "success": False,
-                "error": str(e)
-            }
+            return {"success": False, "error": str(e)}
 
     def clear_collection(self) -> Dict[str, Any]:
-        """
-        Clear all documents from the collection (use with caution!)
-
-        Returns:
-            Dict with result
-        """
+        """Clear all chunks from the PGVector store."""
         try:
-            # Delete and recreate collection
-            self.chroma_client.delete_collection(self.default_collection_name)
-            self._ensure_collection()
-
-            logger.info("Collection cleared")
-            return {"success": True, "message": "Collection cleared"}
-
+            db = self._get_db()
+            try:
+                db.execute(text("DELETE FROM chunks"))
+                db.commit()
+                logger.info("PGVector chunks cleared")
+                return {"success": True, "message": "Collection cleared"}
+            except Exception:
+                db.rollback()
+                raise
+            finally:
+                db.close()
         except Exception as e:
             logger.error(f"Error clearing collection: {e}")
             return {"success": False, "error": str(e)}
 
-    # Legacy compatibility methods
-    def create_index(
-        self,
-        texts: List[str],
-        collection_name: str = "documents"
-    ) -> Dict[str, Any]:
-        """Legacy method - now adds documents to vector store"""
-        doc_id = str(uuid.uuid4())
-        result = self.add_documents(texts, document_id=doc_id)
-        return {
-            "status": "success",
-            "doc_id": doc_id,
-            "chunk_count": len(texts)
-        }
+    def find_similar_concepts(self, text_query: str, n_results: int = 5) -> List[Dict[str, Any]]:
+        """
+        Find similar concepts using PGVector similarity search.
+        Used by knowledge_timeline/concept_matcher.py.
+        """
+        try:
+            query_embedding = self._generate_query_embedding(text_query)
+            embedding_str = '[' + ','.join(map(str, query_embedding)) + ']'
 
-    def create_query_engine(
-        self,
-        index: Any,
-        similarity_top_k: int = 3
-    ):
-        """Legacy method - returns config for querying"""
-        return {
-            "index": index,
-            "k": similarity_top_k,
-            "collection": self.collection
-        }
+            db = self._get_db()
+            try:
+                result = db.execute(text("""
+                    SELECT id, content, 1 - (embedding <=> CAST(:query AS vector)) AS similarity, metadata
+                    FROM chunks
+                    WHERE embedding IS NOT NULL
+                    ORDER BY embedding <=> CAST(:query AS vector)
+                    LIMIT :limit
+                """), {"query": embedding_str, "limit": n_results})
+
+                matches = []
+                for row in result:
+                    meta = row.metadata if isinstance(row.metadata, dict) else json.loads(row.metadata or '{}')
+                    matches.append({
+                        "text": row.content,
+                        "metadata": meta,
+                        "distance": 1 - row.similarity,
+                        "similarity": row.similarity
+                    })
+                return matches
+            finally:
+                db.close()
+
+        except Exception as e:
+            logger.warning(f"Concept similarity search failed: {e}")
+            return []
+
+    def get_chunk_concept_depth(self, document_id: str, concept_text: str, threshold: float = 0.7) -> float:
+        """Compute depth score: ratio of document chunks related to a concept."""
+        try:
+            db = self._get_db()
+            try:
+                total_chunks = db.execute(text("""
+                    SELECT COUNT(*) FROM chunks WHERE document_id = CAST(:doc_id AS uuid)
+                """), {"doc_id": document_id}).scalar()
+
+                if not total_chunks:
+                    return 0.3
+
+                query_embedding = self._generate_query_embedding(concept_text)
+                embedding_str = '[' + ','.join(map(str, query_embedding)) + ']'
+
+                result = db.execute(text("""
+                    SELECT COUNT(*) FROM chunks
+                    WHERE document_id = CAST(:doc_id AS uuid)
+                      AND embedding IS NOT NULL
+                      AND 1 - (embedding <=> CAST(:query AS vector)) >= :threshold
+                """), {"doc_id": document_id, "query": embedding_str, "threshold": threshold})
+
+                related_count = result.scalar()
+                return related_count / total_chunks
+            finally:
+                db.close()
+
+        except Exception as e:
+            logger.warning(f"Depth score computation failed: {e}")
+            return 0.3
+
+    # Legacy compatibility
+    def add_documents(self, texts: List[str], metadata=None, document_id=None) -> str:
+        doc_id = document_id or str(uuid.uuid4())
+        full_text = "\n\n".join(texts)
+        self.add_document(doc_id, full_text, metadata[0] if metadata else None)
+        return doc_id
+
+    def create_index(self, texts: List[str], collection_name: str = "documents") -> Dict[str, Any]:
+        doc_id = str(uuid.uuid4())
+        self.add_documents(texts, document_id=doc_id)
+        return {"status": "success", "doc_id": doc_id, "chunk_count": len(texts)}
 
 
 # Global vector store instance

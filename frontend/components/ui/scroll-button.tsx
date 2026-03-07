@@ -25,7 +25,7 @@ function ScrollButton({
       variant={variant}
       size={size}
       className={cn(
-        "h-10 w-10 rounded-full transition-all duration-150 ease-out",
+        "h-11 w-11 rounded-full border border-[var(--card-border)] bg-[color:color-mix(in_srgb,var(--bg-elevated)_82%,transparent)] shadow-[var(--card-shadow)] transition-all duration-150 ease-out hover:-translate-y-0.5 hover:border-[var(--card-border-hover)]",
         !isAtBottom
           ? "translate-y-0 scale-100 opacity-100"
           : "pointer-events-none translate-y-4 scale-95 opacity-0",

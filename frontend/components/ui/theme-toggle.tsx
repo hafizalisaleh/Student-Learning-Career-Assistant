@@ -34,10 +34,10 @@ export function ThemeToggle({ className }: { className?: string }) {
   if (!mounted) {
     return (
       <button className={cn(
-        "p-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--card-border)]",
+        "h-11 w-11 rounded-2xl bg-[var(--card-bg)] border border-[var(--card-border)] shadow-[var(--card-shadow)]",
         className
       )}>
-        <div className="w-5 h-5" />
+        <div className="w-5 h-5 mx-auto" />
       </button>
     );
   }
@@ -46,9 +46,9 @@ export function ThemeToggle({ className }: { className?: string }) {
     <button
       onClick={toggleTheme}
       className={cn(
-        "relative p-2 rounded-xl transition-all duration-300",
-        "bg-[var(--bg-secondary)] border border-[var(--card-border)]",
-        "hover:bg-[var(--bg-tertiary)] hover:border-[var(--card-border-hover)]",
+        "relative flex h-11 w-11 items-center justify-center rounded-2xl transition-all duration-300",
+        "bg-[var(--card-bg)] border border-[var(--card-border)] shadow-[var(--card-shadow)]",
+        "hover:-translate-y-0.5 hover:border-[var(--card-border-hover)] hover:bg-[var(--card-bg-solid)]",
         "focus:outline-none focus:ring-2 focus:ring-[var(--primary)] focus:ring-offset-2",
         className
       )}
@@ -110,9 +110,9 @@ export function ThemeToggleCompact({ className }: { className?: string }) {
     <button
       onClick={toggleTheme}
       className={cn(
-        "flex items-center gap-3 w-full px-3 py-2 rounded-lg transition-colors",
+        "flex items-center gap-3 w-full px-3 py-2.5 rounded-2xl transition-colors",
         "text-[var(--sidebar-text-muted)] hover:text-[var(--sidebar-text)]",
-        "hover:bg-[var(--sidebar-bg-hover)]",
+        "hover:bg-[rgba(255,255,255,0.08)]",
         className
       )}
     >

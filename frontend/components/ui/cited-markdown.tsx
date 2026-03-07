@@ -116,7 +116,7 @@ export function CitedMarkdown({ content, sources, messageId, mode, groundingMeta
     processChildren(children, sources, messageId, onCitationClick);
 
   return (
-    <div className="prose prose-sm max-w-none text-[var(--text-primary)]">
+    <div className="prose prose-sm max-w-none text-[var(--text-primary)] [&_h1]:font-serif [&_h1]:tracking-[-0.03em] [&_h2]:font-serif [&_h2]:tracking-[-0.03em] [&_h3]:font-serif [&_p]:text-[var(--text-primary)]">
       <Markdown
         id={messageId}
         components={{
@@ -204,7 +204,7 @@ export function SourceCard({ source, index, messageId }: SourceCardProps) {
   return (
     <div
       id={`source-${messageId}-${index}`}
-      className="p-3 rounded-lg bg-[var(--bg-elevated)] border border-[var(--card-border)] transition-all"
+      className="rounded-2xl border border-[var(--card-border)] bg-[color:color-mix(in_srgb,var(--bg-elevated)_76%,transparent)] p-3.5 transition-all"
     >
       <div className="flex items-center justify-between mb-1.5">
         <span className="text-xs font-medium text-[var(--primary)] flex items-center gap-1.5">

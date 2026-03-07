@@ -1,28 +1,31 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { LoadingSpinner, PageLoader } from '@/components/ui/loading-spinner';
 import {
-  Upload,
-  FileText,
-  Trash2,
-  ExternalLink,
-  Search,
-  Link as LinkIcon,
-  Youtube,
-  File,
-  Image,
-  FileSpreadsheet,
-  FileType,
-  X,
-  CheckCircle2,
   AlertCircle,
+  ArrowRight,
+  CheckCircle2,
+  Clock3,
   CloudUpload,
+  ExternalLink,
+  File,
+  FileSpreadsheet,
+  FileText,
+  FileType,
+  Image,
+  Layers3,
+  Link as LinkIcon,
+  Search,
   Sparkles,
+  Trash2,
+  Upload,
+  X,
+  Youtube,
 } from 'lucide-react';
 import type { Document } from '@/lib/types';
 import {
@@ -32,6 +35,7 @@ import {
 import { formatDate, formatFileSize } from '@/lib/utils';
 import toast from 'react-hot-toast';
 import { cn } from '@/lib/utils';
+import { Badge } from '@/components/ui/badge';
 
 type UploadStatus = 'idle' | 'uploading' | 'processing' | 'success' | 'background' | 'error';
 
@@ -61,7 +65,6 @@ export default function DocumentsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Upload modal state
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<UploadStatus>('idle');
   const [uploadFileName, setUploadFileName] = useState('');
@@ -69,7 +72,6 @@ export default function DocumentsPage() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadError, setUploadError] = useState('');
   const [uploadStatusMessage, setUploadStatusMessage] = useState('');
-
 
   useEffect(() => {
     fetchDocuments();
@@ -92,12 +94,9 @@ export default function DocumentsPage() {
     return () => window.clearInterval(interval);
   }, [documents]);
 
-
   async function fetchDocuments(showLoader: boolean = true) {
     try {
-      if (showLoader) {
-        setIsLoading(true);
-      }
+      if (showLoader) setIsLoading(true);
       const data = await api.getDocuments();
       setDocuments(Array.isArray(data) ? data : []);
     } catch (error) {
@@ -105,9 +104,7 @@ export default function DocumentsPage() {
       toast.error('Failed to load documents');
       setDocuments([]);
     } finally {
-      if (showLoader) {
-        setIsLoading(false);
-      }
+      if (showLoader) setIsLoading(false);
     }
   }
 
@@ -153,7 +150,6 @@ export default function DocumentsPage() {
       return;
     }
 
-    // Show upload modal
     setUploadFileName(file.name);
     setUploadFileSize(file.size);
     setUploadStatus('uploading');
@@ -162,7 +158,6 @@ export default function DocumentsPage() {
     setUploadStatusMessage('Uploading your document...');
     setShowUploadModal(true);
 
-    // Simulate progress
     const progressInterval = setInterval(() => {
       setUploadProgress((prev) => {
         if (prev >= 90) {
@@ -178,7 +173,6 @@ export default function DocumentsPage() {
       const formData = new FormData();
       formData.append('file', file);
 
-      // Upload
       const uploadedDocument = await api.uploadDocument(formData);
 
       clearInterval(progressInterval);
@@ -228,7 +222,6 @@ export default function DocumentsPage() {
     e.preventDefault();
     if (!url.trim()) return;
 
-    // Show upload modal for URL processing
     setUploadFileName(url);
     setUploadFileSize(0);
     setUploadStatus('uploading');
@@ -237,7 +230,6 @@ export default function DocumentsPage() {
     setUploadStatusMessage('Submitting your link...');
     setShowUploadModal(true);
 
-    // Simulate progress
     const progressInterval = setInterval(() => {
       setUploadProgress((prev) => {
         if (prev >= 85) {
@@ -309,8 +301,15 @@ export default function DocumentsPage() {
     doc.title.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const readyCount = documents.filter((doc) => isDocumentReadyForGeneration(doc)).length;
+  const processingCount = documents.filter((doc) => {
+    const status = doc.processing_status?.toLowerCase();
+    return status === 'pending' || status === 'processing';
+  }).length;
+  const studyReadyCount = documents.filter((doc) => supportsStudyWorkspace(doc.content_type)).length;
+
   const getTypeIcon = (type: string) => {
-    switch (type) {
+    switch (type?.toUpperCase()) {
       case 'YOUTUBE':
         return <Youtube className="h-5 w-5" />;
       case 'PDF':
@@ -328,20 +327,20 @@ export default function DocumentsPage() {
   };
 
   const getTypeColor = (type: string) => {
-    switch (type) {
+    switch (type?.toUpperCase()) {
       case 'YOUTUBE':
-        return 'text-[var(--error)] bg-[var(--error-bg)]';
+        return 'bg-[var(--error-bg)] text-[var(--error)]';
       case 'PDF':
-        return 'text-[var(--accent-amber)] bg-[var(--accent-amber-subtle)]';
+        return 'bg-[var(--accent-amber-subtle)] text-[var(--accent-amber)]';
       case 'IMAGE':
-        return 'text-[var(--accent-pink)] bg-[var(--accent-pink-subtle)]';
+        return 'bg-[var(--accent-pink-subtle)] text-[var(--accent-pink)]';
       case 'EXCEL':
-        return 'text-[var(--accent-green)] bg-[var(--accent-green-subtle)]';
+        return 'bg-[var(--accent-green-subtle)] text-[var(--accent-green)]';
       case 'DOCX':
       case 'PPT':
-        return 'text-[var(--accent-blue)] bg-[var(--accent-blue-subtle)]';
+        return 'bg-[var(--accent-blue-subtle)] text-[var(--accent-blue)]';
       default:
-        return 'text-[var(--text-secondary)] bg-[var(--bg-elevated)]';
+        return 'bg-[var(--accent)] text-[var(--text-secondary)]';
     }
   };
 
@@ -349,13 +348,13 @@ export default function DocumentsPage() {
     const statusLower = status?.toLowerCase() || 'pending';
     switch (statusLower) {
       case 'completed':
-        return 'bg-[var(--accent-green-subtle)] text-[var(--accent-green)] border-[rgba(34,211,167,0.3)]';
+        return 'border-[var(--success-border)] bg-[var(--success-bg)] text-[var(--success)]';
       case 'processing':
-        return 'bg-[var(--accent-blue-subtle)] text-[var(--accent-blue)] border-[rgba(0,212,255,0.3)]';
+        return 'border-[var(--info-border)] bg-[var(--info-bg)] text-[var(--info)]';
       case 'failed':
-        return 'bg-[var(--error-bg)] text-[var(--error)] border-[var(--error-border)]';
+        return 'border-[var(--error-border)] bg-[var(--error-bg)] text-[var(--error)]';
       default:
-        return 'bg-[var(--accent-amber-subtle)] text-[var(--accent-amber)] border-[rgba(251,191,36,0.3)]';
+        return 'border-[var(--warning-border)] bg-[var(--warning-bg)] text-[var(--warning)]';
     }
   };
 
@@ -365,252 +364,304 @@ export default function DocumentsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-semibold text-[var(--text-primary)]">Documents</h1>
-          <p className="text-sm text-[var(--text-tertiary)]">Upload and manage your learning materials</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-          <Button
-            variant="secondary"
-            onClick={() => setShowUrlInput(!showUrlInput)}
-            disabled={isUploading}
-            className="flex-1 sm:flex-none h-10"
-          >
-            <LinkIcon className="h-4 w-4 mr-2" />
-            <span className="whitespace-nowrap">Add URL</span>
-          </Button>
-          <Button
-            variant="default"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={isUploading}
-            className="flex-1 sm:flex-none h-10 shadow-lg shadow-blue-500/20"
-          >
-            {isUploading ? (
-              <>
-                <LoadingSpinner size="sm" className="mr-2" />
-                <span className="whitespace-nowrap">Uploading...</span>
-              </>
-            ) : (
-              <>
-                <Upload className="h-4 w-4 mr-2" />
-                <span className="whitespace-nowrap">Upload File</span>
-              </>
-            )}
-          </Button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            className="hidden"
-            accept=".pdf,.docx,.pptx,.txt,.md,.csv,.xlsx,.jpg,.jpeg,.png"
-            onChange={handleFileUpload}
-            disabled={isUploading}
-          />
-        </div>
-      </div>
+      <section className="grid gap-5 xl:grid-cols-[1.55fr_0.95fr]">
+        <div className="dashboard-panel overflow-hidden">
+          <div className="panel-content p-6 lg:p-8">
+            <p className="editorial-kicker">
+              <span className="inline-block h-2 w-2 rounded-full bg-[var(--documents)]" />
+              Source library
+            </p>
+            <h1 className="display-balance mt-4 font-serif text-4xl tracking-[-0.05em] text-[var(--text-primary)] sm:text-5xl">
+              Build a document base your AI can actually reason over.
+            </h1>
+            <p className="mt-4 max-w-3xl text-base leading-7 text-[var(--text-secondary)]">
+              Keep papers, slides, links, and text files in one archive, then move straight into summaries, notes, quizzes, and grounded questions.
+            </p>
 
-      {/* URL Input */}
-      {showUrlInput && (
-        <div className="p-4 rounded-2xl bg-[var(--card-bg)] backdrop-blur-xl border border-[var(--card-border)]">
-          <form onSubmit={handleUrlSubmit} className="flex gap-3">
-            <Input
-              type="url"
-              placeholder="Paste YouTube video URL or web article URL..."
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
+            <div className="mt-6 flex flex-wrap items-center gap-3">
+              <Button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploading}
+                size="lg"
+              >
+                {isUploading ? (
+                  <>
+                    <LoadingSpinner size="sm" className="mr-1" />
+                    Uploading
+                  </>
+                ) : (
+                  <>
+                    <Upload className="h-4 w-4" />
+                    Upload source
+                  </>
+                )}
+              </Button>
+              <Button
+                variant="outline"
+                size="lg"
+                onClick={() => setShowUrlInput(!showUrlInput)}
+                disabled={isUploading}
+              >
+                <LinkIcon className="h-4 w-4" />
+                Add URL
+              </Button>
+              <Badge variant="documents" size="lg">
+                {documents.length} total sources
+              </Badge>
+            </div>
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              className="hidden"
+              accept=".pdf,.docx,.pptx,.txt,.md,.csv,.xlsx,.jpg,.jpeg,.png"
+              onChange={handleFileUpload}
               disabled={isUploading}
-              className="flex-1"
             />
-            <Button type="submit" disabled={isUploading || !url.trim()}>
-              {isUploading ? <LoadingSpinner size="sm" /> : 'Process'}
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => {
-                setShowUrlInput(false);
-                setUrl('');
-              }}
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          </form>
+
+            <div className="mt-7 grid gap-3 sm:grid-cols-3">
+              <div className="metric-tile">
+                <p className="editorial-kicker">
+                  <Layers3 className="h-3.5 w-3.5 text-[var(--documents)]" />
+                  Ready for study
+                </p>
+                <p className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-[var(--text-primary)]">{readyCount}</p>
+                <p className="mt-2 text-sm text-[var(--text-secondary)]">Documents already prepared for workspace and generation.</p>
+              </div>
+
+              <div className="metric-tile">
+                <p className="editorial-kicker">
+                  <Clock3 className="h-3.5 w-3.5 text-[var(--progress)]" />
+                  In preparation
+                </p>
+                <p className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-[var(--text-primary)]">{processingCount}</p>
+                <p className="mt-2 text-sm text-[var(--text-secondary)]">Uploads still being extracted, indexed, or enriched.</p>
+              </div>
+
+              <div className="metric-tile">
+                <p className="editorial-kicker">
+                  <Sparkles className="h-3.5 w-3.5 text-[var(--quizzes)]" />
+                  Study desk ready
+                </p>
+                <p className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-[var(--text-primary)]">{studyReadyCount}</p>
+                <p className="mt-2 text-sm text-[var(--text-secondary)]">PDF sources that can open directly in the workspace.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="dashboard-panel">
+          <div className="panel-content flex h-full flex-col gap-5 p-6">
+            <div>
+              <p className="editorial-kicker">
+                <span className="inline-block h-2 w-2 rounded-full bg-[var(--highlight)]" />
+                Library controls
+              </p>
+              <h2 className="mt-3 font-serif text-2xl tracking-[-0.04em] text-[var(--text-primary)]">
+                Search, filter, and jump back into work
+              </h2>
+            </div>
+
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[var(--text-tertiary)]" />
+              <Input
+                type="text"
+                placeholder="Search your document archive..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-14"
+              />
+            </div>
+
+            <div className="rounded-[1.35rem] border border-[var(--card-border)] bg-[color:color-mix(in_srgb,var(--bg-elevated)_76%,transparent)] p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--text-tertiary)]">Library note</p>
+              <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
+                Strong outputs depend on clean sources. Favor complete PDFs, stable article URLs, and well-labeled files.
+              </p>
+            </div>
+
+            <div className="rounded-[1.35rem] border border-[var(--card-border)] bg-[color:color-mix(in_srgb,var(--bg-elevated)_76%,transparent)] p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--text-tertiary)]">Visible now</p>
+              <p className="mt-2 text-base font-medium text-[var(--text-primary)]">
+                {filteredDocuments.length} matching document{filteredDocuments.length === 1 ? '' : 's'}
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {showUrlInput && (
+        <div className="dashboard-panel">
+          <div className="panel-content p-4 lg:p-5">
+            <form onSubmit={handleUrlSubmit} className="flex flex-col gap-3 lg:flex-row">
+              <Input
+                type="url"
+                placeholder="Paste a YouTube video or article URL..."
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                disabled={isUploading}
+                className="flex-1"
+              />
+              <div className="flex gap-2">
+                <Button type="submit" disabled={isUploading || !url.trim()}>
+                  {isUploading ? <LoadingSpinner size="sm" /> : 'Process link'}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => {
+                    setShowUrlInput(false);
+                    setUrl('');
+                  }}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 
-      {/* Search */}
-      <div className="relative">
-        <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-[var(--text-tertiary)]" />
-        <Input
-          type="text"
-          placeholder="Search documents..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="pl-12"
-        />
-      </div>
-
-      {/* Documents Grid */}
       {filteredDocuments.length === 0 ? (
-        <div className="p-16 rounded-2xl bg-[var(--card-bg)] backdrop-blur-xl border border-[var(--card-border)] text-center">
-          <div className="p-4 rounded-full bg-[var(--bg-elevated)] inline-block mb-4">
-            <FileText className="h-8 w-8 text-[var(--text-tertiary)]" />
+        <div className="dashboard-panel">
+          <div className="panel-content p-16 text-center">
+            <div className="inline-flex h-16 w-16 items-center justify-center rounded-[1.6rem] bg-[var(--accent)]">
+              <FileText className="h-7 w-7 text-[var(--text-tertiary)]" />
+            </div>
+            <h3 className="mt-6 font-serif text-3xl tracking-[-0.04em] text-[var(--text-primary)]">
+              {searchQuery ? 'No documents found' : 'No documents yet'}
+            </h3>
+            <p className="mx-auto mt-3 max-w-lg text-base leading-7 text-[var(--text-secondary)]">
+              {searchQuery ? 'Try a different search term.' : 'Upload your first document to start building a usable study library.'}
+            </p>
+            {!searchQuery && (
+              <Button className="mt-6" onClick={() => fileInputRef.current?.click()}>
+                <Upload className="h-4 w-4" />
+                Upload document
+              </Button>
+            )}
           </div>
-          <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-2">
-            {searchQuery ? 'No documents found' : 'No documents yet'}
-          </h3>
-          <p className="text-[var(--text-secondary)] mb-6">
-            {searchQuery
-              ? 'Try a different search term'
-              : 'Upload your first document to get started'}
-          </p>
-          {!searchQuery && (
-            <Button
-              variant="default"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <Upload className="h-4 w-4 mr-2" />
-              Upload Document
-            </Button>
-          )}
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2 2xl:grid-cols-3">
           {filteredDocuments.map((doc) => {
             const canOpenWorkspace = supportsStudyWorkspace(doc.content_type);
             const readyForGeneration = isDocumentReadyForGeneration(doc);
 
             return (
-              <div
-                key={doc.id}
-                className="group rounded-2xl bg-[var(--card-bg)] backdrop-blur-xl border border-[var(--card-border)] hover:border-[var(--card-border-hover)] transition-all duration-200 overflow-hidden"
-              >
-              {/* Thumbnail Preview */}
-              {doc.thumbnail_path && (
-                <div className="relative w-full h-40 bg-[var(--bg-secondary)] border-b border-[var(--card-border)] overflow-hidden">
-                  <img
-                    src={api.getDocumentThumbnailUrl(doc.id)}
-                    alt={`Preview of ${doc.title}`}
-                    className="w-full h-full object-cover object-top"
-                    loading="lazy"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).style.display = 'none';
-                    }}
-                  />
-                </div>
-              )}
+              <div key={doc.id} className="dashboard-panel group overflow-hidden">
+                <div className="panel-content flex h-full flex-col">
+                  <div className="relative flex min-h-[168px] items-end overflow-hidden border-b border-[var(--card-border)] bg-[linear-gradient(135deg,color-mix(in_srgb,var(--documents-bg)_84%,transparent),color-mix(in_srgb,var(--accent)_60%,transparent))] p-5">
+                    {doc.thumbnail_path ? (
+                      <img
+                        src={api.getDocumentThumbnailUrl(doc.id)}
+                        alt={`Preview of ${doc.title}`}
+                        className="absolute inset-0 h-full w-full object-cover object-top opacity-85"
+                        loading="lazy"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).style.display = 'none';
+                        }}
+                      />
+                    ) : null}
+                    <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(10,16,24,0.04),rgba(10,16,24,0.58))]" />
+                    <div className="relative flex items-center gap-3">
+                      <div className={cn('flex h-12 w-12 items-center justify-center rounded-2xl border border-white/20 shadow-lg backdrop-blur-sm', getTypeColor(doc.content_type))}>
+                        {getTypeIcon(doc.content_type)}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/75">
+                          {doc.content_type}
+                        </p>
+                        <p className="truncate text-lg font-medium text-white">{doc.title}</p>
+                      </div>
+                    </div>
+                  </div>
 
-              <div className="p-5">
-                {/* Header */}
-                <div className="flex items-start gap-3 mb-4">
-                  <div className={cn('p-2.5 rounded-xl', getTypeColor(doc.content_type))}>
-                    {getTypeIcon(doc.content_type)}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold text-[var(--text-primary)] truncate">
-                      {doc.title}
-                    </h3>
-                    <p className="text-sm text-[var(--text-tertiary)]">
-                      {formatDate(doc.created_at)}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Info */}
-                <div className="space-y-2 mb-4">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-[var(--text-secondary)]">Type</span>
-                    <span className="font-medium text-[var(--text-primary)] uppercase text-xs">
-                      {doc.content_type}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-[var(--text-secondary)]">Status</span>
-                    <span className={cn(
-                      'px-2 py-0.5 rounded-full text-xs font-medium border',
-                      getStatusBadge(doc.processing_status)
-                    )}>
-                      {doc.processing_status?.toLowerCase() || 'pending'}
-                    </span>
-                  </div>
-                  {doc.file_size && (
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-[var(--text-secondary)]">Size</span>
-                      <span className="text-[var(--text-primary)]">
-                        {formatFileSize(doc.file_size)}
+                  <div className="flex flex-1 flex-col p-5">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm text-[var(--text-secondary)]">{formatDate(doc.created_at)}</p>
+                      <span className={cn('rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]', getStatusBadge(doc.processing_status))}>
+                        {doc.processing_status?.toLowerCase() || 'pending'}
                       </span>
                     </div>
-                  )}
-                </div>
 
-                {/* Actions */}
-                <div className="flex flex-wrap gap-2 pt-3 border-t border-[var(--card-border)]">
-                  {canOpenWorkspace && readyForGeneration ? (
-                    <Link href={`/dashboard/workspace?id=${doc.id}`} className="flex-1">
-                      <Button variant="default" size="sm" className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 border-0 hover:from-blue-700 hover:to-indigo-700">
-                        <Sparkles className="h-4 w-4 mr-2" />
-                        Open Workspace
+                    <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                      <div className="rounded-[1.15rem] border border-[var(--card-border)] bg-[color:color-mix(in_srgb,var(--bg-elevated)_72%,transparent)] p-3.5">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-tertiary)]">Type</p>
+                        <p className="mt-2 text-sm font-medium text-[var(--text-primary)] uppercase">{doc.content_type}</p>
+                      </div>
+                      <div className="rounded-[1.15rem] border border-[var(--card-border)] bg-[color:color-mix(in_srgb,var(--bg-elevated)_72%,transparent)] p-3.5">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-tertiary)]">Size</p>
+                        <p className="mt-2 text-sm font-medium text-[var(--text-primary)]">
+                          {doc.file_size ? formatFileSize(doc.file_size) : 'Unknown'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <p className="mt-4 text-sm leading-6 text-[var(--text-secondary)]">
+                      {getDocumentStatusDescription(doc)}
+                    </p>
+
+                    <div className="mt-5 flex flex-wrap gap-2 border-t border-[var(--card-border)] pt-4">
+                      {canOpenWorkspace && readyForGeneration ? (
+                        <Link href={`/dashboard/workspace?id=${doc.id}`} className="flex-1">
+                          <Button variant="default" size="sm" className="w-full">
+                            <Sparkles className="h-4 w-4" />
+                            Open study desk
+                          </Button>
+                        </Link>
+                      ) : (
+                        <Link href={`/dashboard/documents/${doc.id}`} className="flex-1">
+                          <Button variant="default" size="sm" className="w-full">
+                            <FileText className="h-4 w-4" />
+                            View dossier
+                          </Button>
+                        </Link>
+                      )}
+
+                      <Link href={`/dashboard/documents/${doc.id}`}>
+                        <Button variant="outline" size="sm">
+                          <ArrowRight className="h-4 w-4" />
+                        </Button>
+                      </Link>
+
+                      {doc.file_url && (
+                        <a href={doc.file_url} target="_blank" rel="noopener noreferrer">
+                          <Button variant="ghost" size="sm">
+                            <ExternalLink className="h-4 w-4" />
+                          </Button>
+                        </a>
+                      )}
+
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDelete(doc.id)}
+                        className="text-[var(--error)] hover:text-[var(--error)] hover:bg-[var(--error-bg)]"
+                      >
+                        <Trash2 className="h-4 w-4" />
                       </Button>
-                    </Link>
-                  ) : (
-                    <Link href={`/dashboard/documents/${doc.id}`} className="flex-1">
-                      <Button variant="default" size="sm" className="w-full">
-                        <FileText className="h-4 w-4 mr-2" />
-                        View Details
-                      </Button>
-                    </Link>
-                  )}
-                  {canOpenWorkspace && readyForGeneration && (
-                    <Link href={`/dashboard/documents/${doc.id}`} title="View Details">
-                      <Button variant="secondary" size="sm">
-                        <FileText className="h-4 w-4" />
-                      </Button>
-                    </Link>
-                  )}
-                  {doc.file_url && (
-                    <a
-                      href={doc.file_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      <Button variant="ghost" size="sm">
-                        <ExternalLink className="h-4 w-4" />
-                      </Button>
-                    </a>
-                  )}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleDelete(doc.id)}
-                    className="text-[var(--error)] hover:text-[var(--error)] hover:bg-[var(--error-bg)]"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
             );
           })}
         </div>
       )}
 
-      {/* Upload Modal */}
       {showUploadModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          {/* Backdrop */}
           <div
             className="absolute inset-0 bg-black/60 backdrop-blur-sm"
             onClick={closeUploadModal}
           />
 
-          {/* Modal */}
-          <div className="relative w-full max-w-md overflow-hidden rounded-3xl shadow-2xl zoom-in-95">
-            {/* Gradient Header */}
-            <div className="relative bg-gradient-to-r from-blue-500 via-violet-500 to-purple-500 p-6">
+          <div className="relative w-full max-w-md overflow-hidden rounded-[2rem] shadow-2xl zoom-in-95">
+            <div className="relative bg-[linear-gradient(135deg,var(--primary),var(--highlight),var(--accent-purple))] p-6">
               <div className="absolute inset-0 bg-gradient-to-b from-white/10 to-transparent" />
               <div className="relative flex items-center gap-4">
-                <div className="p-3 bg-white/20 rounded-2xl backdrop-blur-sm">
+                <div className="rounded-[1.2rem] bg-white/18 p-3 backdrop-blur-sm">
                   {uploadStatus === 'success' ? (
                     <CheckCircle2 className="h-8 w-8 text-white" />
                   ) : uploadStatus === 'background' ? (
@@ -621,22 +672,20 @@ export default function DocumentsPage() {
                     <CloudUpload className="h-8 w-8 text-white" />
                   )}
                 </div>
-                <div className="flex-1">
-                  <h2 className="text-xl font-bold text-white">
-                    {uploadStatus === 'uploading' && 'Uploading Document'}
-                    {uploadStatus === 'processing' && 'Processing Document'}
-                    {uploadStatus === 'success' && 'Upload Complete!'}
-                    {uploadStatus === 'background' && 'Still Processing'}
-                    {uploadStatus === 'error' && 'Upload Failed'}
+                <div className="min-w-0 flex-1">
+                  <h2 className="font-serif text-2xl tracking-[-0.03em] text-white">
+                    {uploadStatus === 'uploading' && 'Uploading source'}
+                    {uploadStatus === 'processing' && 'Preparing source'}
+                    {uploadStatus === 'success' && 'Upload complete'}
+                    {uploadStatus === 'background' && 'Still processing'}
+                    {uploadStatus === 'error' && 'Upload failed'}
                   </h2>
-                  <p className="text-sm text-white/80 truncate max-w-[250px]">
-                    {uploadFileName}
-                  </p>
+                  <p className="truncate text-sm text-white/80">{uploadFileName}</p>
                 </div>
                 {(uploadStatus === 'success' || uploadStatus === 'background' || uploadStatus === 'error') && (
                   <button
                     onClick={closeUploadModal}
-                    className="p-2 hover:bg-white/20 rounded-xl transition-colors"
+                    className="rounded-xl p-2 transition-colors hover:bg-white/20"
                   >
                     <X className="h-5 w-5 text-white" />
                   </button>
@@ -644,100 +693,79 @@ export default function DocumentsPage() {
               </div>
             </div>
 
-            {/* Content */}
-            <div className="bg-[var(--card-bg)] p-6">
-              {/* File Info */}
-              <div className="flex items-center gap-3 p-4 bg-[var(--bg-secondary)] rounded-xl mb-4">
-                <div className="p-2 bg-[var(--bg-tertiary)] rounded-lg">
+            <div className="bg-[var(--card-bg-solid)] p-6">
+              <div className="mb-4 flex items-center gap-3 rounded-[1.35rem] bg-[var(--bg-secondary)] p-4">
+                <div className="rounded-xl bg-[var(--bg-tertiary)] p-2.5">
                   {uploadFileName.startsWith('http') ? (
                     <LinkIcon className="h-5 w-5 text-[var(--text-secondary)]" />
                   ) : (
                     <FileText className="h-5 w-5 text-[var(--text-secondary)]" />
                   )}
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-[var(--text-primary)] truncate">
-                    {uploadFileName}
-                  </p>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-[var(--text-primary)]">{uploadFileName}</p>
                   {uploadFileSize > 0 && (
-                    <p className="text-xs text-[var(--text-tertiary)]">
-                      {formatFileSize(uploadFileSize)}
-                    </p>
+                    <p className="text-xs text-[var(--text-tertiary)]">{formatFileSize(uploadFileSize)}</p>
                   )}
                   {uploadFileName.startsWith('http') && (
-                    <p className="text-xs text-[var(--text-tertiary)]">
-                      Web content
-                    </p>
+                    <p className="text-xs text-[var(--text-tertiary)]">Web content</p>
                   )}
                 </div>
               </div>
 
-              {/* Progress Bar */}
               {(uploadStatus === 'uploading' || uploadStatus === 'processing') && (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-[var(--text-secondary)]">
                       {uploadStatus === 'uploading' ? 'Uploading...' : 'Processing...'}
                     </span>
-                    <span className="text-[var(--text-primary)] font-medium">
-                      {Math.round(uploadProgress)}%
-                    </span>
+                    <span className="font-medium text-[var(--text-primary)]">{Math.round(uploadProgress)}%</span>
                   </div>
-                  <div className="h-2 bg-[var(--bg-tertiary)] rounded-full overflow-hidden">
+                  <div className="h-2 overflow-hidden rounded-full bg-[var(--bg-tertiary)]">
                     <div
-                      className="h-full bg-gradient-to-r from-blue-500 to-violet-500 rounded-full transition-all duration-300 ease-out"
+                      className="h-full rounded-full bg-[linear-gradient(90deg,var(--primary),var(--highlight))] transition-all duration-300 ease-out"
                       style={{ width: `${uploadProgress}%` }}
                     />
                   </div>
                   {uploadStatus === 'processing' && (
-                    <p className="text-xs text-[var(--text-tertiary)] text-center mt-2">
+                    <p className="mt-2 text-center text-xs text-[var(--text-tertiary)]">
                       {uploadStatusMessage || 'Extracting content and creating embeddings...'}
                     </p>
                   )}
                 </div>
               )}
 
-              {/* Success State */}
               {uploadStatus === 'success' && (
-                <div className="text-center py-4">
-                  <div className="w-16 h-16 mx-auto mb-3 rounded-full bg-[var(--success-bg)] flex items-center justify-center">
+                <div className="py-4 text-center">
+                  <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-[var(--success-bg)]">
                     <CheckCircle2 className="h-8 w-8 text-[var(--success)]" />
                   </div>
-                  <p className="text-[var(--text-primary)] font-medium">
-                    Document uploaded successfully!
-                  </p>
-                  <p className="text-sm text-[var(--text-tertiary)] mt-1">
-                    {uploadStatusMessage || 'Your document is ready to use'}
+                  <p className="font-medium text-[var(--text-primary)]">Document uploaded successfully.</p>
+                  <p className="mt-1 text-sm text-[var(--text-tertiary)]">
+                    {uploadStatusMessage || 'Your document is ready to use.'}
                   </p>
                 </div>
               )}
 
               {uploadStatus === 'background' && (
-                <div className="text-center py-4">
-                  <div className="w-16 h-16 mx-auto mb-3 rounded-full bg-[var(--accent-blue-subtle)] flex items-center justify-center">
+                <div className="py-4 text-center">
+                  <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-[var(--accent-blue-subtle)]">
                     <CloudUpload className="h-8 w-8 text-[var(--accent-blue)]" />
                   </div>
-                  <p className="text-[var(--text-primary)] font-medium">
-                    Upload finished successfully
-                  </p>
-                  <p className="text-sm text-[var(--text-tertiary)] mt-1">
+                  <p className="font-medium text-[var(--text-primary)]">Upload finished successfully.</p>
+                  <p className="mt-1 text-sm text-[var(--text-tertiary)]">
                     {uploadStatusMessage || 'Your document is still being prepared in the background.'}
                   </p>
                 </div>
               )}
 
-              {/* Error State */}
               {uploadStatus === 'error' && (
-                <div className="text-center py-4">
-                  <div className="w-16 h-16 mx-auto mb-3 rounded-full bg-[var(--error-bg)] flex items-center justify-center">
+                <div className="py-4 text-center">
+                  <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-[var(--error-bg)]">
                     <AlertCircle className="h-8 w-8 text-[var(--error)]" />
                   </div>
-                  <p className="text-[var(--text-primary)] font-medium">
-                    Upload failed
-                  </p>
-                  <p className="text-sm text-[var(--error)] mt-1">
-                    {uploadError}
-                  </p>
+                  <p className="font-medium text-[var(--text-primary)]">Upload failed</p>
+                  <p className="mt-1 text-sm text-[var(--error)]">{uploadError}</p>
                   <Button
                     variant="secondary"
                     size="sm"
@@ -748,7 +776,7 @@ export default function DocumentsPage() {
                       fileInputRef.current?.click();
                     }}
                   >
-                    Try Again
+                    Try again
                   </Button>
                 </div>
               )}
@@ -756,7 +784,6 @@ export default function DocumentsPage() {
           </div>
         </div>
       )}
-
     </div>
   );
 }

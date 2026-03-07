@@ -1,25 +1,27 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useAuthStore } from '@/lib/store';
 import { api } from '@/lib/api';
 import { PageLoader } from '@/components/ui/loading-spinner';
 import {
-  FileText,
+  ArrowRight,
   BookOpen,
+  Briefcase,
   Brain,
   ClipboardCheck,
+  Clock3,
+  FileText,
   Flame,
-  Upload,
-  Briefcase,
-  Clock,
-  ArrowRight,
+  Sparkles,
   Target,
+  Upload,
 } from 'lucide-react';
 import { formatRelativeTime } from '@/lib/utils';
-import type { UserProgress, ActivityLog } from '@/lib/types';
+import type { ActivityLog, UserProgress } from '@/lib/types';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 
 export default function DashboardPage() {
@@ -37,8 +39,7 @@ export default function DashboardPage() {
           api.getActivityLog(),
         ]);
         setProgress(progressData);
-        const activities = Array.isArray(activityData) ? activityData : [];
-        setActivities(activities.slice(0, 5));
+        setActivities(Array.isArray(activityData) ? activityData.slice(0, 6) : []);
       } catch (error) {
         console.error('Failed to fetch dashboard data:', error);
         setActivities([]);
@@ -50,159 +51,312 @@ export default function DashboardPage() {
     fetchData();
   }, []);
 
+  const stats = useMemo(
+    () => [
+      {
+        name: 'Documents',
+        value: progress?.total_documents || 0,
+        icon: FileText,
+        color: 'documents',
+        href: '/dashboard/documents',
+        note: 'Sources indexed',
+      },
+      {
+        name: 'Notes',
+        value: progress?.total_notes || 0,
+        icon: BookOpen,
+        color: 'notes',
+        href: '/dashboard/notes',
+        note: 'Study material captured',
+      },
+      {
+        name: 'Summaries',
+        value: progress?.total_summaries || 0,
+        icon: Brain,
+        color: 'summaries',
+        href: '/dashboard/summaries',
+        note: 'Condensed revisions',
+      },
+      {
+        name: 'Quizzes',
+        value: progress?.total_quizzes_generated || 0,
+        icon: ClipboardCheck,
+        color: 'quizzes',
+        href: '/dashboard/quizzes',
+        note: 'Checks generated',
+      },
+    ],
+    [progress]
+  );
+
+  const latestActivity = activities[0];
+  const streak = progress?.study_streak_days || 0;
+  const averageScore = progress?.average_quiz_score?.toFixed(0) || '0';
+  const attemptedQuizzes = progress?.total_quizzes_attempted || 0;
+
   if (isLoading) {
     return <PageLoader />;
   }
 
-  const stats = [
-    { name: 'Documents', value: progress?.total_documents || 0, icon: FileText, color: 'documents', href: '/dashboard/documents' },
-    { name: 'Notes', value: progress?.total_notes || 0, icon: BookOpen, color: 'notes', href: '/dashboard/notes' },
-    { name: 'Summaries', value: progress?.total_summaries || 0, icon: Brain, color: 'summaries', href: '/dashboard/summaries' },
-    { name: 'Quizzes', value: progress?.total_quizzes_generated || 0, icon: ClipboardCheck, color: 'quizzes', href: '/dashboard/quizzes' },
-  ];
-
   return (
-    <div className="space-y-5 animate-fade-in">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-[var(--text-primary)]">
-            Welcome back, {user?.first_name || 'Student'}
-          </h1>
-          <p className="text-sm text-[var(--text-tertiary)] mt-0.5">
-            Here&apos;s your learning overview
-          </p>
-        </div>
-        <Link href="/dashboard/documents">
-          <Button variant="default" size="sm">
-            <Upload className="h-3.5 w-3.5" />
-            Upload
-          </Button>
-        </Link>
-      </div>
+    <div className="space-y-6 animate-fade-in">
+      <section className="grid gap-5 xl:grid-cols-[1.65fr_0.95fr]">
+        <div className="dashboard-panel overflow-hidden">
+          <div className="panel-content flex h-full flex-col justify-between gap-8 p-6 lg:p-8">
+            <div className="max-w-3xl">
+              <p className="editorial-kicker">
+                <span className="inline-block h-2 w-2 rounded-full bg-[var(--primary)]" />
+                Knowledge desk
+              </p>
+              <h2 className="display-balance mt-4 font-serif text-4xl tracking-[-0.05em] text-[var(--text-primary)] sm:text-5xl">
+                Welcome back, {user?.first_name || 'Student'}.
+              </h2>
+              <p className="mt-4 max-w-2xl text-base leading-7 text-[var(--text-secondary)]">
+                Keep your study flow tight: ingest better sources, ask grounded questions, and turn the results into notes, summaries, and quizzes without leaving the workspace.
+              </p>
 
-      {/* Stats Row */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className="mt-6 flex flex-wrap items-center gap-3">
+                <Link href="/dashboard/documents">
+                  <Button size="lg">
+                    <Upload className="h-4 w-4" />
+                    Add study material
+                  </Button>
+                </Link>
+                <Link href="/dashboard/ask">
+                  <Button variant="outline" size="lg">
+                    <Sparkles className="h-4 w-4" />
+                    Open AI assistant
+                  </Button>
+                </Link>
+                <Badge variant="documents" size="lg">
+                  {stats[0].value} indexed sources
+                </Badge>
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="metric-tile">
+                <p className="editorial-kicker">
+                  <Flame className="h-3.5 w-3.5 text-[var(--quizzes)]" />
+                  Streak
+                </p>
+                <p className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-[var(--text-primary)]">
+                  {streak}
+                  <span className="ml-2 text-sm font-medium text-[var(--text-tertiary)]">days</span>
+                </p>
+                <p className="mt-2 text-sm text-[var(--text-secondary)]">Keep momentum by revisiting one concept today.</p>
+              </div>
+
+              <div className="metric-tile">
+                <p className="editorial-kicker">
+                  <Target className="h-3.5 w-3.5 text-[var(--notes)]" />
+                  Average quiz score
+                </p>
+                <p className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-[var(--text-primary)]">
+                  {averageScore}
+                  <span className="ml-2 text-sm font-medium text-[var(--text-tertiary)]">%</span>
+                </p>
+                <p className="mt-2 text-sm text-[var(--text-secondary)]">Based on {attemptedQuizzes} quiz attempt{attemptedQuizzes === 1 ? '' : 's'}.</p>
+              </div>
+
+              <div className="metric-tile">
+                <p className="editorial-kicker">
+                  <Clock3 className="h-3.5 w-3.5 text-[var(--highlight)]" />
+                  Latest activity
+                </p>
+                <p className="mt-3 text-xl font-semibold tracking-[-0.03em] text-[var(--text-primary)]">
+                  {latestActivity ? getActivityDescription(latestActivity) : 'No recent activity'}
+                </p>
+                <p className="mt-2 text-sm text-[var(--text-secondary)]">
+                  {latestActivity ? formatRelativeTime(latestActivity.timestamp) : 'Start by uploading a document.'}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="dashboard-panel">
+          <div className="panel-content flex h-full flex-col gap-4 p-6">
+            <div>
+              <p className="editorial-kicker">
+                <span className="inline-block h-2 w-2 rounded-full bg-[var(--highlight)]" />
+                Session pulse
+              </p>
+              <h3 className="mt-3 font-serif text-2xl tracking-[-0.04em] text-[var(--text-primary)]">
+                What the desk is telling you
+              </h3>
+            </div>
+
+            <div className="space-y-3">
+              <div className="rounded-[1.35rem] border border-[var(--card-border)] bg-[color:color-mix(in_srgb,var(--bg-elevated)_78%,transparent)] p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--text-tertiary)]">Recommended next step</p>
+                <p className="mt-2 text-base font-medium text-[var(--text-primary)]">
+                  {stats[0].value === 0
+                    ? 'Upload a strong source document.'
+                    : stats[1].value === 0
+                      ? 'Turn your best document into notes.'
+                      : 'Open the AI assistant and test understanding.'}
+                </p>
+              </div>
+
+              <div className="rounded-[1.35rem] border border-[var(--card-border)] bg-[color:color-mix(in_srgb,var(--bg-elevated)_78%,transparent)] p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--text-tertiary)]">Coverage</p>
+                <p className="mt-2 text-base font-medium text-[var(--text-primary)]">
+                  {stats[0].value} documents, {stats[1].value} notes, {stats[2].value} summaries.
+                </p>
+              </div>
+
+              <div className="rounded-[1.35rem] border border-[var(--card-border)] bg-[color:color-mix(in_srgb,var(--bg-elevated)_78%,transparent)] p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--text-tertiary)]">Assistant posture</p>
+                <p className="mt-2 text-base font-medium text-[var(--text-primary)]">Best when your library is recent, clean, and connected.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {stats.map((stat) => {
           const Icon = stat.icon;
           return (
-            <Link key={stat.name} href={stat.href} className="stat-card hover:border-[var(--accent-blue)] transition-all cursor-pointer block">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="stat-value">{stat.value}</p>
-                  <p className="stat-label">{stat.name}</p>
+            <Link key={stat.name} href={stat.href} className="dashboard-panel group overflow-hidden">
+              <div className="panel-content p-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--text-tertiary)]">
+                      {stat.name}
+                    </p>
+                    <p className="mt-3 text-4xl font-semibold tracking-[-0.05em] text-[var(--text-primary)]">
+                      {stat.value}
+                    </p>
+                    <p className="mt-2 text-sm text-[var(--text-secondary)]">{stat.note}</p>
+                  </div>
+                  <div className={cn('flex h-12 w-12 items-center justify-center rounded-2xl', `icon-${stat.color}`)}>
+                    <Icon className="h-5 w-5" />
+                  </div>
                 </div>
-                <div className={cn('icon-wrapper-sm', `icon-${stat.color}`)}>
-                  <Icon className="h-4 w-4" />
+                <div className="mt-6 flex items-center gap-2 text-sm text-[var(--text-secondary)] transition-colors group-hover:text-[var(--primary)]">
+                  Open {stat.name.toLowerCase()}
+                  <ArrowRight className="h-4 w-4" />
                 </div>
               </div>
             </Link>
           );
         })}
-      </div>
+      </section>
 
-      {/* Main Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Left Column */}
-        <div className="lg:col-span-2 space-y-4">
-          {/* Progress Cards */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="card p-4">
-              <div className="flex items-center gap-3">
-                <div className="icon-wrapper icon-quizzes">
-                  <Flame className="h-4 w-4" />
-                </div>
-                <div>
-                  <p className="text-xs text-[var(--text-tertiary)]">Study Streak</p>
-                  <p className="text-lg font-semibold text-[var(--text-primary)]">
-                    {progress?.study_streak_days || 0} <span className="text-sm font-normal text-[var(--text-tertiary)]">days</span>
-                  </p>
-                </div>
+      <section className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
+        <div className="dashboard-panel">
+          <div className="panel-content p-6 lg:p-7">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="editorial-kicker">
+                  <span className="inline-block h-2 w-2 rounded-full bg-[var(--notes)]" />
+                  Quick actions
+                </p>
+                <h3 className="mt-3 font-serif text-2xl tracking-[-0.04em] text-[var(--text-primary)]">
+                  Move the study loop forward
+                </h3>
               </div>
             </div>
 
-            <div className="card p-4">
-              <div className="flex items-center gap-3">
-                <div className="icon-wrapper icon-notes">
-                  <Target className="h-4 w-4" />
-                </div>
-                <div>
-                  <p className="text-xs text-[var(--text-tertiary)]">Avg Score</p>
-                  <p className="text-lg font-semibold text-[var(--text-primary)]">
-                    {progress?.average_quiz_score?.toFixed(0) || '0'}%
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Quick Actions */}
-          <div className="card p-4">
-            <h3 className="text-sm font-medium text-[var(--text-secondary)] mb-3">Quick Actions</h3>
-            <div className="grid grid-cols-4 gap-2">
-              <QuickAction href="/dashboard/documents" icon={Upload} label="Upload" />
-              <QuickAction href="/dashboard/notes/new" icon={BookOpen} label="Notes" />
-              <QuickAction href="/dashboard/quizzes" icon={ClipboardCheck} label="Quiz" />
-              <QuickAction href="/dashboard/career" icon={Briefcase} label="Career" />
+            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+              <QuickAction href="/dashboard/documents" icon={Upload} label="Upload source" note="Bring in PDFs, links, slides, and notes." />
+              <QuickAction href="/dashboard/notes/new" icon={BookOpen} label="Draft notes" note="Convert understanding into reusable study material." />
+              <QuickAction href="/dashboard/quizzes" icon={ClipboardCheck} label="Run a quiz" note="Check recall and weak spots quickly." />
+              <QuickAction href="/dashboard/career" icon={Briefcase} label="Career prep" note="Turn learning progress into job-ready actions." />
             </div>
           </div>
         </div>
 
-        {/* Right Column - Activity */}
-        <div className="card p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-medium text-[var(--text-secondary)]">Recent Activity</h3>
-            <Clock className="h-3.5 w-3.5 text-[var(--text-muted)]" />
-          </div>
-
-          {activities.length === 0 ? (
-            <div className="text-center py-8">
-              <div className="w-10 h-10 rounded-full bg-[var(--bg-secondary)] flex items-center justify-center mx-auto mb-2">
-                <FileText className="h-5 w-5 text-[var(--text-muted)]" />
+        <div className="dashboard-panel">
+          <div className="panel-content p-6 lg:p-7">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="editorial-kicker">
+                  <span className="inline-block h-2 w-2 rounded-full bg-[var(--progress)]" />
+                  Activity timeline
+                </p>
+                <h3 className="mt-3 font-serif text-2xl tracking-[-0.04em] text-[var(--text-primary)]">
+                  Recent movement
+                </h3>
               </div>
-              <p className="text-sm text-[var(--text-tertiary)]">No activity yet</p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {activities.map((activity) => (
-                <ActivityItem key={activity.id} activity={activity} />
-              ))}
-              <Link href="/dashboard/progress" className="block">
-                <button className="w-full text-xs text-[var(--text-tertiary)] hover:text-[var(--primary)] py-2 flex items-center justify-center gap-1">
-                  View all <ArrowRight className="h-3 w-3" />
-                </button>
+              <Link href="/dashboard/progress" className="text-sm text-[var(--primary)] hover:underline">
+                View progress
               </Link>
             </div>
-          )}
+
+            {activities.length === 0 ? (
+              <div className="mt-6 rounded-[1.35rem] border border-dashed border-[var(--card-border)] bg-[color:color-mix(in_srgb,var(--bg-elevated)_74%,transparent)] p-8 text-center">
+                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-[var(--bg-secondary)]">
+                  <FileText className="h-5 w-5 text-[var(--text-muted)]" />
+                </div>
+                <p className="mt-4 text-base font-medium text-[var(--text-primary)]">No activity yet</p>
+                <p className="mt-2 text-sm text-[var(--text-secondary)]">Upload a document to start building your learning trail.</p>
+              </div>
+            ) : (
+              <div className="mt-5 space-y-3">
+                {activities.map((activity, index) => (
+                  <ActivityItem key={activity.id} activity={activity} isFirst={index === 0} />
+                ))}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      </section>
     </div>
   );
 }
 
-function QuickAction({ href, icon: Icon, label }: { href: string; icon: any; label: string }) {
+function QuickAction({
+  href,
+  icon: Icon,
+  label,
+  note,
+}: {
+  href: string;
+  icon: any;
+  label: string;
+  note: string;
+}) {
   return (
-    <Link href={href}>
-      <div className="flex flex-col items-center gap-1.5 p-3 rounded-md hover:bg-[var(--bg-secondary)] transition-colors cursor-pointer">
-        <Icon className="h-4 w-4 text-[var(--text-tertiary)]" />
-        <span className="text-xs text-[var(--text-secondary)]">{label}</span>
+    <Link
+      href={href}
+      className="rounded-[1.35rem] border border-[var(--card-border)] bg-[color:color-mix(in_srgb,var(--bg-elevated)_78%,transparent)] p-4 transition-all hover:-translate-y-0.5 hover:border-[var(--card-border-hover)] hover:shadow-[var(--card-shadow)]"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[var(--accent)] text-[var(--primary)]">
+            <Icon className="h-5 w-5" />
+          </div>
+          <p className="mt-4 text-base font-medium text-[var(--text-primary)]">{label}</p>
+          <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">{note}</p>
+        </div>
+        <ArrowRight className="mt-1 h-4 w-4 text-[var(--text-muted)]" />
       </div>
     </Link>
   );
 }
 
-function ActivityItem({ activity }: { activity: ActivityLog }) {
+function ActivityItem({ activity, isFirst }: { activity: ActivityLog; isFirst: boolean }) {
   const description = getActivityDescription(activity);
   const Icon = getActivityIconComponent(activity.activity_type);
 
   return (
-    <div className="flex items-center gap-2.5 py-2 border-b border-[var(--card-border)] last:border-0">
-      <div className="w-7 h-7 rounded-md bg-[var(--bg-secondary)] flex items-center justify-center flex-shrink-0">
-        <Icon className="h-3.5 w-3.5 text-[var(--text-tertiary)]" />
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm text-[var(--text-primary)] truncate">{description}</p>
-        <p className="text-xs text-[var(--text-muted)]">{formatRelativeTime(activity.timestamp)}</p>
+    <div
+      className={cn(
+        'rounded-[1.35rem] border border-[var(--card-border)] bg-[color:color-mix(in_srgb,var(--bg-elevated)_78%,transparent)] p-4',
+        isFirst && 'shadow-[var(--card-shadow)]'
+      )}
+    >
+      <div className="flex items-start gap-3">
+        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[var(--accent)] text-[var(--primary)]">
+          <Icon className="h-5 w-5" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-base font-medium text-[var(--text-primary)]">{description}</p>
+          <p className="mt-1 text-sm text-[var(--text-secondary)]">{formatRelativeTime(activity.timestamp)}</p>
+        </div>
       </div>
     </div>
   );
@@ -213,20 +367,19 @@ function getActivityDescription(activity: ActivityLog): string {
 
   switch (activity.activity_type) {
     case 'UPLOAD':
-      return `Uploaded: ${details.filename || 'Document'}`;
+      return `Uploaded ${details.filename || 'a document'}`;
     case 'NOTE':
-      return `Created note: ${details.title || 'Note'}`;
+      return `Created note ${details.title ? `"${details.title}"` : ''}`.trim();
     case 'SUMMARY':
-      return `Generated summary`;
+      return 'Generated a summary';
     case 'QUIZ':
-      return `Generated quiz`;
+      return 'Generated a quiz';
     case 'QUIZ_ATTEMPT':
-      const score = details.score !== undefined ? ` - ${details.score}%` : '';
-      return `Completed quiz${score}`;
+      return `Completed a quiz${details.score !== undefined ? ` at ${details.score}%` : ''}`;
     case 'RESUME_UPLOADED':
-      return `Uploaded resume`;
+      return 'Uploaded a resume';
     case 'RESUME_ANALYZED':
-      return `Analyzed resume`;
+      return 'Analyzed a resume';
     default:
       return 'Activity recorded';
   }
@@ -234,13 +387,19 @@ function getActivityDescription(activity: ActivityLog): string {
 
 function getActivityIconComponent(type: string) {
   switch (type) {
-    case 'UPLOAD': return FileText;
+    case 'UPLOAD':
+      return FileText;
     case 'QUIZ':
-    case 'QUIZ_ATTEMPT': return ClipboardCheck;
-    case 'NOTE': return BookOpen;
-    case 'SUMMARY': return Brain;
+    case 'QUIZ_ATTEMPT':
+      return ClipboardCheck;
+    case 'NOTE':
+      return BookOpen;
+    case 'SUMMARY':
+      return Brain;
     case 'RESUME_UPLOADED':
-    case 'RESUME_ANALYZED': return Briefcase;
-    default: return FileText;
+    case 'RESUME_ANALYZED':
+      return Briefcase;
+    default:
+      return FileText;
   }
 }

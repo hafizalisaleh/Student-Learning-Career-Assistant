@@ -1,6 +1,6 @@
 """
 Knowledge Graph builder — extracts concepts from documents/notes and
-computes similarity links using existing ChromaDB embeddings.
+computes similarity links using PGVector embeddings.
 """
 from typing import Dict, Any, List
 from utils.gemini_client import gemini_client

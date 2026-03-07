@@ -5,20 +5,20 @@ import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@/lib/utils';
 
 const cardVariants = cva(
-  'rounded-2xl border transition-all duration-200',
+  'rounded-[1.6rem] border transition-all duration-200',
   {
     variants: {
       variant: {
         default:
-          'bg-[var(--card-bg)] backdrop-blur-xl border-[var(--card-border)] hover:border-[var(--card-border-hover)]',
+          'bg-[var(--card-bg)] backdrop-blur-xl border-[var(--card-border)] shadow-[var(--card-shadow)] hover:border-[var(--card-border-hover)] hover:shadow-[var(--card-shadow-hover)]',
         solid:
-          'bg-[var(--card-bg-solid)] border-[var(--card-border)] hover:border-[var(--card-border-hover)]',
+          'bg-[var(--card-bg-solid)] border-[var(--card-border)] shadow-[var(--card-shadow)] hover:border-[var(--card-border-hover)]',
         elevated:
-          'bg-[var(--bg-elevated)] border-[var(--card-border)] hover:border-[var(--card-border-hover)] shadow-lg',
+          'bg-[var(--bg-elevated)] border-[var(--card-border)] shadow-[var(--card-shadow-hover)] hover:border-[var(--card-border-hover)]',
         outline:
           'bg-transparent border-[var(--card-border)] hover:border-[var(--card-border-hover)]',
         glow:
-          'bg-[var(--card-bg)] backdrop-blur-xl border-[var(--card-border)] hover:border-[var(--accent-blue)] hover:shadow-[var(--shadow-glow-blue)]',
+          'bg-[var(--card-bg)] backdrop-blur-xl border-[var(--card-border)] shadow-[var(--card-shadow)] hover:border-[var(--accent-blue)] hover:shadow-[var(--shadow-glow-blue)]',
       },
       hover: {
         none: '',
@@ -72,7 +72,7 @@ const CardHeader = forwardRef<HTMLDivElement, CardSubComponentProps>(
     return (
       <div
         ref={ref}
-        className={cn('pb-4 border-b border-[var(--card-border)]', className)}
+        className={cn('pb-4 border-b border-[var(--card-border)]/90', className)}
         {...props}
       >
         {children}
@@ -88,7 +88,7 @@ const CardTitle = forwardRef<HTMLHeadingElement, CardSubComponentProps>(
     return (
       <h3
         ref={ref as React.Ref<HTMLHeadingElement>}
-        className={cn('text-lg font-semibold text-[var(--text-primary)]', className)}
+        className={cn('text-xl font-semibold text-[var(--text-primary)] font-serif tracking-[-0.03em]', className)}
         {...props}
       >
         {children}

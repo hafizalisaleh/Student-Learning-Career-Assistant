@@ -66,12 +66,106 @@ type TabType = 'content' | 'info' | 'notes' | 'quizzes' | 'summaries' | 'mindmap
 type SummaryLength = 'short' | 'medium' | 'detailed';
 type DiagramType = 'flowchart' | 'sequence' | 'er' | 'state' | 'class';
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
+function AuthenticatedArtifactImage({ src, alt }: { src: string; alt?: string }) {
+  const [objectUrl, setObjectUrl] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    let nextObjectUrl: string | null = null;
+
+    const loadImage = async () => {
+      try {
+        setFailed(false);
+        const response = await api.get(src, { responseType: 'blob' });
+        nextObjectUrl = URL.createObjectURL(response.data);
+        if (active) {
+          setObjectUrl(nextObjectUrl);
+        } else {
+          URL.revokeObjectURL(nextObjectUrl);
+        }
+      } catch (error) {
+        console.error('Failed to load document artifact image:', error);
+        if (active) {
+          setFailed(true);
+          setObjectUrl(null);
+        }
+      }
+    };
+
+    setObjectUrl(null);
+    loadImage();
+
+    return () => {
+      active = false;
+      if (nextObjectUrl) {
+        URL.revokeObjectURL(nextObjectUrl);
+      }
+    };
+  }, [src]);
+
+  if (objectUrl) {
+    return (
+      <span className="my-4 block">
+        <img
+          src={objectUrl}
+          alt={alt || 'Document artifact'}
+          className="h-auto max-w-full rounded-lg border border-[var(--card-border)]"
+          loading="lazy"
+        />
+      </span>
+    );
+  }
+
+  return (
+    <span className="my-4 flex min-h-24 items-center justify-center rounded-lg border border-[var(--card-border)] bg-[var(--bg-elevated)] px-4 text-sm text-[var(--text-secondary)]">
+      {failed ? (alt || 'Image unavailable') : 'Loading image...'}
+    </span>
+  );
+}
+
 function supportsStudyWorkspace(contentType?: string) {
   return contentType?.toLowerCase() === 'pdf';
 }
 
 function formatArtifactCount(count: number, singular: string, plural: string = `${singular}s`) {
   return `${count} ${count === 1 ? singular : plural}`;
+}
+
+function resolveDocumentArtifactUrl(documentId: string, filePath: string | undefined, rawPath?: string | null) {
+  const source = (rawPath || '').trim();
+  if (!source) return source;
+  if (/^(https?:|data:)/i.test(source)) return source;
+
+  let relativePath = '';
+  if (filePath) {
+    const doclingRoot = `${filePath}.docling/`;
+    if (source.startsWith(doclingRoot)) {
+      relativePath = source.slice(doclingRoot.length);
+    }
+  }
+
+  if (!relativePath && source.includes('.docling/')) {
+    relativePath = source.split('.docling/')[1] || '';
+  }
+
+  if (!relativePath && source.startsWith('full_artifacts/')) {
+    relativePath = source;
+  }
+
+  if (!relativePath) {
+    return source;
+  }
+
+  const encodedRelativePath = relativePath
+    .split('/')
+    .filter(Boolean)
+    .map(encodeURIComponent)
+    .join('/');
+
+  return `${API_URL}/api/documents/${documentId}/artifacts/${encodedRelativePath}`;
 }
 
 const DIAGRAM_TYPES: { type: DiagramType; label: string; icon: any; description: string }[] = [
@@ -868,7 +962,28 @@ export default function DocumentDetailPage() {
 
             <div className="prose prose-sm max-w-none text-[var(--text-primary)] leading-relaxed">
               {document.extracted_text ? (
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  components={{
+                    img: ({ src, alt }) => {
+                      const resolvedSrc = resolveDocumentArtifactUrl(documentId, document.file_path, typeof src === 'string' ? src : '');
+                      return <AuthenticatedArtifactImage src={resolvedSrc} alt={alt || 'Document artifact'} />;
+                    },
+                    a: ({ href, children, ...props }) => {
+                      const resolvedHref = resolveDocumentArtifactUrl(documentId, document.file_path, typeof href === 'string' ? href : '');
+                      return (
+                        <a
+                          {...props}
+                          href={resolvedHref}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          {children}
+                        </a>
+                      );
+                    },
+                  }}
+                >
                   {document.extracted_text}
                 </ReactMarkdown>
               ) : (

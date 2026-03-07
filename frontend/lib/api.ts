@@ -64,6 +64,7 @@ interface ApiInstance extends AxiosInstance {
 
   // RAG / Vector Store
   ragQuery: (question: string, documentId?: string, nResults?: number, mode?: string) => Promise<any>;
+  visionQuery: (question: string, documentId?: string, nResults?: number) => Promise<any>;
   ragSearch: (query: string, documentId?: string, nResults?: number) => Promise<any>;
   getVectorStats: () => Promise<any>;
   getDocumentEmbeddings: (documentId: string) => Promise<any>;
@@ -360,6 +361,15 @@ axiosInstance.ragQuery = async (question: string, documentId?: string, nResults:
     document_id: documentId,
     n_results: nResults,
     mode,
+  });
+  return response.data;
+};
+
+axiosInstance.visionQuery = async (question: string, documentId?: string, nResults: number = 6) => {
+  const response = await axiosInstance.post('/api/vectors/vision-query', {
+    question,
+    document_id: documentId,
+    n_results: nResults,
   });
   return response.data;
 };

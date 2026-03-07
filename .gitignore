@@ -18,6 +18,8 @@ ENV/
 # Logs
 *.log
 backend/logs/
+backend/.vision_cache/
+.vision_cache/
 
 # Environment
 .env

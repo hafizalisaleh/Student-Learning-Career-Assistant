@@ -92,7 +92,7 @@ function PromptInput({
         <div
           onClick={handleClick}
           className={cn(
-            "border-input bg-background cursor-text rounded-3xl border p-2 shadow-xs",
+            "flex items-end gap-2 cursor-text rounded-[1.75rem] border border-[var(--card-border)] bg-[color:color-mix(in_srgb,var(--bg-elevated)_86%,transparent)] p-2 shadow-[var(--card-shadow)] transition-all duration-200 hover:border-[var(--card-border-hover)] focus-within:border-[var(--primary)] focus-within:shadow-[var(--shadow-glow-blue)]",
             disabled && "cursor-not-allowed opacity-60",
             className
           )}
@@ -169,7 +169,7 @@ function PromptInputTextarea({
       onChange={handleChange}
       onKeyDown={handleKeyDown}
       className={cn(
-        "text-primary min-h-[44px] w-full resize-none border-none bg-transparent shadow-none outline-none focus-visible:ring-0 focus-visible:ring-offset-0",
+        "min-h-[46px] w-full resize-none border-none bg-transparent px-1 text-[var(--text-primary)] shadow-none outline-none focus-visible:ring-0 focus-visible:ring-offset-0",
         className
       )}
       rows={1}
@@ -187,7 +187,7 @@ function PromptInputActions({
   ...props
 }: PromptInputActionsProps) {
   return (
-    <div className={cn("flex items-center gap-2", className)} {...props}>
+    <div className={cn("flex shrink-0 items-center gap-2.5 self-end", className)} {...props}>
       {children}
     </div>
   )

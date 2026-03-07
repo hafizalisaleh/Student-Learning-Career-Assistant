@@ -253,16 +253,15 @@ export function VoiceChat({ documentId, onTranscript, onResponse }: VoiceChatPro
   }, [disconnect]);
 
   return (
-    <div className="card p-6">
-      <div className="flex flex-col items-center gap-4">
-        {/* Status */}
+    <div className="rounded-[1.9rem] border border-[var(--card-border)] bg-[color:color-mix(in_srgb,var(--bg-elevated)_84%,transparent)] p-6 shadow-[var(--card-shadow)]">
+      <div className="flex flex-col items-center gap-5">
         <div className={cn(
-          'flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium',
+          'flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.14em]',
           status === 'idle' && 'bg-[var(--bg-secondary)] text-[var(--text-secondary)]',
-          status === 'connecting' && 'bg-[var(--warning-bg)] text-[var(--warning)]',
-          status === 'connected' && 'bg-[var(--success-bg)] text-[var(--success)]',
-          status === 'speaking' && 'bg-[var(--info-bg)] text-[var(--info)]',
-          status === 'listening' && 'bg-[var(--success-bg)] text-[var(--success)]'
+          status === 'connecting' && 'border-[var(--warning-border)] bg-[var(--warning-bg)] text-[var(--warning)]',
+          status === 'connected' && 'border-[var(--success-border)] bg-[var(--success-bg)] text-[var(--success)]',
+          status === 'speaking' && 'border-[var(--info-border)] bg-[var(--info-bg)] text-[var(--info)]',
+          status === 'listening' && 'border-[var(--success-border)] bg-[var(--success-bg)] text-[var(--success)]'
         )}>
           <div className={cn(
             'w-2 h-2 rounded-full',
@@ -279,8 +278,8 @@ export function VoiceChat({ documentId, onTranscript, onResponse }: VoiceChatPro
           {status === 'listening' && 'Listening...'}
         </div>
 
-        {/* Main Button */}
         <div className="relative">
+          <div className="absolute inset-0 rounded-full bg-[radial-gradient(circle,rgba(76,122,255,0.28),transparent_65%)] blur-xl" />
           {isConnected && (
             <div className={cn(
               'absolute -inset-2 rounded-full border-2 animate-pulse',
@@ -292,10 +291,10 @@ export function VoiceChat({ documentId, onTranscript, onResponse }: VoiceChatPro
           <button
             onClick={isConnected ? disconnect : connect}
             className={cn(
-              'relative p-6 rounded-full transition-all',
+              'relative rounded-full border border-white/10 p-7 transition-all shadow-[var(--shadow-glow-blue)]',
               isConnected
-                ? 'bg-[var(--error)] hover:bg-[var(--error)]/90'
-                : 'bg-[var(--primary)] hover:bg-[var(--primary-hover)]'
+                ? 'bg-[linear-gradient(135deg,var(--danger),color-mix(in_srgb,var(--danger)_68%,#fff_10%))] hover:scale-[1.02]'
+                : 'bg-[linear-gradient(135deg,var(--primary),var(--highlight))] hover:scale-[1.02]'
             )}
           >
             {isConnected ? (
@@ -306,16 +305,15 @@ export function VoiceChat({ documentId, onTranscript, onResponse }: VoiceChatPro
           </button>
         </div>
 
-        {/* Controls */}
         {isConnected && (
           <div className="flex items-center gap-2">
             <button
               onClick={toggleMute}
               className={cn(
-                'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all',
+                'flex items-center gap-1.5 rounded-xl border px-3 py-2 text-sm font-medium transition-all',
                 isMuted
-                  ? 'bg-[var(--error-bg)] text-[var(--error)]'
-                  : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                  ? 'border-[var(--error-border)] bg-[var(--error-bg)] text-[var(--error)]'
+                  : 'border-[var(--card-border)] bg-[var(--card-bg-solid)] text-[var(--text-secondary)] hover:border-[var(--card-border-hover)] hover:text-[var(--text-primary)]'
               )}
             >
               {isMuted ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
@@ -323,7 +321,7 @@ export function VoiceChat({ documentId, onTranscript, onResponse }: VoiceChatPro
             </button>
             <button
               onClick={disconnect}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium bg-[var(--error-bg)] text-[var(--error)] hover:bg-[var(--error)]/10 transition-all"
+              className="flex items-center gap-1.5 rounded-xl border border-[var(--error-border)] bg-[var(--error-bg)] px-3 py-2 text-sm font-medium text-[var(--error)] transition-all hover:bg-[var(--danger-bg)]"
             >
               <PhoneOff className="h-4 w-4" />
               End
@@ -331,28 +329,26 @@ export function VoiceChat({ documentId, onTranscript, onResponse }: VoiceChatPro
           </div>
         )}
 
-        {/* Transcript */}
         {transcript && (
           <div className="w-full mt-4">
             <Message className="justify-start gap-2">
-              <div className="w-6 h-6 rounded-md bg-[var(--primary)] flex items-center justify-center shrink-0 mt-1">
+              <div className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-[var(--primary)] text-[var(--primary-foreground)]">
                 <Bot className="w-3.5 h-3.5 text-white" />
               </div>
-              <MessageContent className="bg-[var(--bg-secondary)] border border-[var(--card-border)] rounded-xl px-3 py-2 text-sm leading-relaxed text-[var(--text-primary)]">
+              <MessageContent className="rounded-[1.2rem] border border-[var(--card-border)] bg-[var(--card-bg-solid)] px-4 py-3 text-sm leading-7 text-[var(--text-primary)]">
                 {transcript}
               </MessageContent>
             </Message>
           </div>
         )}
 
-        {/* Instructions */}
         {!isConnected && (
-          <div className="text-center">
-            <p className="text-sm text-[var(--text-secondary)]">
+          <div className="max-w-sm text-center">
+            <p className="text-sm font-medium text-[var(--text-secondary)]">
               Click to start voice conversation
             </p>
-            <p className="text-xs text-[var(--text-muted)] mt-1 max-w-xs">
-              Ask questions about your documents using natural speech.
+            <p className="mt-2 text-xs leading-6 text-[var(--text-muted)]">
+              Ask questions about your documents using natural speech. The assistant will keep the answers grounded in your indexed material.
             </p>
           </div>
         )}

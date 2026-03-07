@@ -204,7 +204,7 @@ function WorkspaceContent() {
         setIsLoading(true);
 
         try {
-            const response = await api.ragQuery(fullQuery, documentId || undefined);
+            const response = await api.visionQuery(fullQuery, documentId || undefined);
 
             if (response.answer) {
                 setMessages([...newMessages, {
@@ -228,7 +228,7 @@ function WorkspaceContent() {
             const isQuotaError = error?.message?.includes("quota") || error?.message?.includes("429") || error?.message?.includes("RESOURCE_EXHAUSTED");
 
             if (isQuotaError) {
-                toast.error("Gemini API limit reached. Please wait a moment before trying again.", {
+                toast.error("The active AI provider hit a rate limit. Please wait a moment before trying again.", {
                     duration: 5000,
                     id: 'quota-error'
                 });
@@ -237,7 +237,7 @@ function WorkspaceContent() {
             setMessages([...newMessages, {
                 role: 'assistant',
                 content: isQuotaError
-                    ? "I've reached my current API quota limit. Please wait a few seconds and try again. If you're using the free tier, there are daily and per-minute limits."
+                    ? "The active AI provider hit a rate limit. Please wait a few seconds and try again."
                     : "I'm having trouble connecting to the AI service. Please check your internet connection and try again."
             }]);
         } finally {
@@ -343,7 +343,7 @@ function WorkspaceContent() {
     };
 
     return (
-        <div className="flex h-[calc(100vh-64px)] overflow-hidden bg-[var(--bg-primary)]">
+        <div className="flex h-[calc(100svh-10.5rem)] min-h-[38rem] overflow-hidden rounded-[1.6rem] border border-[var(--card-border)] bg-[var(--bg-primary)] shadow-[var(--card-shadow)]">
             <PanelGroup orientation="horizontal">
 
                 {/* LEFT: PDF VIEWER */}
@@ -358,7 +358,7 @@ function WorkspaceContent() {
 
                 {/* RIGHT: AI & NOTES */}
                 <Panel defaultSize={50} minSize={30}>
-                    <div className="flex flex-col h-full bg-[var(--bg-primary)]">
+                    <div className="flex h-full min-h-0 flex-col bg-[var(--bg-primary)]">
                         {/* Tabs */}
                         <div className="flex items-center gap-1 p-2 bg-[var(--bg-secondary)] border-b border-[var(--card-border)]">
                             <button
@@ -384,7 +384,7 @@ function WorkspaceContent() {
                         </div>
 
                         {/* Pane Content */}
-                        <div className="flex-1 overflow-hidden relative">
+                        <div className="relative flex-1 overflow-hidden">
                             {rightPane === 'notes' ? (
                                 <div className="h-full flex flex-col">
                                     {/* Notes header with save */}
@@ -418,9 +418,9 @@ function WorkspaceContent() {
                                     </div>
                                 </div>
                             ) : (
-                                <div className="flex flex-col h-full bg-[var(--bg-secondary)]/30">
+                                <div className="flex h-full min-h-0 flex-col bg-[var(--bg-secondary)]/30">
                                     {/* Chat History */}
-                                    <ChatContainerRoot className="flex-1 overflow-y-auto relative bg-[var(--bg-secondary)]/30">
+                                    <ChatContainerRoot className="relative min-h-0 flex-1 overflow-y-auto bg-[var(--bg-secondary)]/30">
                                         <ChatContainerContent className="p-4 space-y-4">
                                             {messages.length === 0 && (
                                                 <div className="flex flex-col items-center justify-center h-full text-center space-y-4 max-w-sm mx-auto pt-20">
@@ -518,7 +518,7 @@ function WorkspaceContent() {
                                     </ChatContainerRoot>
 
                                     {/* Input Area */}
-                                    <div className="p-3 bg-[var(--card-bg)] border-t border-[var(--card-border)]">
+                                    <div className="sticky bottom-0 z-10 border-t border-[var(--card-border)] bg-[color:color-mix(in_srgb,var(--card-bg-solid)_88%,transparent)] p-3 backdrop-blur-xl">
                                         {selectedText && (
                                             <div className="mb-2 p-2.5 bg-[var(--info-bg)] rounded-xl border border-[var(--info-border)] text-xs text-[var(--primary)] relative animate-in fade-in slide-in-from-bottom-2">
                                                 <div className="font-bold mb-1 flex justify-between items-center">

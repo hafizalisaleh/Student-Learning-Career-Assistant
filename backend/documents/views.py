@@ -2,6 +2,8 @@
 Document API endpoints
 """
 from datetime import datetime, timezone
+from mimetypes import guess_type
+from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, BackgroundTasks
 from fastapi.responses import JSONResponse, FileResponse
 from sqlalchemy.orm import Session
@@ -222,6 +224,7 @@ def process_document_background(document_id: str):
             indexed=bool(result.get("embeddings_stored")),
             embeddings_stored=bool(result.get("embeddings_stored")),
             chunk_count=result.get("chunk_count", 0),
+            docling_markdown_path=result.get("markdown_path"),
             indexed_at=datetime.now(timezone.utc).isoformat(),
             technical_skills=topic_data.get('technical_skills', []),
             concepts=topic_data.get('concepts', []),
@@ -878,6 +881,53 @@ def get_document_file(
         media_type=media_type,
         filename=doc.original_filename
     )
+
+
+@router.get("/{document_id}/artifacts/{artifact_path:path}")
+def get_document_artifact(
+    document_id: str,
+    artifact_path: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Serve Docling-generated artifact files referenced from extracted markdown.
+    Only files inside `<document>.docling/` are allowed.
+    """
+    doc = db.query(Document).filter(
+        Document.id == document_id,
+        Document.user_id == current_user.id,
+    ).first()
+
+    if not doc or not doc.file_path:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found"
+        )
+
+    docling_root = Path(f"{doc.file_path}.docling").resolve()
+    candidate = (docling_root / artifact_path).resolve()
+
+    if candidate != docling_root and docling_root not in candidate.parents:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Artifact not found"
+        )
+
+    if not candidate.exists() or not candidate.is_file():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Artifact file not found"
+        )
+
+    media_type = guess_type(str(candidate))[0] or "application/octet-stream"
+    return FileResponse(
+        path=str(candidate),
+        media_type=media_type,
+        filename=candidate.name,
+    )
+
+
 @router.get("/{document_id}/thumbnail")
 def get_document_thumbnail(
     document_id: str,
@@ -990,10 +1040,11 @@ async def generate_document_diagram(
         if not content:
             try:
                 from core.vector_store import vector_store
-                chunks = vector_store.get_document_chunks(str(doc.id))
-                if chunks and len(chunks) > 0:
-                    content = "\n\n".join([c.get("content", "") for c in chunks])
-                    logger.info(f"Retrieved {len(chunks)} chunks for diagram generation")
+                chunks_result = vector_store.get_document_chunks(str(doc.id))
+                chunk_list = chunks_result.get("chunks", []) if chunks_result.get("success") else []
+                if chunk_list:
+                    content = "\n\n".join([c.get("text", "") for c in chunk_list])
+                    logger.info(f"Retrieved {len(chunk_list)} chunks for diagram generation")
             except Exception as e:
                 logger.warning(f"Could not retrieve chunks: {e}")
 
