@@ -5,7 +5,7 @@ Provider-aware quiz generator using the unified RAG LLM client.
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, List, Sequence
+from typing import Any, Dict, List, Optional, Sequence
 
 from utils.logger import logger
 from utils.rag_llm_client import RAGLLMClient, safe_load_json
@@ -62,6 +62,27 @@ def _coerce_option(option: Any) -> str:
     return _normalize_whitespace(str(option))
 
 
+def _build_evidence_blocks(evidence_chunks: Sequence[Dict[str, Any]], max_chars: int = 1600) -> str:
+    blocks: List[str] = []
+
+    for index, chunk in enumerate(evidence_chunks, start=1):
+        metadata = chunk.get("metadata") or {}
+        title = metadata.get("document_title") or "Source"
+        page_numbers = metadata.get("page_numbers") or metadata.get("pages") or []
+        if page_numbers:
+            page_label = ", ".join(str(page) for page in page_numbers)
+        else:
+            page_label = metadata.get("page_number") or "Unknown"
+        modality = metadata.get("source_modality") or metadata.get("chunk_method") or "text"
+        excerpt = _normalize_whitespace(str(chunk.get("text", "")))[:max_chars]
+
+        blocks.append(
+            f"[SOURCE {index}] {title} | pages={page_label} | modality={modality}\n{excerpt}"
+        )
+
+    return "\n\n".join(blocks).strip()
+
+
 class QuizGenerator:
     """Generate grounded quizzes from retrieved document content."""
 
@@ -95,8 +116,16 @@ class QuizGenerator:
         num_questions: int,
         difficulty: str,
         focus_context: str | None = None,
+        evidence_chunks: Optional[Sequence[Dict[str, Any]]] = None,
     ) -> List[Dict[str, Any]]:
-        return self._generate_questions(content, num_questions, difficulty, ["mcq"], focus_context)
+        return self._generate_questions(
+            content,
+            num_questions,
+            difficulty,
+            ["mcq"],
+            focus_context,
+            evidence_chunks=evidence_chunks,
+        )
 
     def generate_short_answer_questions(
         self,
@@ -104,8 +133,16 @@ class QuizGenerator:
         num_questions: int,
         difficulty: str,
         focus_context: str | None = None,
+        evidence_chunks: Optional[Sequence[Dict[str, Any]]] = None,
     ) -> List[Dict[str, Any]]:
-        return self._generate_questions(content, num_questions, difficulty, ["short"], focus_context)
+        return self._generate_questions(
+            content,
+            num_questions,
+            difficulty,
+            ["short"],
+            focus_context,
+            evidence_chunks=evidence_chunks,
+        )
 
     def generate_true_false_questions(
         self,
@@ -113,8 +150,16 @@ class QuizGenerator:
         num_questions: int,
         difficulty: str,
         focus_context: str | None = None,
+        evidence_chunks: Optional[Sequence[Dict[str, Any]]] = None,
     ) -> List[Dict[str, Any]]:
-        return self._generate_questions(content, num_questions, difficulty, ["true_false"], focus_context)
+        return self._generate_questions(
+            content,
+            num_questions,
+            difficulty,
+            ["true_false"],
+            focus_context,
+            evidence_chunks=evidence_chunks,
+        )
 
     def generate_fill_blank_questions(
         self,
@@ -122,8 +167,16 @@ class QuizGenerator:
         num_questions: int,
         difficulty: str,
         focus_context: str | None = None,
+        evidence_chunks: Optional[Sequence[Dict[str, Any]]] = None,
     ) -> List[Dict[str, Any]]:
-        return self._generate_questions(content, num_questions, difficulty, ["fill_blank"], focus_context)
+        return self._generate_questions(
+            content,
+            num_questions,
+            difficulty,
+            ["fill_blank"],
+            focus_context,
+            evidence_chunks=evidence_chunks,
+        )
 
     def generate_mixed_questions(
         self,
@@ -131,6 +184,7 @@ class QuizGenerator:
         num_questions: int,
         difficulty: str,
         focus_context: str | None = None,
+        evidence_chunks: Optional[Sequence[Dict[str, Any]]] = None,
     ) -> List[Dict[str, Any]]:
         return self._generate_questions(
             content,
@@ -138,6 +192,7 @@ class QuizGenerator:
             difficulty,
             ["mcq", "short", "true_false", "fill_blank"],
             focus_context,
+            evidence_chunks=evidence_chunks,
         )
 
     def _generate_questions(
@@ -147,6 +202,7 @@ class QuizGenerator:
         difficulty: str,
         allowed_types: Sequence[str],
         focus_context: str | None = None,
+        evidence_chunks: Optional[Sequence[Dict[str, Any]]] = None,
     ) -> List[Dict[str, Any]]:
         difficulty_instructions = {
             "easy": "Focus on foundational recall, key terminology, explicit facts, and very direct understanding checks.",
@@ -155,6 +211,7 @@ class QuizGenerator:
         }
 
         excerpt = _build_source_excerpt(content)
+        source_blocks = _build_evidence_blocks(evidence_chunks or [])
         type_names = ", ".join(allowed_types)
         type_help = "\n".join(
             f"- {qtype}: {self.QUESTION_TYPE_LABELS[qtype]}" for qtype in allowed_types
@@ -184,12 +241,18 @@ class QuizGenerator:
                             },
                             "correct_answer": {"type": "string"},
                             "explanation": {"type": "string"},
+                            "source_index": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": max(1, len(evidence_chunks or [])),
+                            },
                         },
                         "required": [
                             "question_text",
                             "question_type",
                             "correct_answer",
                             "explanation",
+                            "source_index",
                         ],
                     },
                 }
@@ -200,7 +263,8 @@ class QuizGenerator:
         system_prompt = (
             "You generate high-quality study quizzes grounded strictly in the provided source material. "
             "Never invent facts that are not supported by the source. "
-            "Write clear questions, keep explanations concise but useful, and vary the source coverage."
+            "Write clear questions, keep explanations concise but useful, vary the source coverage, "
+            "and attach each question to the most relevant source block."
         )
 
         prompt = f"""
@@ -220,11 +284,17 @@ QUESTION WRITING RULES:
 - Cover different parts of the source instead of repeating the same fact.
 - Prefer conceptually important details, not trivia.
 - Do not ask about metadata like page numbers or filenames.
-- Every explanation must state why the answer is correct using the source.
+- Every explanation must state why the answer is correct using the source block you chose.
+- Set `source_index` to the SOURCE block number that best supports the question.
+- Prefer conceptual or comparative questions over isolated raw numbers.
+- Only ask a numeric/value question when one source block states that value clearly and unambiguously.
 - For `mcq`, produce exactly 4 options and make the correct answer one of those options.
 - For `true_false`, set options to ["True", "False"] and correct_answer to either "True" or "False".
 - For `fill_blank`, include a visible blank marker such as "_____" in the question.
 - For `short`, make the expected answer 1-3 sentences, not a single word unless the source requires it.
+
+SOURCE BLOCKS:
+{source_blocks or "No structured source blocks available. Ground questions in the source material and set source_index to 1."}
 
 SOURCE MATERIAL:
 {excerpt}
@@ -241,7 +311,11 @@ Return valid JSON with the schema provided.
         )
         parsed = safe_load_json(raw)
         generated_questions = parsed.get("questions", []) if isinstance(parsed, dict) else []
-        sanitized = self._sanitize_questions(generated_questions, allowed_types)
+        sanitized = self._sanitize_questions(
+            generated_questions,
+            allowed_types,
+            max_source_index=max(1, len(evidence_chunks or [])),
+        )
 
         if not sanitized:
             logger.warning("QuizGenerator could not sanitize any generated questions; retrying with a simpler prompt")
@@ -257,10 +331,14 @@ Return:
       "question_type": "{allowed_types[0] if len(allowed_types) == 1 else allowed_types[0]}",
       "options": ["string", "string", "string", "string"],
       "correct_answer": "string",
-      "explanation": "string"
+      "explanation": "string",
+      "source_index": 1
     }}
   ]
 }}
+
+SOURCE BLOCKS:
+{source_blocks or "[SOURCE 1] General source excerpt"}
 
 SOURCE:
 {excerpt}
@@ -273,7 +351,11 @@ SOURCE:
             )
             retry_parsed = safe_load_json(retry_raw)
             retry_questions = retry_parsed.get("questions", []) if isinstance(retry_parsed, dict) else []
-            sanitized = self._sanitize_questions(retry_questions, allowed_types)
+            sanitized = self._sanitize_questions(
+                retry_questions,
+                allowed_types,
+                max_source_index=max(1, len(evidence_chunks or [])),
+            )
 
         if not sanitized:
             raise RuntimeError("Model returned no usable questions")
@@ -284,6 +366,7 @@ SOURCE:
         self,
         questions: Sequence[Dict[str, Any]],
         allowed_types: Sequence[str],
+        max_source_index: int = 1,
     ) -> List[Dict[str, Any]]:
         cleaned: List[Dict[str, Any]] = []
 
@@ -308,6 +391,19 @@ SOURCE:
 
             options = question.get("options")
             normalized_options: List[str] | None = None
+            raw_source_index = question.get("source_index")
+            try:
+                source_index = int(raw_source_index)
+            except (TypeError, ValueError):
+                source_index = 1
+
+            if source_index < 1 or source_index > max_source_index:
+                logger.info(
+                    "QuizGenerator adjusted source index %s to range 1..%s",
+                    raw_source_index,
+                    max_source_index,
+                )
+                source_index = max(1, min(max_source_index, source_index))
 
             if question_type == "mcq":
                 if not isinstance(options, list):
@@ -370,6 +466,7 @@ SOURCE:
                     "options": normalized_options,
                     "correct_answer": correct_answer,
                     "explanation": explanation or "Review the source passage for the supporting detail.",
+                    "source_index": source_index,
                 }
             )
 

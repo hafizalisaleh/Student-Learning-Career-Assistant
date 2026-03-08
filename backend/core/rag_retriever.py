@@ -65,7 +65,8 @@ class RAGRetriever:
                     "chunks_used": rag_result["chunks_used"],
                     "metadata": {
                         "retrieval_method": "vector_similarity",
-                        "task_context": task_type
+                        "task_context": task_type,
+                        "retrieved_chunks": rag_result.get("chunks", []),
                     }
                 }
             else:
@@ -148,7 +149,8 @@ class RAGRetriever:
                 "success": True,
                 "content": combined_content,
                 "chunks_used": len(chunks),
-                "similarity_scores": [c.get("similarity") for c in chunks]
+                "similarity_scores": [c.get("similarity") for c in chunks],
+                "chunks": chunks,
             }
 
         except Exception as e:

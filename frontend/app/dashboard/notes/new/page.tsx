@@ -31,6 +31,8 @@ function NewNoteContent() {
   const searchParams = useSearchParams();
   const docIdFromQuery = searchParams.get('document');
   const isStudyMode = searchParams.get('type') === 'study';
+  const titleFromQuery = searchParams.get('title');
+  const contextFromQuery = searchParams.get('context');
 
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingDocs, setIsLoadingDocs] = useState(true);
@@ -81,6 +83,20 @@ function NewNoteContent() {
     }
     fetchDocuments();
   }, [docIdFromQuery, setValue]);
+
+  useEffect(() => {
+    if (titleFromQuery) {
+      if (isStudyMode) {
+        setStudyTitle(titleFromQuery);
+      } else {
+        setValue('title', titleFromQuery);
+      }
+    }
+
+    if (contextFromQuery) {
+      setAdditionalContext(contextFromQuery);
+    }
+  }, [contextFromQuery, isStudyMode, setValue, titleFromQuery]);
 
   const handleAddTag = () => {
     if (tagInput.trim() && !tags.includes(tagInput.trim())) {

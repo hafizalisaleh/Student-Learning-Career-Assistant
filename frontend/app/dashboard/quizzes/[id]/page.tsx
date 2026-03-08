@@ -32,6 +32,90 @@ interface QuizAnswer {
   answer_text?: string;
 }
 
+function truncateText(value: string, maxLength = 80) {
+  const normalized = value.replace(/\s+/g, ' ').trim();
+  if (normalized.length <= maxLength) return normalized;
+  return `${normalized.slice(0, maxLength - 1).trimEnd()}...`;
+}
+
+function getEvidencePage(feedback: any): number | null {
+  if (!feedback?.evidence) return null;
+  if (typeof feedback.evidence.page === 'number') return feedback.evidence.page;
+  if (Array.isArray(feedback.evidence.pages) && feedback.evidence.pages.length > 0) {
+    const firstPage = Number(feedback.evidence.pages[0]);
+    return Number.isFinite(firstPage) ? firstPage : null;
+  }
+  return null;
+}
+
+function buildWorkspaceHref(
+  documentId: string | undefined,
+  feedback: any,
+  mode: 'review' | 'ask'
+) {
+  if (!documentId) return null;
+
+  const page = getEvidencePage(feedback);
+  const excerpt = feedback?.evidence?.excerpt || '';
+  const params = new URLSearchParams({ id: documentId });
+
+  if (page) {
+    params.set('page', String(page));
+  }
+
+  if (excerpt) {
+    params.set('focusText', excerpt);
+  }
+
+  const prompt =
+    mode === 'review'
+      ? [
+          'I got this quiz question wrong.',
+          `Question: ${feedback.question_text}`,
+          `My answer: ${feedback.user_answer || 'Not answered'}`,
+          `Correct answer: ${feedback.correct_answer || 'Unknown'}`,
+          'Using the selected source evidence, explain why the correct answer is right and give me one short memory tip.',
+        ].join('\n')
+      : [
+          `Question: ${feedback.question_text}`,
+          `My answer: ${feedback.user_answer || 'Not answered'}`,
+          `Correct answer: ${feedback.correct_answer || 'Unknown'}`,
+          'Explain this using only the attached source evidence in simple words.',
+        ].join('\n');
+
+  params.set('prompt', prompt);
+
+  return `/dashboard/workspace?${params.toString()}`;
+}
+
+function buildNoteHref(documentId: string | undefined, feedback: any) {
+  if (!documentId) return null;
+
+  const page = getEvidencePage(feedback);
+  const pageLabel = page ? `Page ${page}` : 'the source';
+  const title = `Review: ${truncateText(feedback.question_text, 52)}`;
+  const context = [
+    `Question: ${feedback.question_text}`,
+    `My answer: ${feedback.user_answer || 'Not answered'}`,
+    `Correct answer: ${feedback.correct_answer || 'Unknown'}`,
+    feedback.explanation ? `Why it matters: ${feedback.explanation}` : '',
+    feedback?.evidence?.excerpt
+      ? `Evidence from ${pageLabel}: "${feedback.evidence.excerpt}"`
+      : '',
+    'Generate a short revision note that explains the concept clearly, highlights the misunderstanding, and gives one memory tip.',
+  ]
+    .filter(Boolean)
+    .join('\n');
+
+  const params = new URLSearchParams({
+    document: documentId,
+    title,
+    context,
+  });
+
+  return `/dashboard/notes/new?${params.toString()}`;
+}
+
 export default function TakeQuizPage() {
   const params = useParams();
   const router = useRouter();
@@ -190,6 +274,14 @@ export default function TakeQuizPage() {
     const followUpHref = sourceDocumentId
       ? `/dashboard/quizzes/new?document=${sourceDocumentId}&mode=followup&difficulty=${followUpDifficulty}&count=${followUpQuestionCount}&sourceQuiz=${quizId}`
       : `/dashboard/quizzes/new?mode=followup&difficulty=${followUpDifficulty}&count=${followUpQuestionCount}&sourceQuiz=${quizId}`;
+    const primaryRecoveryFeedback = incorrectFeedback[0] || null;
+    const primaryRecoveryDocumentId =
+      primaryRecoveryFeedback?.evidence?.document_id || sourceDocumentId;
+    const resumeReviewHref = primaryRecoveryFeedback
+      ? buildWorkspaceHref(primaryRecoveryDocumentId, primaryRecoveryFeedback, 'review')
+      : sourceDocumentId
+        ? `/dashboard/workspace?id=${sourceDocumentId}`
+        : null;
 
     const grade = getScoreGrade(attempt.score);
     const GradeIcon = grade.icon;
@@ -421,6 +513,88 @@ export default function TakeQuizPage() {
                               </p>
                             </div>
                           )}
+
+                          {fb.evidence && (
+                            <div className="p-4 rounded-xl bg-[var(--warning)]/5 border border-[var(--warning)]/20">
+                              <div className="flex flex-wrap items-center gap-2 mb-3">
+                                <p className="text-xs font-semibold text-[var(--warning)]">
+                                  Evidence
+                                </p>
+                                <span className="text-[11px] font-medium px-2 py-1 rounded-full bg-[var(--bg-elevated)] text-[var(--text-tertiary)]">
+                                  {fb.evidence.document_title}
+                                </span>
+                                {getEvidencePage(fb) ? (
+                                  <span className="text-[11px] font-medium px-2 py-1 rounded-full bg-[var(--bg-elevated)] text-[var(--text-tertiary)]">
+                                    Page {getEvidencePage(fb)}
+                                  </span>
+                                ) : null}
+                                {fb.evidence.modality ? (
+                                  <span className="text-[11px] font-medium px-2 py-1 rounded-full bg-[var(--bg-elevated)] text-[var(--text-tertiary)]">
+                                    {fb.evidence.modality}
+                                  </span>
+                                ) : null}
+                              </div>
+                              <p className="text-sm text-[var(--text-secondary)]">
+                                {fb.evidence.excerpt}
+                              </p>
+                            </div>
+                          )}
+
+                          {!fb.is_correct && (
+                            <div className="flex flex-wrap gap-3">
+                              {buildWorkspaceHref(
+                                fb?.evidence?.document_id || sourceDocumentId,
+                                fb,
+                                'review'
+                              ) ? (
+                                <Link
+                                  href={buildWorkspaceHref(
+                                    fb?.evidence?.document_id || sourceDocumentId,
+                                    fb,
+                                    'review'
+                                  )!}
+                                  className="inline-flex items-center gap-2 rounded-xl border border-[var(--card-border)] bg-[var(--bg-elevated)] px-4 py-2 text-sm font-medium text-[var(--text-primary)] transition hover:border-[var(--accent-blue)]/40 hover:text-[var(--accent-blue)]"
+                                >
+                                  <BookOpen className="w-4 h-4" />
+                                  Open source in Study Desk
+                                </Link>
+                              ) : null}
+
+                              {buildWorkspaceHref(
+                                fb?.evidence?.document_id || sourceDocumentId,
+                                fb,
+                                'ask'
+                              ) ? (
+                                <Link
+                                  href={buildWorkspaceHref(
+                                    fb?.evidence?.document_id || sourceDocumentId,
+                                    fb,
+                                    'ask'
+                                  )!}
+                                  className="inline-flex items-center gap-2 rounded-xl border border-[var(--card-border)] bg-[var(--bg-elevated)] px-4 py-2 text-sm font-medium text-[var(--text-primary)] transition hover:border-[var(--accent-green)]/40 hover:text-[var(--accent-green)]"
+                                >
+                                  <Sparkles className="w-4 h-4" />
+                                  Ask AI about this evidence
+                                </Link>
+                              ) : null}
+
+                              {buildNoteHref(
+                                fb?.evidence?.document_id || sourceDocumentId,
+                                fb
+                              ) ? (
+                                <Link
+                                  href={buildNoteHref(
+                                    fb?.evidence?.document_id || sourceDocumentId,
+                                    fb
+                                  )!}
+                                  className="inline-flex items-center gap-2 rounded-xl border border-[var(--card-border)] bg-[var(--bg-elevated)] px-4 py-2 text-sm font-medium text-[var(--text-primary)] transition hover:border-[var(--accent-purple)]/40 hover:text-[var(--accent-purple)]"
+                                >
+                                  <BookOpen className="w-4 h-4" />
+                                  Create note from this mistake
+                                </Link>
+                              ) : null}
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -526,9 +700,9 @@ export default function TakeQuizPage() {
                   </div>
                 </Link>
 
-              {sourceDocumentId ? (
+              {resumeReviewHref ? (
                 <Link
-                  href={`/dashboard/workspace?id=${sourceDocumentId}`}
+                  href={resumeReviewHref}
                   className="group p-5 rounded-xl bg-[var(--bg-elevated)] border border-[var(--card-border)] hover:border-[var(--accent-green)]/50 transition-all"
                 >
                   <div className="flex items-center justify-between">

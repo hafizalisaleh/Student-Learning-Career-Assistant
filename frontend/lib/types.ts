@@ -129,6 +129,18 @@ export interface QuizResult {
     explanation: string;
     points_earned: number;
     points_possible: number;
+    evidence?: {
+      source_index: number;
+      document_id?: string | null;
+      document_title: string;
+      document_source?: string | null;
+      page?: number | null;
+      pages?: number[];
+      excerpt: string;
+      modality?: string | null;
+      chunk_index?: number | null;
+      similarity?: number | null;
+    } | null;
   }>;
 }
 

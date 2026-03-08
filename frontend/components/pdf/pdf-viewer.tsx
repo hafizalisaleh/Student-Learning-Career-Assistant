@@ -32,6 +32,7 @@ interface PDFViewerProps {
     url: string;
     onTextSelect?: (selection: PDFTextSelection) => void;
     onImageSelect?: (selection: PDFImageSelection) => void;
+    initialPage?: number;
 }
 
 interface DragRect {
@@ -108,7 +109,7 @@ function findPageNumberFromNode(node: Node | null): number | null {
     return Number.isFinite(value) ? value : null;
 }
 
-export default function PDFViewer({ url, onTextSelect, onImageSelect }: PDFViewerProps) {
+export default function PDFViewer({ url, onTextSelect, onImageSelect, initialPage = 1 }: PDFViewerProps) {
     const [numPages, setNumPages] = useState<number>(0);
     const [currentPage, setCurrentPage] = useState<number>(1);
     const [scale, setScale] = useState(1.0);
@@ -118,6 +119,7 @@ export default function PDFViewer({ url, onTextSelect, onImageSelect }: PDFViewe
     const scrollContainerRef = useRef<HTMLDivElement | null>(null);
     const pageRefs = useRef<Array<HTMLDivElement | null>>([]);
     const activeDragRef = useRef<ActiveDrag | null>(null);
+    const initialScrollDoneRef = useRef(false);
 
     const pageNumbers = useMemo(
         () => Array.from({ length: numPages }, (_, index) => index + 1),
@@ -157,6 +159,23 @@ export default function PDFViewer({ url, onTextSelect, onImageSelect }: PDFViewe
 
         return () => observer.disconnect();
     }, [pageNumbers]);
+
+    useEffect(() => {
+        initialScrollDoneRef.current = false;
+    }, [url, initialPage]);
+
+    useEffect(() => {
+        if (initialScrollDoneRef.current) return;
+        if (!pageNumbers.length) return;
+
+        const targetPage = clamp(initialPage || 1, 1, pageNumbers.length);
+        const target = pageRefs.current[targetPage - 1];
+        if (!target) return;
+
+        target.scrollIntoView({ behavior: 'auto', block: 'start' });
+        setCurrentPage(targetPage);
+        initialScrollDoneRef.current = true;
+    }, [initialPage, pageNumbers]);
 
     const clearImageSelection = useCallback(() => {
         activeDragRef.current = null;

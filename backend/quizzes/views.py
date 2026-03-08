@@ -2,7 +2,7 @@
 Quiz API endpoints
 """
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -21,12 +21,32 @@ from documents.models import Document, ProcessingStatus
 from users.auth import get_current_user
 from users.models import User
 from quizzes.generator import quiz_generator
+from quizzes.evidence import (
+    build_evidence_payload,
+    encode_explanation,
+    parse_explanation,
+)
 from quizzes.evaluator import quiz_evaluator
 from core.generation_thresholds import MIN_GENERATION_CONTENT_CHARS
 from core.rag_retriever import rag_retriever
 from utils.logger import logger
 
 router = APIRouter(prefix="/api/quizzes", tags=["quizzes"])
+
+
+def _build_fallback_quiz_chunk(document: Document, content: str) -> Dict[str, Any]:
+    return {
+        "text": content,
+        "metadata": {
+            "document_id": str(document.id),
+            "document_title": document.title,
+            "document_source": document.file_path or document.original_filename or document.title,
+            "page_numbers": [],
+            "source_modality": "full_text",
+            "chunk_index": None,
+        },
+        "similarity": None,
+    }
 
 
 def _build_follow_up_focus_context(
@@ -83,11 +103,19 @@ def _build_follow_up_focus_context(
         if not question:
             continue
 
+        explanation_text, evidence = parse_explanation(question.explanation)
+        evidence_line = ""
+        if evidence and evidence.get("excerpt"):
+            page = evidence.get("page")
+            page_label = f"page {page}" if page else "the source"
+            evidence_line = f"\n  Evidence ({page_label}): {evidence['excerpt']}"
+
         line = (
             f"- Question: {question.question_text}\n"
             f"  User answer: {answer.get('user_answer', 'No answer')}\n"
             f"  Correct answer: {answer.get('correct_answer', question.correct_answer)}\n"
-            f"  Why it matters: {question.explanation or 'Review the supporting detail from the source.'}"
+            f"  Why it matters: {explanation_text or 'Review the supporting detail from the source.'}"
+            f"{evidence_line}"
         )
 
         if answer.get("is_correct"):
@@ -154,6 +182,7 @@ def generate_quiz(
 
     # Extract content from all documents using RAG retriever
     extracted_contents = []
+    evidence_chunks: List[Dict[str, Any]] = []
     for doc in documents:
         try:
             # Use RAG retriever (uses embeddings if available, else full text)
@@ -168,6 +197,25 @@ def generate_quiz(
 
             if content and len(content) > 100:
                 extracted_contents.append(content)
+                retrieved_chunks = retrieval_result.get("metadata", {}).get("retrieved_chunks") or []
+                if retrieved_chunks:
+                    for chunk in retrieved_chunks:
+                        metadata = dict(chunk.get("metadata") or {})
+                        metadata.setdefault("document_id", str(doc.id))
+                        metadata.setdefault("document_title", doc.title)
+                        metadata.setdefault(
+                            "document_source",
+                            doc.file_path or doc.original_filename or doc.title,
+                        )
+                        evidence_chunks.append(
+                            {
+                                "text": chunk.get("text", ""),
+                                "metadata": metadata,
+                                "similarity": chunk.get("similarity"),
+                            }
+                        )
+                else:
+                    evidence_chunks.append(_build_fallback_quiz_chunk(doc, content))
                 logger.info(f"Document {doc.id}: Retrieved {len(content)} chars via {content_source} (chunks={retrieval_result.get('chunks_used', 0)})")
             else:
                 logger.warning(f"No content extracted from document {doc.id}")
@@ -207,6 +255,7 @@ def generate_quiz(
                 quiz_data.num_questions,
                 quiz_data.difficulty.value,
                 focus_context=focus_context,
+                evidence_chunks=evidence_chunks,
             )
         elif quiz_data.question_type.value == "short":
             generated_questions = quiz_generator.generate_short_answer_questions(
@@ -214,6 +263,7 @@ def generate_quiz(
                 quiz_data.num_questions,
                 quiz_data.difficulty.value,
                 focus_context=focus_context,
+                evidence_chunks=evidence_chunks,
             )
         elif quiz_data.question_type.value == "true_false":
             generated_questions = quiz_generator.generate_true_false_questions(
@@ -221,6 +271,7 @@ def generate_quiz(
                 quiz_data.num_questions,
                 quiz_data.difficulty.value,
                 focus_context=focus_context,
+                evidence_chunks=evidence_chunks,
             )
         elif quiz_data.question_type.value == "fill_blank":
             generated_questions = quiz_generator.generate_fill_blank_questions(
@@ -228,6 +279,7 @@ def generate_quiz(
                 quiz_data.num_questions,
                 quiz_data.difficulty.value,
                 focus_context=focus_context,
+                evidence_chunks=evidence_chunks,
             )
         else:  # mixed
             generated_questions = quiz_generator.generate_mixed_questions(
@@ -235,6 +287,7 @@ def generate_quiz(
                 quiz_data.num_questions,
                 quiz_data.difficulty.value,
                 focus_context=focus_context,
+                evidence_chunks=evidence_chunks,
             )
     except Exception as e:
         raise HTTPException(
@@ -263,13 +316,19 @@ def generate_quiz(
     # Create questions
     question_objects = []
     for q_data in generated_questions:
+        source_index = max(1, int(q_data.get("source_index", 1)))
+        source_chunk = evidence_chunks[source_index - 1] if source_index - 1 < len(evidence_chunks) else None
+        explanation = encode_explanation(
+            q_data.get("explanation", ""),
+            build_evidence_payload(source_chunk, source_index) if source_chunk else None,
+        )
         question = QuizQuestion(
             quiz_id=new_quiz.id,
             question_text=q_data['question_text'],
             question_type=QuestionType(q_data['question_type']),
             options=q_data.get('options'),
             correct_answer=q_data['correct_answer'],
-            explanation=q_data.get('explanation', ''),
+            explanation=explanation,
             difficulty=DifficultyLevel(quiz_data.difficulty.value)
         )
         db.add(question)
@@ -644,13 +703,15 @@ def submit_quiz(
         # Prepare questions for evaluation
         question_data = []
         for q in questions:
+            explanation, evidence = parse_explanation(q.explanation)
             question_data.append({
                 'id': str(q.id),
                 'question_text': q.question_text,
                 'question_type': q.question_type.value,
                 'correct_answer': q.correct_answer,
-                'explanation': q.explanation,
-                'options': q.options
+                'explanation': explanation,
+                'options': q.options,
+                'evidence': evidence,
             })
         
         # Prepare answers for evaluation
@@ -730,12 +791,13 @@ def submit_quiz(
                 question_id=fb['question_id'],
                 question_text=fb['question_text'],
                 user_answer=fb['user_answer'],
-            correct_answer=fb['correct_answer'],
-            is_correct=fb['is_correct'],
-            explanation=fb['explanation'],
-            points_earned=fb['points_earned'],
-            points_possible=fb['points_possible']
-        ) for fb in evaluation['feedback']
+                correct_answer=fb['correct_answer'],
+                is_correct=fb['is_correct'],
+                explanation=fb['explanation'],
+                points_earned=fb['points_earned'],
+                points_possible=fb['points_possible'],
+                evidence=fb.get('evidence'),
+            ) for fb in evaluation['feedback']
         ]
         
         logger.info(f"Quiz submission successful: Score {evaluation['score']}%, Correct {evaluation['correct_answers']}/{evaluation['total_questions']}")
@@ -820,15 +882,17 @@ def get_quiz_attempt(
             q_id = ans.get('question_id')
             question = question_map.get(q_id)
             if question:
+                explanation, evidence = parse_explanation(question.explanation)
                 feedback.append(QuestionFeedback(
                     question_id=q_id,
                     question_text=question.question_text,
                     user_answer=ans.get('user_answer', ''),
                     correct_answer=ans.get('correct_answer', ''),
                     is_correct=ans.get('is_correct', False),
-                    explanation=question.explanation or '',
+                    explanation=explanation,
                     points_earned=ans.get('points_earned', 0),
-                    points_possible=ans.get('points_possible', 1)
+                    points_possible=ans.get('points_possible', 1),
+                    evidence=evidence,
                 ))
     
     return QuizResultResponse(

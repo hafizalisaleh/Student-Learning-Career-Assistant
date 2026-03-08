@@ -43,6 +43,9 @@ type NoteSaveStatus = 'saved' | 'saving' | 'unsaved' | 'idle';
 function WorkspaceContent() {
     const searchParams = useSearchParams();
     const documentId = searchParams.get('id');
+    const initialPage = Number(searchParams.get('page') || 1);
+    const focusText = searchParams.get('focusText');
+    const remediationPrompt = searchParams.get('prompt');
     const [docUrl, setDocUrl] = useState<string | null>(null);
     const [docTitle, setDocTitle] = useState<string>('');
     const [docContentType, setDocContentType] = useState<string | null>(null);
@@ -65,6 +68,7 @@ function WorkspaceContent() {
     const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
 
     const scrollRef = useRef<HTMLDivElement>(null);
+    const hydratedFromQueryRef = useRef<string | null>(null);
 
     // Load document and saved notes from DB
     useEffect(() => {
@@ -109,6 +113,30 @@ function WorkspaceContent() {
             });
         }
     }, [documentId]);
+
+    useEffect(() => {
+        if (!documentId) return;
+
+        const hydrationKey = `${documentId}:${initialPage}:${focusText || ''}:${remediationPrompt || ''}`;
+        if (hydratedFromQueryRef.current === hydrationKey) {
+            return;
+        }
+
+        if (focusText) {
+            setSelectedText({
+                text: focusText,
+                page: Number.isFinite(initialPage) && initialPage > 0 ? initialPage : 1,
+            });
+            setRightPane('ai');
+        }
+
+        if (remediationPrompt) {
+            setChatInput(remediationPrompt);
+            setRightPane('ai');
+        }
+
+        hydratedFromQueryRef.current = hydrationKey;
+    }, [documentId, focusText, initialPage, remediationPrompt]);
 
     // Auto-scroll handled by prompt-kit ChatContainer
 
@@ -377,6 +405,7 @@ function WorkspaceContent() {
                         url={docUrl}
                         onTextSelect={handleTextSelect}
                         onImageSelect={handleImageSelect}
+                        initialPage={Number.isFinite(initialPage) && initialPage > 0 ? initialPage : 1}
                     />
                 </Panel>
 

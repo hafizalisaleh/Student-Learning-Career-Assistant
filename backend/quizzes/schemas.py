@@ -41,6 +41,20 @@ class QuestionResponse(BaseModel):
     class Config:
         from_attributes = True
 
+
+class QuestionEvidence(BaseModel):
+    """Grounding evidence attached to a generated quiz question."""
+    source_index: int
+    document_id: Optional[str] = None
+    document_title: str
+    document_source: Optional[str] = None
+    page: Optional[int] = None
+    pages: List[int] = []
+    excerpt: str
+    modality: Optional[str] = None
+    chunk_index: Optional[int] = None
+    similarity: Optional[float] = None
+
 class QuizResponse(BaseModel):
     """Schema for quiz response"""
     id: uuid.UUID
@@ -87,6 +101,7 @@ class QuestionFeedback(BaseModel):
     explanation: str
     points_earned: float
     points_possible: float
+    evidence: Optional[QuestionEvidence] = None
 
 class QuizResultResponse(BaseModel):
     """Schema for quiz result"""

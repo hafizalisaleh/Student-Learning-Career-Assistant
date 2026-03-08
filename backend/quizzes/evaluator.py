@@ -235,7 +235,8 @@ Return JSON only with:
                 'is_correct': result['is_correct'],
                 'points_earned': result['points_earned'],
                 'points_possible': result['points_possible'],
-                'explanation': result['explanation']
+                'explanation': result['explanation'],
+                'evidence': question.get('evidence'),
             })
             
             earned_points += result['points_earned']
