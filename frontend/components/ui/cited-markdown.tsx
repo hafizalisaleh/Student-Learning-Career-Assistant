@@ -57,10 +57,23 @@ function processTextWithCitations(
       const num = parseInt(normalMatch[1]);
       const sourceIdx = num - 1;
       const source = sources[sourceIdx];
-      const docName = source.metadata?.document_title || source.metadata?.title || `Source ${num}`;
-      const uri = source.metadata?.uri || '#';
-      const page = source.metadata?.page_number || source.metadata?.page;
-      const isWeb = source.metadata?.type === 'web' || source.metadata?.type === 'retrieved';
+      if (!source) {
+        return (
+          <span
+            key={i}
+            className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[9px] font-bold bg-[var(--muted)] text-[var(--text-secondary)] rounded-full align-super mx-0.5 leading-none"
+            title={`Source ${num} is unavailable`}
+          >
+            {num}
+          </span>
+        );
+      }
+
+      const metadata = source.metadata || {};
+      const docName = metadata.document_title || metadata.title || `Source ${num}`;
+      const uri = metadata.uri || '#';
+      const page = metadata.page_number || metadata.page;
+      const isWeb = metadata.type === 'web' || metadata.type === 'retrieved';
       const description = source.text || "No description available";
 
       return (

@@ -51,6 +51,7 @@ interface ApiInstance extends AxiosInstance {
   // Knowledge Evolution
   getEvolutionTimeline: (conceptId?: string) => Promise<any>;
   getEvolutionConcepts: (domain?: string) => Promise<any>;
+  getEvolutionConceptDetail: (conceptId: string) => Promise<any>;
   getEvolutionDomainSummary: () => Promise<any>;
   recalculateEvolution: () => Promise<any>;
 
@@ -305,6 +306,11 @@ axiosInstance.getEvolutionTimeline = async (conceptId?: string) => {
 axiosInstance.getEvolutionConcepts = async (domain?: string) => {
   const params = domain ? `?domain=${encodeURIComponent(domain)}` : '';
   const response = await axiosInstance.get(`/api/evolution/concepts${params}`);
+  return response.data;
+};
+
+axiosInstance.getEvolutionConceptDetail = async (conceptId: string) => {
+  const response = await axiosInstance.get(`/api/evolution/concepts/${conceptId}`);
   return response.data;
 };
 

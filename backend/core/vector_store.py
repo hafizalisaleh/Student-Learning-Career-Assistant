@@ -15,6 +15,30 @@ from utils.rag_llm_client import RAGLLMClient, safe_load_json
 RAGMode = Literal["structured_output", "file_search", "nli_verification"]
 
 
+def _coerce_answer_text(value: Any) -> str:
+    """Normalize provider output into a displayable text answer."""
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list):
+        parts = []
+        for item in value:
+            text = _coerce_answer_text(item)
+            if text:
+                parts.append(text)
+        return "\n".join(parts)
+    if isinstance(value, dict):
+        for key in ("answer", "content", "text", "message"):
+            if key in value:
+                return _coerce_answer_text(value[key])
+        try:
+            return json.dumps(value, ensure_ascii=False)
+        except Exception:
+            return str(value)
+    return str(value)
+
+
 class VectorStore:
     """Manage vector storage and retrieval with PGVector and local HuggingFace embeddings"""
 
@@ -317,13 +341,18 @@ Question: {question}"""
             # Parse structured response
             try:
                 structured = safe_load_json(response_text)
-                answer = structured.get("answer", "")
-                citations = structured.get("citations", [])
+                if isinstance(structured, dict):
+                    answer = _coerce_answer_text(structured.get("answer", ""))
+                    raw_citations = structured.get("citations", [])
+                    citations = raw_citations if isinstance(raw_citations, list) else []
+                else:
+                    answer = _coerce_answer_text(structured)
+                    citations = []
             except Exception:
-                answer = response_text
+                answer = _coerce_answer_text(response_text)
                 citations = []
 
-            if not (answer or "").strip():
+            if not answer.strip():
                 logger.warning(
                     "Structured output provider returned an empty answer; falling back to plain-text synthesis"
                 )
@@ -342,13 +371,13 @@ Context:
 {context}
 
 Question: {question}"""
-                answer = self.answer_client.generate_text(
+                answer = _coerce_answer_text(self.answer_client.generate_text(
                     prompt=fallback_prompt,
                     temperature=0.2,
                     max_tokens=1500,
-                ).strip()
+                )).strip()
 
-            if not (answer or "").strip():
+            if not answer.strip():
                 answer = "I found relevant source material, but the answer generator returned an empty response. Please try again."
 
             return {
