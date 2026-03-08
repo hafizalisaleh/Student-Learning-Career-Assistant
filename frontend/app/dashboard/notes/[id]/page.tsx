@@ -9,6 +9,7 @@ import { LoadingSpinner, PageLoader } from '@/components/ui/loading-spinner';
 import { ArrowLeft, Download, Trash2, Calendar, Tag, FileText, Edit3, Eye, Check, Copy, FileDown } from 'lucide-react';
 import type { Document, Note } from '@/lib/types';
 import { formatDate, cn, extractTextFromBlockNote } from '@/lib/utils';
+import { formatArtifactDisplayTitle, isEditableStudyNote } from '@/lib/ai-artifacts';
 import toast from 'react-hot-toast';
 import Link from 'next/link';
 import ReactMarkdown from 'react-markdown';
@@ -51,6 +52,7 @@ export default function ViewNotePage() {
 
   const isBlockNote = note?.content_format === 'blocknote';
   const isStudyNote = note?.note_type === 'study';
+  const isEditableStudy = isEditableStudyNote(note?.note_type, note?.content_format);
 
   useEffect(() => {
     if (noteId) fetchNote();
@@ -258,10 +260,11 @@ export default function ViewNotePage() {
     breadcrumbItems.unshift({ label: 'Documents', href: '/dashboard/documents' });
     breadcrumbItems.splice(1, 0, { label: document.title, href: `/dashboard/documents/${document.id}` });
   }
-  breadcrumbItems.push({ label: note.title });
+  const displayTitle = formatArtifactDisplayTitle(note.title);
+  breadcrumbItems.push({ label: displayTitle });
 
   const saveStatusIndicator = () => {
-    if (!isEditing && !isStudyNote) return null;
+    if (!isEditing && !isEditableStudy) return null;
     if (saveStatus === 'saved' && !isEditing) return null;
     const statusMap = {
       saved: { text: 'Saved', className: 'text-[var(--success)]' },
@@ -279,13 +282,17 @@ export default function ViewNotePage() {
     );
   };
 
-  const noteTypeLabel = note.note_type === 'study' ? 'Study Notes' :
-    `${(note.note_type || 'structured').charAt(0).toUpperCase() + (note.note_type || 'structured').slice(1)} Notes`;
+  const displayNoteType = (note.note_type === 'study' && !isEditableStudy)
+    ? 'structured'
+    : (note.note_type || 'structured');
+  const noteTypeLabel = isEditableStudy
+    ? 'Study Notes'
+    : `${displayNoteType.charAt(0).toUpperCase() + displayNoteType.slice(1)} Notes`;
 
   // For study notes, always show the block editor (editable)
   // For AI notes, show markdown view by default, block editor when editing
-  const showBlockEditor = isEditing || isStudyNote || isBlockNote;
-  const canMarkdownExports = !isStudyNote && !showBlockEditor;
+  const showBlockEditor = isEditing || isBlockNote || isEditableStudy;
+  const canMarkdownExports = !showBlockEditor;
 
   const markdownComponents = {
     h1: ({ ...props }) => <h1 className="text-2xl font-bold mt-8 mb-4 text-[var(--text-primary)]" {...props} />,
@@ -320,7 +327,7 @@ export default function ViewNotePage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
         <div className="flex-1">
-          {isEditing || isStudyNote ? (
+          {isEditing || isEditableStudy ? (
             <input
               type="text"
               value={editTitle}
@@ -329,7 +336,7 @@ export default function ViewNotePage() {
               placeholder="Note title..."
             />
           ) : (
-            <h1 className="text-xl font-semibold text-[var(--text-primary)]">{note.title}</h1>
+            <h1 className="text-xl font-semibold text-[var(--text-primary)]">{displayTitle}</h1>
           )}
           <div className="flex flex-wrap items-center gap-4 mt-2 text-sm text-[var(--text-secondary)]">
             <span className="flex items-center gap-1">
@@ -345,7 +352,7 @@ export default function ViewNotePage() {
         </div>
 
         <div className="flex gap-2">
-          {!isStudyNote && (
+          {!isEditableStudy && (
             <Button
               variant={isEditing ? 'default' : 'secondary'}
               size="sm"
@@ -358,7 +365,7 @@ export default function ViewNotePage() {
               )}
             </Button>
           )}
-          {!isBlockNote && (
+          {!showBlockEditor && (
             <Button variant="ghost" size="sm" onClick={copyContent}>
               <Copy className="h-4 w-4" />
             </Button>
@@ -373,7 +380,7 @@ export default function ViewNotePage() {
               </Button>
             </>
           )}
-          {!isStudyNote && (
+          {!isEditableStudy && (
             <Button variant="secondary" size="sm" onClick={handleDownloadDocx} disabled={isDownloadingDocx}>
               {isDownloadingDocx ? <LoadingSpinner size="sm" /> : <Download className="h-4 w-4" />}
             </Button>
@@ -407,9 +414,9 @@ export default function ViewNotePage() {
         {showBlockEditor ? (
           <BlockEditor
             initialContent={isBlockNote ? note.content : undefined}
-            markdownContent={!isBlockNote && isEditing ? note.content : undefined}
+            markdownContent={!isBlockNote ? editContent : undefined}
             onChange={handleBlockEditorChange}
-            editable={isEditing || isStudyNote}
+            editable={isEditing || isEditableStudy}
           />
         ) : (
           <div className="prose prose-sm max-w-none">
@@ -452,7 +459,7 @@ export default function ViewNotePage() {
               </Button>
             </>
           )}
-          {!isStudyNote && (
+          {!isEditableStudy && (
             <Button variant="default" onClick={handleDownloadDocx} disabled={isDownloadingDocx}>
               {isDownloadingDocx ? (
                 <><LoadingSpinner size="sm" className="mr-2" />Downloading...</>

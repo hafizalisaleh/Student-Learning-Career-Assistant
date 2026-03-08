@@ -22,6 +22,7 @@ import {
 import toast from 'react-hot-toast';
 import { cn } from '@/lib/utils';
 import { PromptInput, PromptInputTextarea, PromptInputActions, PromptInputAction } from "@/components/ui/prompt-input";
+import { AnswerActions } from '@/components/ai/answer-actions';
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -472,7 +473,7 @@ export default function KnowledgeGraphPage() {
                   </div>
                 )}
 
-                {chatMessages.map((msg) => (
+                {chatMessages.map((msg, index) => (
                   <div key={msg.id} className={cn('flex', msg.role === 'user' ? 'justify-end' : 'justify-start')}>
                     <div
                       className={cn(
@@ -503,6 +504,11 @@ export default function KnowledgeGraphPage() {
                           ) : (
                             <p className="text-xs leading-relaxed text-[var(--text-primary)]">{msg.content}</p>
                           )}
+                          <AnswerActions
+                            answer={msg.content}
+                            sources={msg.sources}
+                            question={index > 0 && chatMessages[index - 1]?.role === 'user' ? chatMessages[index - 1]?.content : undefined}
+                          />
                           {msg.sources && msg.sources.length > 0 && (
                             <div className="mt-2 pt-2 border-t border-[var(--card-border)]">
                               <p className="text-[10px] text-[var(--text-muted)] mb-1.5">

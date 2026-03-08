@@ -30,6 +30,7 @@ import { ScrollButton } from "@/components/ui/scroll-button";
 import { ChatContainerRoot, ChatContainerContent, ChatContainerScrollAnchor } from "@/components/ui/chat-container";
 import { Message, MessageContent } from "@/components/ui/message";
 import { Markdown } from "@/components/ui/markdown";
+import { AnswerActions } from '@/components/ai/answer-actions';
 
 interface Message {
     role: 'user' | 'assistant';
@@ -490,6 +491,15 @@ function WorkspaceContent() {
                                                             />
                                                         ) : (
                                                             <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+                                                        )}
+
+                                                        {msg.role === 'assistant' && (
+                                                            <AnswerActions
+                                                                answer={msg.content}
+                                                                sources={msg.sources}
+                                                                defaultDocumentId={documentId}
+                                                                question={i > 0 && messages[i - 1]?.role === 'user' ? messages[i - 1]?.content : undefined}
+                                                            />
                                                         )}
 
                                                         {/* Copy button */}

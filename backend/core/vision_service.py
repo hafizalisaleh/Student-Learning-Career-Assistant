@@ -1360,6 +1360,9 @@ class VisionService:
             "Answer the following question using only the retrieved context.\n\n"
             f"{context}\n\n"
             "Give a direct answer first, then concise source citations. "
+            "If the question is generic, such as 'Meaning of this?', treat it as a request to explain the selected text or visual in simple language. "
+            "Do not output session logs, query headings, Q/A labels, provider metadata, or context/debug sections. "
+            "Do not comment on the question being broad or propose alternate questions. "
             "If support is partial or missing, explicitly say so instead of filling gaps."
         )
         return self.text_client.generate_text(
@@ -1368,6 +1371,21 @@ class VisionService:
             temperature=0.1,
             max_tokens=1200,
         )
+
+    def sanitize_generated_answer(self, answer: str) -> str:
+        cleaned = answer.strip()
+
+        if cleaned.startswith("### Session") or cleaned.startswith("## Query"):
+            answer_match = re.search(r"(?:^|\n)A:\s*(.*?)(?:\n\nContext:\n|\Z)", cleaned, re.DOTALL)
+            if answer_match:
+                cleaned = answer_match.group(1).strip()
+
+        cleaned = re.sub(r"^### Session[\s\S]*?(?:\n\n|$)", "", cleaned).strip()
+        cleaned = re.sub(r"^## Query\s+\d+\s*", "", cleaned).strip()
+        cleaned = re.sub(r"^Q:\s*.*?(?:\n\n|\nA:\s*)", "", cleaned, flags=re.DOTALL).strip()
+        cleaned = re.sub(r"\n\nContext:\n[\s\S]*$", "", cleaned).strip()
+
+        return cleaned
 
     def append_response_markdown(
         self,
@@ -1516,7 +1534,7 @@ class VisionService:
             "Include page numbers in citations when available using the format [Document Title p.X]."
         )
 
-        answer = self.generate_answer(system_prompt, context).strip()
+        answer = self.sanitize_generated_answer(self.generate_answer(system_prompt, context))
         self.append_response_markdown(query, answer, enriched_chunks, use_vision)
         self.query_count += 1
 

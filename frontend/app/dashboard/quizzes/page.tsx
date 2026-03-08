@@ -11,6 +11,7 @@ import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { Plus, Search, ClipboardCheck, Play, BarChart3, Calendar } from 'lucide-react';
 import type { Quiz, QuizAnalytics } from '@/lib/types';
 import { formatDate, getDifficultyBadgeClass } from '@/lib/utils';
+import { formatArtifactDisplayTitle } from '@/lib/ai-artifacts';
 import toast from 'react-hot-toast';
 import Link from 'next/link';
 
@@ -44,7 +45,7 @@ export default function QuizzesPage() {
 
   const filteredQuizzes = quizzes.filter(
     (quiz) =>
-      quiz.title.toLowerCase().includes(searchQuery.toLowerCase())
+      formatArtifactDisplayTitle(quiz.title).toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   if (isLoading) {
@@ -147,7 +148,7 @@ export default function QuizzesPage() {
             <Card key={quiz.id} className="hover:shadow-lg transition-shadow">
               <CardHeader>
                 <div className="flex items-start justify-between mb-2">
-                  <CardTitle className="text-lg">{quiz.title}</CardTitle>
+                  <CardTitle className="text-lg">{formatArtifactDisplayTitle(quiz.title)}</CardTitle>
                   <span className={`px-3 py-1 rounded-full text-xs font-medium ${getDifficultyBadgeClass((quiz as any).difficulty || quiz.difficulty_level || 'medium')}`}>
                     {(quiz as any).difficulty || quiz.difficulty_level || 'Medium'}
                   </span>
@@ -161,7 +162,7 @@ export default function QuizzesPage() {
                 <div className="space-y-3">
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-[var(--text-secondary)]">Topic:</span>
-                    <span className="font-medium text-[var(--text-primary)]">{(quiz as any).topic || quiz.title || 'General'}</span>
+                    <span className="font-medium text-[var(--text-primary)]">{formatArtifactDisplayTitle((quiz as any).topic || quiz.title || 'General')}</span>
                   </div>
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-[var(--text-secondary)]">Questions:</span>

@@ -21,7 +21,7 @@ interface ApiInstance extends AxiosInstance {
   getNote: (id: string) => Promise<any>;
   createNote: (data: any) => Promise<any>;
   updateNote: (id: string, data: any) => Promise<any>;
-  createStudyNote: (data: { title: string; document_id: string; content: string; tags?: string[] }) => Promise<any>;
+  createStudyNote: (data: { title: string; document_id: string; content: string; content_format?: 'markdown' | 'blocknote'; tags?: string[]; note_type?: 'structured' | 'bullet' | 'detailed' | 'study' }) => Promise<any>;
   deleteNote: (id: string) => Promise<any>;
   downloadNote: (id: string) => Promise<Blob>;
   exportNoteDocx: (id: string) => Promise<Blob>;
@@ -187,7 +187,7 @@ axiosInstance.updateNote = async (id: string, data: any) => {
   return response.data;
 };
 
-axiosInstance.createStudyNote = async (data: { title: string; document_id: string; content: string; tags?: string[] }) => {
+axiosInstance.createStudyNote = async (data: { title: string; document_id: string; content: string; content_format?: 'markdown' | 'blocknote'; tags?: string[]; note_type?: 'structured' | 'bullet' | 'detailed' | 'study' }) => {
   const response = await axiosInstance.post('/api/notes/study', data);
   return response.data;
 };

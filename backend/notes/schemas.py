@@ -19,7 +19,9 @@ class StudyNoteCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=500)
     document_id: uuid.UUID
     content: str = Field(default="[]")
+    content_format: Optional[str] = Field(default="blocknote", pattern="^(blocknote|markdown)$")
     tags: Optional[list[str]] = None
+    note_type: Optional[str] = Field(default="study", pattern="^(structured|bullet|detailed|study)$")
 
 class NoteUpdate(BaseModel):
     """Schema for note update"""

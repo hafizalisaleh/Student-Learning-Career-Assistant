@@ -37,6 +37,7 @@ import { ScrollButton } from "@/components/ui/scroll-button";
 import { ChatContainerRoot, ChatContainerContent, ChatContainerScrollAnchor } from "@/components/ui/chat-container";
 import { Message, MessageContent } from "@/components/ui/message";
 import { Tool } from "@/components/ui/tool";
+import { AnswerActions } from '@/components/ai/answer-actions';
 
 type RAGMode = 'structured_output' | 'file_search' | 'nli_verification';
 
@@ -664,7 +665,7 @@ export default function AskDocumentsPage() {
                   </div>
                 ) : (
                   <ChatContainerContent className="panel-content space-y-5 p-5 lg:p-6">
-                    {messages.map((message) => (
+                    {messages.map((message, index) => (
                       <div
                         key={message.id}
                         className={cn('flex', message.type === 'user' ? 'justify-end' : 'justify-start')}
@@ -715,6 +716,15 @@ export default function AskDocumentsPage() {
                             />
                           ) : (
                             <p className="whitespace-pre-wrap text-sm leading-7">{message.content}</p>
+                          )}
+
+                          {message.type === 'assistant' && (
+                            <AnswerActions
+                              answer={message.content}
+                              sources={message.sources}
+                              defaultDocumentId={selectedDocId || undefined}
+                              question={messages[index - 1]?.type === 'user' ? messages[index - 1]?.content : undefined}
+                            />
                           )}
 
                           <button

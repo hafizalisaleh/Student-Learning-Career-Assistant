@@ -87,7 +87,7 @@ async def generate_notes(
                 )
             )
         
-        # Generate notes using Gemini AI
+        # Generate notes using the provider-aware RAG LLM client
         try:
             notes_content = notes_generator.generate_notes(
                 content=content,
@@ -144,7 +144,7 @@ async def create_study_note(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Create a manual study note with BlockNote JSON content"""
+    """Create a manual study note with BlockNote or Markdown content"""
     document = db.query(Document).filter(
         Document.id == note_data.document_id,
         Document.user_id == current_user.id
@@ -160,9 +160,9 @@ async def create_study_note(
         user_id=current_user.id,
         document_id=note_data.document_id,
         title=note_data.title,
-        note_type='study',
+        note_type=note_data.note_type or 'study',
         content=note_data.content,
-        content_format='blocknote',
+        content_format=note_data.content_format or 'blocknote',
         tags=note_data.tags
     )
 

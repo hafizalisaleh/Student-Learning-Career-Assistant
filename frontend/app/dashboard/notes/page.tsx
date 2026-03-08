@@ -11,6 +11,7 @@ import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { Plus, Search, BookOpen, Trash2, Calendar, Tag, Download, Sparkles, Edit3, ExternalLink, FileText } from 'lucide-react';
 import type { Note } from '@/lib/types';
 import { formatDate, truncateText, extractTextFromBlockNote, cn } from '@/lib/utils';
+import { formatArtifactDisplayTitle, isEditableStudyNote } from '@/lib/ai-artifacts';
 import toast from 'react-hot-toast';
 import Link from 'next/link';
 
@@ -113,17 +114,18 @@ export default function NotesPage() {
 
   const filteredNotes = notes
     .filter(note => {
-      if (typeFilter === 'ai') return note.note_type !== 'study';
-      if (typeFilter === 'study') return note.note_type === 'study';
+      const isStudy = isEditableStudyNote(note.note_type, note.content_format);
+      if (typeFilter === 'ai') return !isStudy;
+      if (typeFilter === 'study') return isStudy;
       return true;
     })
     .filter(note =>
-      note.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      formatArtifactDisplayTitle(note.title).toLowerCase().includes(searchQuery.toLowerCase()) ||
       getContentPreview(note).toLowerCase().includes(searchQuery.toLowerCase())
     );
 
-  const aiCount = notes.filter(n => n.note_type !== 'study').length;
-  const studyCount = notes.filter(n => n.note_type === 'study').length;
+  const aiCount = notes.filter(n => !isEditableStudyNote(n.note_type, n.content_format)).length;
+  const studyCount = notes.filter(n => isEditableStudyNote(n.note_type, n.content_format)).length;
 
   if (isLoading) {
     return (
@@ -212,16 +214,17 @@ export default function NotesPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredNotes.map((note) => {
-            const isStudy = note.note_type === 'study';
+            const isStudy = isEditableStudyNote(note.note_type, note.content_format);
+            const displayTitle = formatArtifactDisplayTitle(note.title);
             const preview = getContentPreview(note);
             return (
               <Link key={note.id} href={`/dashboard/notes/${note.id}`}>
                 <Card className="hover:shadow-lg transition-all hover:border-[var(--primary)] cursor-pointer h-full">
                   <CardHeader className="pb-2">
                     <div className="flex items-start justify-between gap-2">
-                      <CardTitle className="text-base line-clamp-1">{note.title}</CardTitle>
+                      <CardTitle className="text-base line-clamp-1">{displayTitle}</CardTitle>
                       <Badge variant={isStudy ? 'info' : 'notes'} size="sm">
-                        {isStudy ? 'Study' : (note.note_type || 'AI')}
+                        {isStudy ? 'Study' : ((note.note_type === 'study' ? 'structured' : note.note_type) || 'AI')}
                       </Badge>
                     </div>
                     <CardDescription className="flex items-center gap-2 text-xs">
