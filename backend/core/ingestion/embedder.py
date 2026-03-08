@@ -81,8 +81,14 @@ class EmbeddingGenerator:
         cache_key = (self.model_name, self.device)
         if cache_key not in self._model_cache:
             logger.info(f"Loading embedding model {self.model_name} on {self.device}")
-            tokenizer = AutoTokenizer.from_pretrained(self.model_name)
-            model = AutoModel.from_pretrained(self.model_name)
+            tokenizer = AutoTokenizer.from_pretrained(
+                self.model_name,
+                local_files_only=True,
+            )
+            model = AutoModel.from_pretrained(
+                self.model_name,
+                local_files_only=True,
+            )
             model.to(self.device)
             model.eval()
             hidden_size = getattr(model.config, "hidden_size", self.config["dimensions"])

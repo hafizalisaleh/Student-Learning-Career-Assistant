@@ -454,6 +454,8 @@ class VisionQueryRequest(BaseModel):
     question: str
     document_id: Optional[str] = None
     n_results: int = settings.VISION_QUERY_DEFAULT_LIMIT
+    selected_page: Optional[int] = None
+    selected_image_data: Optional[str] = None
 
 
 @router.post("/vision-query")
@@ -474,6 +476,8 @@ def vision_query(
             document_id=request.document_id,
             user_id=str(current_user.id),
             limit=request.n_results,
+            selected_page=request.selected_page,
+            selected_image_data=request.selected_image_data,
         )
 
     except Exception as e:

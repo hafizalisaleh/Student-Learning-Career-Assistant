@@ -348,6 +348,20 @@ def extract_json_block(content: str) -> Optional[str]:
     return None
 
 
+def decode_data_url_image(data_url: str) -> bytes:
+    if not data_url or not isinstance(data_url, str):
+        raise ValueError("Selected image payload is empty")
+
+    if "," not in data_url:
+        raise ValueError("Selected image payload must be a data URL")
+
+    header, encoded = data_url.split(",", 1)
+    if ";base64" not in header:
+        raise ValueError("Selected image payload must be base64 encoded")
+
+    return base64.b64decode(encoded)
+
+
 class DoclingAssetManager:
     """Loads Docling documents on demand and extracts linked tables/images."""
 
@@ -590,6 +604,8 @@ class VisionService:
         self.ollama_num_ctx = get_ollama_num_ctx()
         self.responses_md_path = Path(get_vision_responses_md()).resolve()
         self.responses_md_path.parent.mkdir(parents=True, exist_ok=True)
+        self.selection_cache_dir = Path(settings.VISION_CACHE_DIR or DEFAULT_CACHE_DIR).resolve() / "selected_regions"
+        self.selection_cache_dir.mkdir(parents=True, exist_ok=True)
         self.session_started_at = datetime.now().astimezone()
         self.responses_session_logged = False
         self.query_count = 0
@@ -638,7 +654,13 @@ class VisionService:
 
         return selected
 
-    def _rerank_chunks(self, query: str, chunks: List[RetrievedChunk], limit: int) -> List[RetrievedChunk]:
+    def _rerank_chunks(
+        self,
+        query: str,
+        chunks: List[RetrievedChunk],
+        limit: int,
+        preferred_page: Optional[int] = None,
+    ) -> List[RetrievedChunk]:
         query_terms = extract_query_terms(query)
         query_phrases = extract_query_phrases(query_terms)
         page_readout_query = question_requests_page_readout(query)
@@ -656,12 +678,87 @@ class VisionService:
                     modality_boost = -0.12
             elif modality and not page_readout_query:
                 modality_boost = 0.05
-            return chunk.similarity + (0.04 * term_hits) + (0.1 * phrase_hits) + modality_boost
+            page_boost = 0.0
+            if preferred_page is not None:
+                page_numbers = extract_metadata_pages(chunk.chunk_metadata)
+                if preferred_page in page_numbers:
+                    page_boost = 0.65
+                elif page_numbers and any(abs(page - preferred_page) == 1 for page in page_numbers):
+                    page_boost = 0.15
+            return chunk.similarity + (0.04 * term_hits) + (0.1 * phrase_hits) + modality_boost + page_boost
 
         ranked = sorted(chunks, key=score, reverse=True)
         if page_readout_query:
             return ranked[:limit]
         return self._limit_ocr_chunks(ranked, limit)
+
+    def _retrieve_page_chunks(
+        self,
+        document_id: str,
+        user_id: Optional[str],
+        preferred_page: int,
+        limit: int,
+    ) -> List[RetrievedChunk]:
+        db = SessionLocal()
+        try:
+            rows = db.execute(
+                sql_text(
+                    """
+                    SELECT
+                        c.id::text AS chunk_id,
+                        c.document_id::text AS document_id,
+                        c.content,
+                        c.chunk_index,
+                        c.metadata AS chunk_metadata,
+                        d.title AS document_title,
+                        COALESCE(d.file_path, d.original_filename, d.title) AS document_source,
+                        d.doc_metadata AS document_metadata,
+                        0.0 AS similarity
+                    FROM chunks c
+                    JOIN documents d ON d.id = c.document_id
+                    WHERE c.embedding IS NOT NULL
+                      AND c.document_id = CAST(:document_id AS uuid)
+                      AND (:user_id IS NULL OR d.user_id = CAST(:user_id AS uuid))
+                      AND (
+                        EXISTS (
+                          SELECT 1
+                          FROM jsonb_array_elements_text(COALESCE(c.metadata->'page_numbers', '[]'::jsonb)) AS page_value
+                          WHERE page_value::int = :preferred_page
+                        )
+                        OR (
+                          (c.metadata->>'page_number') IS NOT NULL
+                          AND (c.metadata->>'page_number') ~ '^[0-9]+$'
+                          AND (c.metadata->>'page_number')::int = :preferred_page
+                        )
+                      )
+                    ORDER BY c.chunk_index
+                    LIMIT :limit
+                    """
+                ),
+                {
+                    "document_id": document_id,
+                    "user_id": user_id,
+                    "preferred_page": preferred_page,
+                    "limit": limit,
+                },
+            )
+
+            return [
+                RetrievedChunk(
+                    chunk_id=row.chunk_id,
+                    document_id=row.document_id,
+                    content=row.content,
+                    chunk_index=row.chunk_index,
+                    similarity=float(row.similarity or 0.0),
+                    chunk_metadata=normalize_json_value(row.chunk_metadata),
+                    document_title=row.document_title or "Untitled document",
+                    document_source=row.document_source or "",
+                    document_metadata=normalize_json_value(row.document_metadata),
+                )
+                for row in rows
+            ]
+        finally:
+            db.close()
 
     def retrieve_chunks(
         self,
@@ -669,6 +766,7 @@ class VisionService:
         document_id: Optional[str] = None,
         user_id: Optional[str] = None,
         limit: int = 5,
+        preferred_page: Optional[int] = None,
     ) -> List[RetrievedChunk]:
         query_embedding = self.embedder.generate_query_embedding(query)
         embedding_str = "[" + ",".join(map(str, query_embedding)) + "]"
@@ -712,7 +810,7 @@ class VisionService:
                     document_id=row.document_id,
                     content=row.content,
                     chunk_index=row.chunk_index,
-                    similarity=row.similarity,
+                    similarity=float(row.similarity or 0.0),
                     chunk_metadata=normalize_json_value(row.chunk_metadata),
                     document_title=row.document_title or "Untitled document",
                     document_source=row.document_source or "",
@@ -720,7 +818,20 @@ class VisionService:
                 )
                 for row in rows
             ]
-            return self._rerank_chunks(query, retrieved_chunks, limit)
+            if preferred_page is not None and document_id:
+                page_chunks = self._retrieve_page_chunks(
+                    document_id=document_id,
+                    user_id=user_id,
+                    preferred_page=preferred_page,
+                    limit=max(limit * 4, 12),
+                )
+                existing_ids = {chunk.chunk_id for chunk in retrieved_chunks}
+                for page_chunk in page_chunks:
+                    if page_chunk.chunk_id not in existing_ids:
+                        retrieved_chunks.append(page_chunk)
+                        existing_ids.add(page_chunk.chunk_id)
+
+            return self._rerank_chunks(query, retrieved_chunks, limit, preferred_page=preferred_page)
         finally:
             db.close()
 
@@ -845,6 +956,7 @@ class VisionService:
         phrase_hits = sum(1 for phrase in set(query_phrases) if phrase in haystack)
 
         match_boost = {
+            "user_selection": 0.75,
             "direct_chunk": 0.45,
             "nearby_chunk": 0.2,
             "page_fallback": 0.05,
@@ -905,6 +1017,39 @@ class VisionService:
             logger.warning("Vision provider %s is not supported for image analysis", self.vision_provider)
             return {}
         return self._analyze_images_groq(query, images)
+
+    def build_selected_image_link(
+        self,
+        selected_image_data: Optional[str],
+        selected_page: Optional[int],
+    ) -> Optional[LinkedImage]:
+        if not selected_image_data:
+            return None
+
+        try:
+            image_bytes = decode_data_url_image(selected_image_data)
+            image_hash = hashlib.sha256(image_bytes).hexdigest()
+            output_path = self.selection_cache_dir / f"selection-p{selected_page or 'unknown'}-{image_hash[:16]}.png"
+
+            if not output_path.exists():
+                with Image.open(BytesIO(image_bytes)) as selection_image:
+                    selection_image.convert("RGB").save(output_path, "PNG")
+
+            return LinkedImage(
+                image=ImageAsset(
+                    asset_ref=f"user-selection:{image_hash[:16]}",
+                    page_no=selected_page,
+                    file_path=output_path,
+                    caption="User-selected visual region",
+                ),
+                match_source="user_selection",
+                context_excerpt="User-selected image region from the Study Desk PDF viewer.",
+                source_chunk_index=None,
+                relevance_score=1.5,
+            )
+        except Exception as exc:
+            logger.warning("Failed to persist selected image region: %s", exc)
+            return None
 
     def _analyze_images_groq(self, query: str, images: List[LinkedImage]) -> Dict[str, Dict[str, str]]:
         if self.groq_client is None:
@@ -1107,9 +1252,37 @@ class VisionService:
         query: str,
         enriched_chunks: List[EnrichedChunk],
         vision_notes: Dict[str, Dict[str, str]],
+        selected_region_image: Optional[LinkedImage] = None,
+        selected_region_note: Optional[Dict[str, str]] = None,
+        selected_page: Optional[int] = None,
         selected_image_refs: Optional[Set[str]] = None,
     ) -> str:
         sections = [f"User question: {query}", "", "Retrieved knowledge context:"]
+
+        if selected_page is not None:
+            sections.extend([
+                f"[User focus page: {selected_page}]",
+                "Prioritize evidence from this page when the retrieved support matches it.",
+                "",
+            ])
+
+        if selected_region_image is not None:
+            image = selected_region_image.image
+            region_lines = [
+                f"[User-selected image region | page={image.page_no or 'unknown'} | asset_ref={image.asset_ref}]",
+            ]
+            if image.caption:
+                region_lines.append(f"Caption: {image.caption}")
+            if selected_region_note:
+                if selected_region_note.get("summary"):
+                    region_lines.append(f"Summary: {selected_region_note['summary']}")
+                if selected_region_note.get("ocr_text"):
+                    region_lines.append(f"OCR: {selected_region_note['ocr_text']}")
+                if selected_region_note.get("relevance"):
+                    region_lines.append(f"Relevance: {selected_region_note['relevance']}")
+            else:
+                region_lines.append("Vision analysis: selected by the user, but no structured image summary was returned.")
+            sections.extend(region_lines + [""])
 
         for item in enriched_chunks:
             chunk = item.chunk
@@ -1257,9 +1430,18 @@ class VisionService:
         document_id: Optional[str] = None,
         user_id: Optional[str] = None,
         limit: int = 5,
+        selected_page: Optional[int] = None,
+        selected_image_data: Optional[str] = None,
     ) -> Dict[str, Any]:
-        chunks = self.retrieve_chunks(query, document_id=document_id, user_id=user_id, limit=limit)
-        if not chunks:
+        selected_region_image = self.build_selected_image_link(selected_image_data, selected_page)
+        chunks = self.retrieve_chunks(
+            query,
+            document_id=document_id,
+            user_id=user_id,
+            limit=limit,
+            preferred_page=selected_page,
+        )
+        if not chunks and selected_region_image is None:
             self.query_count += 1
             answer = "No relevant information was found in the knowledge base for that question."
             self.append_response_markdown(query, answer, [], False)
@@ -1271,10 +1453,17 @@ class VisionService:
                 "mode": "vision",
             }
 
-        enriched_chunks = self.enrich_chunks(chunks)
+        enriched_chunks = self.enrich_chunks(chunks) if chunks else []
         selected_images = self.collect_images_for_vision(query, enriched_chunks)
         use_vision = self.should_use_vision(query, enriched_chunks) and bool(selected_images)
         vision_notes: Dict[str, Dict[str, str]] = {}
+        selected_region_note: Optional[Dict[str, str]] = None
+
+        if selected_region_image is not None:
+            selected_region_notes = self.analyze_images(query, [selected_region_image])
+            selected_region_note = selected_region_notes.get(selected_region_image.image.asset_ref)
+            use_vision = True
+
         if use_vision:
             vision_notes = self.analyze_images(query, selected_images)
 
@@ -1282,13 +1471,16 @@ class VisionService:
             query,
             enriched_chunks,
             vision_notes,
+            selected_region_image=selected_region_image,
+            selected_region_note=selected_region_note,
+            selected_page=selected_page,
             selected_image_refs={image.image.asset_ref for image in selected_images},
         )
         system_prompt = (
             "You answer questions using only retrieved documentation from a private knowledge base. "
             "Never answer from general knowledge or outside assumptions. "
             "Prefer retrieved chunk text and linked table markdown. "
-            "Use linked image analysis only when it directly supports the answer. "
+            "Use linked image analysis and any user-selected image region only when they directly support the answer. "
             "If the retrieved context does not directly answer the question, say exactly: "
             "'The retrieved document does not directly answer this question.' "
             "Then briefly mention the closest relevant evidence, if any. "

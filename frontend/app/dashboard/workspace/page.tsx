@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, Suspense, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels';
+import type { PDFImageSelection, PDFTextSelection } from '@/components/pdf/pdf-viewer';
 
 const PDFViewer = dynamic(() => import('@/components/pdf/pdf-viewer'), {
     ssr: false,
@@ -47,7 +48,8 @@ function WorkspaceContent() {
     const [docReadyForGeneration, setDocReadyForGeneration] = useState(false);
     const [docStatusDescription, setDocStatusDescription] = useState('');
 
-    const [selectedText, setSelectedText] = useState<{ text: string; page: number } | null>(null);
+    const [selectedText, setSelectedText] = useState<PDFTextSelection | null>(null);
+    const [selectedImage, setSelectedImage] = useState<PDFImageSelection | null>(null);
     const [chatInput, setChatInput] = useState('');
     const [messages, setMessages] = useState<Message[]>([]);
     const [isLoading, setIsLoading] = useState(false);
@@ -116,8 +118,13 @@ function WorkspaceContent() {
         };
     }, []);
 
-    const handleTextSelect = (text: string, page: number) => {
-        setSelectedText({ text, page });
+    const handleTextSelect = (selection: PDFTextSelection) => {
+        setSelectedText(selection);
+        setRightPane('ai');
+    };
+
+    const handleImageSelect = (selection: PDFImageSelection) => {
+        setSelectedImage(selection);
         setRightPane('ai');
     };
 
@@ -191,12 +198,25 @@ function WorkspaceContent() {
     };
 
     const handleSendQuery = async () => {
-        if (!chatInput.trim() && !selectedText) return;
+        if (!chatInput.trim() && !selectedText && !selectedImage) return;
 
         const userMessage = chatInput.trim();
-        const fullQuery = selectedText
-            ? `Regarding the text from Page ${selectedText.page}: "${selectedText.text}"\n\nQuestion: ${userMessage || "Summarize or explain this."}`
-            : userMessage;
+        const querySections: string[] = [];
+
+        if (selectedText) {
+            querySections.push(
+                `Regarding the selected text from Page ${selectedText.page}: "${selectedText.text}"`,
+            );
+        }
+
+        if (selectedImage) {
+            querySections.push(
+                `A user-selected image region from Page ${selectedImage.page} is attached. Use that visual region directly when answering.`,
+            );
+        }
+
+        querySections.push(`Question: ${userMessage || (selectedImage ? 'Explain this selected visual region.' : 'Summarize or explain this.')}`);
+        const fullQuery = querySections.join('\n\n');
 
         const newMessages: Message[] = [...messages, { role: 'user', content: fullQuery }];
         setMessages(newMessages);
@@ -204,7 +224,10 @@ function WorkspaceContent() {
         setIsLoading(true);
 
         try {
-            const response = await api.visionQuery(fullQuery, documentId || undefined);
+            const response = await api.visionQuery(fullQuery, documentId || undefined, 6, {
+                selectedPage: selectedImage?.page ?? selectedText?.page,
+                selectedImageDataUrl: selectedImage?.imageDataUrl,
+            });
 
             if (response.answer) {
                 setMessages([...newMessages, {
@@ -243,6 +266,7 @@ function WorkspaceContent() {
         } finally {
             setIsLoading(false);
             setSelectedText(null);
+            setSelectedImage(null);
         }
     };
 
@@ -351,6 +375,7 @@ function WorkspaceContent() {
                     <PDFViewer
                         url={docUrl}
                         onTextSelect={handleTextSelect}
+                        onImageSelect={handleImageSelect}
                     />
                 </Panel>
 
@@ -428,7 +453,7 @@ function WorkspaceContent() {
                                                         <Sparkles className="w-7 h-7" />
                                                     </div>
                                                     <h3 className="font-semibold text-[var(--text-primary)]">Your AI Study Partner</h3>
-                                                    <p className="text-sm text-[var(--text-tertiary)]">Highlight text in the PDF to ask questions, or type below.</p>
+                                                    <p className="text-sm text-[var(--text-tertiary)]">Highlight text or switch to image mode to crop a figure, chart, or formula before asking.</p>
                                                 </div>
                                             )}
 
@@ -519,18 +544,42 @@ function WorkspaceContent() {
 
                                     {/* Input Area */}
                                     <div className="sticky bottom-0 z-10 border-t border-[var(--card-border)] bg-[color:color-mix(in_srgb,var(--card-bg-solid)_88%,transparent)] p-3 backdrop-blur-xl">
-                                        {selectedText && (
-                                            <div className="mb-2 p-2.5 bg-[var(--info-bg)] rounded-xl border border-[var(--info-border)] text-xs text-[var(--primary)] relative animate-in fade-in slide-in-from-bottom-2">
-                                                <div className="font-bold mb-1 flex justify-between items-center">
-                                                    <span className="flex items-center gap-1">
-                                                        <FileText className="w-3 h-3" />
-                                                        Selected from Page {selectedText.page}
-                                                    </span>
-                                                    <button onClick={() => setSelectedText(null)} className="p-1 hover:bg-[var(--bg-tertiary)] rounded-full text-[var(--text-tertiary)] transition-colors flex items-center justify-center h-5 w-5">
-                                                        <X size={12} />
-                                                    </button>
-                                                </div>
-                                                <p className="line-clamp-2 italic opacity-80">&quot;{selectedText.text}&quot;</p>
+                                        {(selectedText || selectedImage) && (
+                                            <div className="mb-2 space-y-2">
+                                                {selectedText && (
+                                                    <div className="p-2.5 bg-[var(--info-bg)] rounded-xl border border-[var(--info-border)] text-xs text-[var(--primary)] relative animate-in fade-in slide-in-from-bottom-2">
+                                                        <div className="font-bold mb-1 flex justify-between items-center">
+                                                            <span className="flex items-center gap-1">
+                                                                <FileText className="w-3 h-3" />
+                                                                Selected text from Page {selectedText.page}
+                                                            </span>
+                                                            <button onClick={() => setSelectedText(null)} className="p-1 hover:bg-[var(--bg-tertiary)] rounded-full text-[var(--text-tertiary)] transition-colors flex items-center justify-center h-5 w-5">
+                                                                <X size={12} />
+                                                            </button>
+                                                        </div>
+                                                        <p className="line-clamp-2 italic opacity-80">&quot;{selectedText.text}&quot;</p>
+                                                    </div>
+                                                )}
+                                                {selectedImage && (
+                                                    <div className="overflow-hidden rounded-xl border border-[var(--info-border)] bg-[var(--info-bg)] text-[var(--primary)] animate-in fade-in slide-in-from-bottom-2">
+                                                        <div className="flex items-center justify-between px-3 py-2 text-xs font-bold">
+                                                            <span className="flex items-center gap-1">
+                                                                <FileText className="w-3 h-3" />
+                                                                Selected image from Page {selectedImage.page}
+                                                            </span>
+                                                            <button onClick={() => setSelectedImage(null)} className="p-1 hover:bg-[var(--bg-tertiary)] rounded-full text-[var(--text-tertiary)] transition-colors flex items-center justify-center h-5 w-5">
+                                                                <X size={12} />
+                                                            </button>
+                                                        </div>
+                                                        <div className="px-3 pb-3">
+                                                            <img
+                                                                src={selectedImage.imageDataUrl}
+                                                                alt={`Selected region from page ${selectedImage.page}`}
+                                                                className="max-h-36 rounded-lg border border-[var(--card-border)] bg-white object-contain"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
                                         <div className="flex bg-[var(--card-bg)] rounded-2xl border border-[var(--card-border)] p-1 shadow-sm mt-1">
@@ -538,7 +587,7 @@ function WorkspaceContent() {
                                                 value={chatInput}
                                                 onValueChange={setChatInput}
                                                 onSubmit={() => {
-                                                    if (chatInput.trim() || selectedText) handleSendQuery();
+                                                    if (chatInput.trim() || selectedText || selectedImage) handleSendQuery();
                                                 }}
                                                 isLoading={isLoading}
                                                 className="flex-1 flex flex-row items-end border-none shadow-none p-0 bg-transparent"
@@ -555,14 +604,14 @@ function WorkspaceContent() {
                                                         <Button
                                                             type="button"
                                                             onClick={() => {
-                                                                if (!isLoading && (chatInput.trim() || selectedText)) {
+                                                                if (!isLoading && (chatInput.trim() || selectedText || selectedImage)) {
                                                                     handleSendQuery();
                                                                 }
                                                             }}
                                                             variant="default"
                                                             size="icon"
                                                             className="h-8 w-8 rounded-full bg-[var(--primary)] hover:bg-[var(--primary)]/90 text-white"
-                                                            disabled={!isLoading && (!chatInput.trim() && !selectedText)}
+                                                            disabled={!isLoading && (!chatInput.trim() && !selectedText && !selectedImage)}
                                                         >
                                                             {isLoading ? (
                                                                 <Square className="h-4 w-4 fill-current" />

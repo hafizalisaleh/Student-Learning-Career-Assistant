@@ -142,7 +142,10 @@ class DoclingHybridChunker:
     def __init__(self, config: ChunkingConfig):
         self.config = config
         logger.info(f"Initializing tokenizer: {config.tokenizer_model}")
-        self.tokenizer = AutoTokenizer.from_pretrained(config.tokenizer_model)
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            config.tokenizer_model,
+            local_files_only=True,
+        )
         self.chunker = HybridChunker(
             tokenizer=self.tokenizer,
             max_tokens=config.max_tokens,
