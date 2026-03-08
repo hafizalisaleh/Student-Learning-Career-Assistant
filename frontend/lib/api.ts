@@ -1,4 +1,5 @@
 import axios, { AxiosInstance } from 'axios';
+import type { QuizResult } from '@/lib/types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -38,6 +39,7 @@ interface ApiInstance extends AxiosInstance {
   generateQuiz: (data: any) => Promise<any>;
   startQuizAttempt: (quizId: string) => Promise<any>;
   getQuizAttempt: (quizId: string) => Promise<any>;
+  getQuizAttemptHistory: () => Promise<QuizResult[]>;
   submitQuizAttempt: (quizId: string, answers: any) => Promise<any>;
   deleteQuiz: (id: string) => Promise<any>;
   getQuizAnalytics: () => Promise<any>;
@@ -265,6 +267,11 @@ axiosInstance.startQuizAttempt = async (quizId: string) => {
 
 axiosInstance.getQuizAttempt = async (quizId: string) => {
   const response = await axiosInstance.get(`/api/quizzes/${quizId}/attempt`);
+  return response.data;
+};
+
+axiosInstance.getQuizAttemptHistory = async () => {
+  const response = await axiosInstance.get('/api/quizzes/attempts/history');
   return response.data;
 };
 

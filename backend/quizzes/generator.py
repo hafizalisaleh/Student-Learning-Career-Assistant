@@ -1,323 +1,384 @@
 """
-Quiz generator using RAG and Gemini AI
+Provider-aware quiz generator using the unified RAG LLM client.
 """
-from typing import List, Dict, Any
-import json
+
+from __future__ import annotations
+
 import re
-from utils.gemini_client import gemini_client
+from typing import Any, Dict, List, Sequence
+
+from utils.logger import logger
+from utils.rag_llm_client import RAGLLMClient, safe_load_json
+
+
+def _normalize_whitespace(text: str) -> str:
+    cleaned = (text or "").replace("\r\n", "\n")
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
+    return cleaned.strip()
+
+
+def _build_source_excerpt(content: str, max_chars: int = 14000) -> str:
+    """
+    Keep strong coverage across the document instead of truncating to the first page.
+    """
+    cleaned = _normalize_whitespace(content)
+    if len(cleaned) <= max_chars:
+        return cleaned
+
+    sections = [segment.strip() for segment in cleaned.split("\n\n") if segment.strip()]
+    if not sections:
+        return cleaned[:max_chars]
+
+    selected: List[str] = []
+    total = 0
+    front_index = 0
+    back_index = len(sections) - 1
+    take_from_front = True
+
+    while front_index <= back_index and total < max_chars:
+        segment = sections[front_index] if take_from_front else sections[back_index]
+        candidate = f"{segment}\n\n"
+        if total + len(candidate) > max_chars and selected:
+            break
+        selected.append(segment)
+        total += len(candidate)
+        if take_from_front:
+            front_index += 1
+        else:
+            back_index -= 1
+        take_from_front = not take_from_front
+
+    return "\n\n".join(selected).strip()[:max_chars]
+
+
+def _coerce_option(option: Any) -> str:
+    if isinstance(option, dict):
+        for key in ("text", "label", "value", "option"):
+            value = option.get(key)
+            if value:
+                return _normalize_whitespace(str(value))
+        return _normalize_whitespace(str(option))
+    return _normalize_whitespace(str(option))
+
 
 class QuizGenerator:
-    """Generate quizzes from content using AI"""
-    
-    def __init__(self):
-        self.gemini_client = gemini_client
-    
-    def generate_mcq_questions(
-        self, 
-        content: str, 
-        num_questions: int, 
-        difficulty: str
-    ) -> List[Dict[str, Any]]:
-        """
-        Generate multiple choice questions
-        
-        Args:
-            content: Source content
-            num_questions: Number of questions to generate
-            difficulty: Difficulty level
-            
-        Returns:
-            List of MCQ questions
-        """
-        difficulty_instructions = {
-            "easy": "Focus on basic recall and simple concepts. Questions should be straightforward.",
-            "medium": "Focus on understanding and application. Questions should require thinking.",
-            "hard": "Focus on analysis and synthesis. Questions should be challenging and require deep understanding."
-        }
-        
-        instruction = difficulty_instructions.get(difficulty, difficulty_instructions["medium"])
-        
-        prompt = f"""
-        Generate {num_questions} multiple choice questions from the following content.
-        
-        Difficulty Level: {difficulty}
-        {instruction}
-        
-        Content:
-        {content[:3000]}
-        
-        Format each question EXACTLY as follows:
-        Q1: [Question text]
-        A) [Option A]
-        B) [Option B]
-        C) [Option C]
-        D) [Option D]
-        CORRECT: [A/B/C/D]
-        EXPLANATION: [Brief explanation]
-        
-        Q2: [Next question]
-        ...
-        
-        Generate {num_questions} questions now:
-        """
-        
-        try:
-            response = self.gemini_client.generate_text(prompt, temperature=0.7)
-            questions = self._parse_mcq_response(response)
-            return questions[:num_questions]
-        except Exception as e:
-            raise Exception(f"Error generating MCQ questions: {str(e)}")
-    
-    def generate_short_answer_questions(
-        self, 
-        content: str, 
-        num_questions: int, 
-        difficulty: str
-    ) -> List[Dict[str, Any]]:
-        """Generate short answer questions"""
-        
-        prompt = f"""
-        Generate {num_questions} short answer questions from the following content.
-        Difficulty: {difficulty}
-        
-        Content:
-        {content[:3000]}
-        
-        Format each question as:
-        Q1: [Question text]
-        ANSWER: [Expected answer - 2-3 sentences]
-        
-        Q2: [Next question]
-        ...
-        
-        Generate {num_questions} questions:
-        """
-        
-        try:
-            response = self.gemini_client.generate_text(prompt, temperature=0.7)
-            questions = self._parse_short_answer_response(response)
-            return questions[:num_questions]
-        except Exception as e:
-            raise Exception(f"Error generating short answer questions: {str(e)}")
-    
-    def generate_true_false_questions(
-        self, 
-        content: str, 
-        num_questions: int, 
-        difficulty: str
-    ) -> List[Dict[str, Any]]:
-        """Generate true/false questions"""
-        
-        prompt = f"""
-        Generate {num_questions} true/false questions from the following content.
-        Difficulty: {difficulty}
-        
-        Content:
-        {content[:3000]}
-        
-        Format each question as:
-        Q1: [Statement]
-        ANSWER: [TRUE/FALSE]
-        EXPLANATION: [Why it's true or false]
-        
-        Generate {num_questions} questions:
-        """
-        
-        try:
-            response = self.gemini_client.generate_text(prompt, temperature=0.7)
-            questions = self._parse_true_false_response(response)
-            return questions[:num_questions]
-        except Exception as e:
-            raise Exception(f"Error generating true/false questions: {str(e)}")
-    
-    def generate_fill_blank_questions(
-        self, 
-        content: str, 
-        num_questions: int, 
-        difficulty: str
-    ) -> List[Dict[str, Any]]:
-        """Generate fill in the blank questions"""
-        
-        prompt = f"""
-        Generate {num_questions} fill in the blank questions from the following content.
-        Difficulty: {difficulty}
-        
-        Content:
-        {content[:3000]}
-        
-        Format each question as:
-        Q1: [Sentence with _____ for the blank]
-        ANSWER: [Word or phrase that fills the blank]
-        
-        Generate {num_questions} questions:
-        """
-        
-        try:
-            response = self.gemini_client.generate_text(prompt, temperature=0.7)
-            questions = self._parse_fill_blank_response(response)
-            return questions[:num_questions]
-        except Exception as e:
-            raise Exception(f"Error generating fill blank questions: {str(e)}")
-    
-    def generate_mixed_questions(
-        self, 
-        content: str, 
-        num_questions: int, 
-        difficulty: str
-    ) -> List[Dict[str, Any]]:
-        """Generate mixed question types"""
-        
-        questions = []
-        questions_per_type = num_questions // 4
-        remainder = num_questions % 4
-        
-        # Generate each type
-        try:
-            questions.extend(self.generate_mcq_questions(
-                content, questions_per_type + (1 if remainder > 0 else 0), difficulty
-            ))
-            questions.extend(self.generate_short_answer_questions(
-                content, questions_per_type + (1 if remainder > 1 else 0), difficulty
-            ))
-            questions.extend(self.generate_true_false_questions(
-                content, questions_per_type + (1 if remainder > 2 else 0), difficulty
-            ))
-            questions.extend(self.generate_fill_blank_questions(
-                content, questions_per_type, difficulty
-            ))
-            
-            return questions[:num_questions]
-        except Exception as e:
-            raise Exception(f"Error generating mixed questions: {str(e)}")
-    
-    def _parse_mcq_response(self, response: str) -> List[Dict[str, Any]]:
-        """Parse MCQ response from AI"""
-        questions = []
-        
-        # Split by question number
-        question_blocks = re.split(r'Q\d+:', response)[1:]
-        
-        for block in question_blocks:
-            try:
-                lines = block.strip().split('\n')
-                question_text = lines[0].strip()
-                
-                options = []
-                correct_answer = None
-                explanation = ""
-                
-                for line in lines[1:]:
-                    line = line.strip()
-                    if line.startswith(('A)', 'B)', 'C)', 'D)')):
-                        options.append(line[3:].strip())
-                    elif line.startswith('CORRECT:'):
-                        correct_letter = line.split(':')[1].strip()
-                        correct_map = {'A': 0, 'B': 1, 'C': 2, 'D': 3}
-                        correct_answer = options[correct_map.get(correct_letter, 0)] if options else None
-                    elif line.startswith('EXPLANATION:'):
-                        explanation = line.split(':', 1)[1].strip()
-                
-                if question_text and options and correct_answer:
-                    questions.append({
-                        'question_text': question_text,
-                        'question_type': 'mcq',
-                        'options': options,
-                        'correct_answer': correct_answer,
-                        'explanation': explanation
-                    })
-            except Exception as e:
-                continue
-        
-        return questions
-    
-    def _parse_short_answer_response(self, response: str) -> List[Dict[str, Any]]:
-        """Parse short answer response"""
-        questions = []
-        question_blocks = re.split(r'Q\d+:', response)[1:]
-        
-        for block in question_blocks:
-            try:
-                lines = block.strip().split('\n')
-                question_text = lines[0].strip()
-                answer = ""
-                
-                for line in lines[1:]:
-                    if line.strip().startswith('ANSWER:'):
-                        answer = line.split(':', 1)[1].strip()
-                        break
-                
-                if question_text and answer:
-                    questions.append({
-                        'question_text': question_text,
-                        'question_type': 'short',
-                        'options': None,
-                        'correct_answer': answer,
-                        'explanation': f"Expected answer: {answer}"
-                    })
-            except Exception:
-                continue
-        
-        return questions
-    
-    def _parse_true_false_response(self, response: str) -> List[Dict[str, Any]]:
-        """Parse true/false response"""
-        questions = []
-        question_blocks = re.split(r'Q\d+:', response)[1:]
-        
-        for block in question_blocks:
-            try:
-                lines = block.strip().split('\n')
-                question_text = lines[0].strip()
-                answer = None
-                explanation = ""
-                
-                for line in lines[1:]:
-                    if line.strip().startswith('ANSWER:'):
-                        answer = line.split(':')[1].strip().upper()
-                    elif line.strip().startswith('EXPLANATION:'):
-                        explanation = line.split(':', 1)[1].strip()
-                
-                if question_text and answer in ['TRUE', 'FALSE']:
-                    questions.append({
-                        'question_text': question_text,
-                        'question_type': 'true_false',
-                        'options': ['True', 'False'],
-                        'correct_answer': answer.capitalize(),
-                        'explanation': explanation
-                    })
-            except Exception:
-                continue
-        
-        return questions
-    
-    def _parse_fill_blank_response(self, response: str) -> List[Dict[str, Any]]:
-        """Parse fill in the blank response"""
-        questions = []
-        question_blocks = re.split(r'Q\d+:', response)[1:]
-        
-        for block in question_blocks:
-            try:
-                lines = block.strip().split('\n')
-                question_text = lines[0].strip()
-                answer = ""
-                
-                for line in lines[1:]:
-                    if line.strip().startswith('ANSWER:'):
-                        answer = line.split(':', 1)[1].strip()
-                        break
-                
-                if question_text and answer and '_' in question_text:
-                    questions.append({
-                        'question_text': question_text,
-                        'question_type': 'fill_blank',
-                        'options': None,
-                        'correct_answer': answer,
-                        'explanation': f"The blank should be filled with: {answer}"
-                    })
-            except Exception:
-                continue
-        
-        return questions
+    """Generate grounded quizzes from retrieved document content."""
 
-# Global generator instance
+    QUESTION_TYPE_LABELS = {
+        "mcq": "multiple choice with exactly four options",
+        "short": "short answer in 1-3 sentences",
+        "true_false": "true or false",
+        "fill_blank": "fill in the blank",
+    }
+    QUESTION_TYPE_ALIASES = {
+        "multiple_choice": "mcq",
+        "multiple choice": "mcq",
+        "mcq": "mcq",
+        "short_answer": "short",
+        "short answer": "short",
+        "short": "short",
+        "true_false": "true_false",
+        "true false": "true_false",
+        "true-false": "true_false",
+        "fill_blank": "fill_blank",
+        "fill in the blank": "fill_blank",
+        "fill-in-the-blank": "fill_blank",
+    }
+
+    def __init__(self):
+        self.client = RAGLLMClient()
+
+    def generate_mcq_questions(
+        self,
+        content: str,
+        num_questions: int,
+        difficulty: str,
+        focus_context: str | None = None,
+    ) -> List[Dict[str, Any]]:
+        return self._generate_questions(content, num_questions, difficulty, ["mcq"], focus_context)
+
+    def generate_short_answer_questions(
+        self,
+        content: str,
+        num_questions: int,
+        difficulty: str,
+        focus_context: str | None = None,
+    ) -> List[Dict[str, Any]]:
+        return self._generate_questions(content, num_questions, difficulty, ["short"], focus_context)
+
+    def generate_true_false_questions(
+        self,
+        content: str,
+        num_questions: int,
+        difficulty: str,
+        focus_context: str | None = None,
+    ) -> List[Dict[str, Any]]:
+        return self._generate_questions(content, num_questions, difficulty, ["true_false"], focus_context)
+
+    def generate_fill_blank_questions(
+        self,
+        content: str,
+        num_questions: int,
+        difficulty: str,
+        focus_context: str | None = None,
+    ) -> List[Dict[str, Any]]:
+        return self._generate_questions(content, num_questions, difficulty, ["fill_blank"], focus_context)
+
+    def generate_mixed_questions(
+        self,
+        content: str,
+        num_questions: int,
+        difficulty: str,
+        focus_context: str | None = None,
+    ) -> List[Dict[str, Any]]:
+        return self._generate_questions(
+            content,
+            num_questions,
+            difficulty,
+            ["mcq", "short", "true_false", "fill_blank"],
+            focus_context,
+        )
+
+    def _generate_questions(
+        self,
+        content: str,
+        num_questions: int,
+        difficulty: str,
+        allowed_types: Sequence[str],
+        focus_context: str | None = None,
+    ) -> List[Dict[str, Any]]:
+        difficulty_instructions = {
+            "easy": "Focus on foundational recall, key terminology, explicit facts, and very direct understanding checks.",
+            "medium": "Focus on understanding, comparison, causal links, and light application of the material.",
+            "hard": "Focus on synthesis, subtle distinctions, multi-step reasoning, and transfer across sections of the source.",
+        }
+
+        excerpt = _build_source_excerpt(content)
+        type_names = ", ".join(allowed_types)
+        type_help = "\n".join(
+            f"- {qtype}: {self.QUESTION_TYPE_LABELS[qtype]}" for qtype in allowed_types
+        )
+        focus_block = (
+            f"\nFOLLOW-UP PRIORITY:\n{focus_context}\n"
+            if focus_context
+            else "\nFOLLOW-UP PRIORITY:\nNo special weak-area focus. Cover the most important and testable parts of the source.\n"
+        )
+
+        schema = {
+            "type": "object",
+            "properties": {
+                "questions": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "question_text": {"type": "string"},
+                            "question_type": {
+                                "type": "string",
+                                "enum": list(allowed_types),
+                            },
+                            "options": {
+                                "type": ["array", "null"],
+                                "items": {"type": "string"},
+                            },
+                            "correct_answer": {"type": "string"},
+                            "explanation": {"type": "string"},
+                        },
+                        "required": [
+                            "question_text",
+                            "question_type",
+                            "correct_answer",
+                            "explanation",
+                        ],
+                    },
+                }
+            },
+            "required": ["questions"],
+        }
+
+        system_prompt = (
+            "You generate high-quality study quizzes grounded strictly in the provided source material. "
+            "Never invent facts that are not supported by the source. "
+            "Write clear questions, keep explanations concise but useful, and vary the source coverage."
+        )
+
+        prompt = f"""
+Generate {num_questions} quiz questions using ONLY the source material below.
+
+ALLOWED QUESTION TYPES:
+{type_names}
+Use these exact values in the JSON field `question_type`.
+Type meanings:
+{type_help}
+
+DIFFICULTY:
+{difficulty}
+{difficulty_instructions.get(difficulty, difficulty_instructions["medium"])}
+{focus_block}
+QUESTION WRITING RULES:
+- Cover different parts of the source instead of repeating the same fact.
+- Prefer conceptually important details, not trivia.
+- Do not ask about metadata like page numbers or filenames.
+- Every explanation must state why the answer is correct using the source.
+- For `mcq`, produce exactly 4 options and make the correct answer one of those options.
+- For `true_false`, set options to ["True", "False"] and correct_answer to either "True" or "False".
+- For `fill_blank`, include a visible blank marker such as "_____" in the question.
+- For `short`, make the expected answer 1-3 sentences, not a single word unless the source requires it.
+
+SOURCE MATERIAL:
+{excerpt}
+
+Return valid JSON with the schema provided.
+""".strip()
+
+        raw = self.client.generate_json(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            temperature=0.25,
+            max_tokens=3200,
+            schema=schema,
+        )
+        parsed = safe_load_json(raw)
+        generated_questions = parsed.get("questions", []) if isinstance(parsed, dict) else []
+        sanitized = self._sanitize_questions(generated_questions, allowed_types)
+
+        if not sanitized:
+            logger.warning("QuizGenerator could not sanitize any generated questions; retrying with a simpler prompt")
+            retry_prompt = f"""
+Generate {num_questions} quiz questions as strict JSON.
+
+Use exactly one question type value: {allowed_types[0] if len(allowed_types) == 1 else ", ".join(allowed_types)}.
+Return:
+{{
+  "questions": [
+    {{
+      "question_text": "string",
+      "question_type": "{allowed_types[0] if len(allowed_types) == 1 else allowed_types[0]}",
+      "options": ["string", "string", "string", "string"],
+      "correct_answer": "string",
+      "explanation": "string"
+    }}
+  ]
+}}
+
+SOURCE:
+{excerpt}
+""".strip()
+            retry_raw = self.client.generate_json(
+                prompt=retry_prompt,
+                system_prompt="Return only valid JSON. Do not rename keys. Do not add prose.",
+                temperature=0.1,
+                max_tokens=3200,
+            )
+            retry_parsed = safe_load_json(retry_raw)
+            retry_questions = retry_parsed.get("questions", []) if isinstance(retry_parsed, dict) else []
+            sanitized = self._sanitize_questions(retry_questions, allowed_types)
+
+        if not sanitized:
+            raise RuntimeError("Model returned no usable questions")
+
+        return sanitized[:num_questions]
+
+    def _sanitize_questions(
+        self,
+        questions: Sequence[Dict[str, Any]],
+        allowed_types: Sequence[str],
+    ) -> List[Dict[str, Any]]:
+        cleaned: List[Dict[str, Any]] = []
+
+        for question in questions:
+            if not isinstance(question, dict):
+                continue
+
+            question_type = self._normalize_question_type(question.get("question_type"))
+            if question_type not in allowed_types and len(allowed_types) == 1:
+                question_type = allowed_types[0]
+            if question_type not in allowed_types:
+                logger.info("QuizGenerator dropped question due to invalid type: %s", question.get("question_type"))
+                continue
+
+            question_text = _normalize_whitespace(str(question.get("question_text", "")))
+            correct_answer = _normalize_whitespace(str(question.get("correct_answer", "")))
+            explanation = _normalize_whitespace(str(question.get("explanation", "")))
+
+            if not question_text or not correct_answer:
+                logger.info("QuizGenerator dropped question due to missing text/answer")
+                continue
+
+            options = question.get("options")
+            normalized_options: List[str] | None = None
+
+            if question_type == "mcq":
+                if not isinstance(options, list):
+                    logger.info("QuizGenerator dropped mcq due to non-list options")
+                    continue
+                normalized_options = [
+                    _coerce_option(option)
+                    for option in options
+                    if _coerce_option(option)
+                ]
+                deduped: List[str] = []
+                for option in normalized_options:
+                    if option not in deduped:
+                        deduped.append(option)
+                normalized_options = deduped[:4]
+                if len(normalized_options) < 4:
+                    logger.info("QuizGenerator dropped mcq due to insufficient options: %s", len(normalized_options))
+                    continue
+
+                if correct_answer.upper() in {"A", "B", "C", "D"}:
+                    index = ord(correct_answer.upper()) - ord("A")
+                    correct_answer = normalized_options[index]
+                else:
+                    letter_match = re.match(r"^([A-D])[\).\:-]?\s*(.*)$", correct_answer, flags=re.IGNORECASE)
+                    if letter_match:
+                        index = ord(letter_match.group(1).upper()) - ord("A")
+                        correct_answer = normalized_options[index]
+
+                if correct_answer not in normalized_options:
+                    stripped_match = None
+                    for option in normalized_options:
+                        if correct_answer.lower() in option.lower() or option.lower() in correct_answer.lower():
+                            stripped_match = option
+                            break
+                    if stripped_match:
+                        correct_answer = stripped_match
+                    else:
+                        logger.info("QuizGenerator dropped mcq due to answer mismatch")
+                        continue
+
+            elif question_type == "true_false":
+                normalized_options = ["True", "False"]
+                if correct_answer.lower() not in {"true", "false"}:
+                    logger.info("QuizGenerator dropped true_false due to invalid answer")
+                    continue
+                correct_answer = correct_answer.capitalize()
+
+            elif question_type == "fill_blank":
+                if "____" not in question_text and "blank" not in question_text.lower():
+                    logger.info("QuizGenerator dropped fill_blank due to missing blank marker")
+                    continue
+
+            elif question_type == "short":
+                normalized_options = None
+
+            cleaned.append(
+                {
+                    "question_text": question_text,
+                    "question_type": question_type,
+                    "options": normalized_options,
+                    "correct_answer": correct_answer,
+                    "explanation": explanation or "Review the source passage for the supporting detail.",
+                }
+            )
+
+        logger.info("QuizGenerator sanitized %s/%s questions", len(cleaned), len(questions))
+        return cleaned
+
+    def _normalize_question_type(self, value: Any) -> str:
+        normalized = _normalize_whitespace(str(value)).lower().replace("_", " ")
+        return self.QUESTION_TYPE_ALIASES.get(normalized, normalized.replace(" ", "_"))
+
+
 quiz_generator = QuizGenerator()

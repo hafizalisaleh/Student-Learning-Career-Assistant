@@ -39,8 +39,9 @@ import {
   Wand2,
   Plus,
   Calendar,
+  Target,
 } from 'lucide-react';
-import type { Document, Note, Summary, Quiz } from '@/lib/types';
+import type { Document, Note, Quiz, QuizResult, Summary } from '@/lib/types';
 import { formatDate, formatFileSize, getDifficultyBadgeClass } from '@/lib/utils';
 import {
   getDocumentStatusDescription,
@@ -61,6 +62,10 @@ const getMermaid = async () => {
 };
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { StudyLoopStrip } from '@/components/documents/study-loop-strip';
+import {
+  getStudyLoopNextStep,
+} from '@/lib/study-loop';
 
 type TabType = 'content' | 'info' | 'notes' | 'quizzes' | 'summaries' | 'mindmap' | 'diagrams';
 type SummaryLength = 'short' | 'medium' | 'detailed';
@@ -189,6 +194,7 @@ export default function DocumentDetailPage() {
   const [notes, setNotes] = useState<Note[]>([]);
   const [summaries, setSummaries] = useState<Summary[]>([]);
   const [quizzes, setQuizzes] = useState<Quiz[]>([]);
+  const [quizAttemptsById, setQuizAttemptsById] = useState<Record<string, QuizResult[]>>({});
   const [isLoadingArtifacts, setIsLoadingArtifacts] = useState(false);
 
   // Mind map state
@@ -231,6 +237,28 @@ export default function DocumentDetailPage() {
   }, [documentId]);
 
   useEffect(() => {
+    const browserDocument = globalThis.document;
+    const refreshDetailState = () => {
+      fetchDocument(false);
+      fetchArtifacts();
+    };
+
+    const handleVisibilityChange = () => {
+      if (browserDocument.visibilityState === 'visible') {
+        refreshDetailState();
+      }
+    };
+
+    window.addEventListener('focus', refreshDetailState);
+    browserDocument.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener('focus', refreshDetailState);
+      browserDocument.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [documentId]);
+
+  useEffect(() => {
     if (!documentId || !document) {
       return;
     }
@@ -270,19 +298,44 @@ export default function DocumentDetailPage() {
   async function fetchArtifacts() {
     try {
       setIsLoadingArtifacts(true);
-      const [notesData, summariesData, quizzesData] = await Promise.all([
+      const [notesData, summariesData, quizzesData, attemptHistory] = await Promise.all([
         api.getNotesByDocument(documentId),
         api.getSummariesByDocument(documentId),
-        api.getQuizzes()
+        api.getQuizzes(),
+        api.getQuizAttemptHistory(),
       ]);
       setNotes(notesData || []);
       setSummaries(summariesData || []);
 
       // Filter quizzes by document ID
-      const filteredQuizzes = (quizzesData || []).filter((quiz: Quiz) =>
-        quiz.document_references?.some(ref => ref === documentId)
-      );
+      const filteredQuizzes = (quizzesData || []).filter((quiz: Quiz) => {
+        const references = quiz.document_references?.length
+          ? quiz.document_references
+          : ((quiz as any).document_id ? [(quiz as any).document_id] : []);
+        return references.some((ref: string) => ref === documentId);
+      });
       setQuizzes(filteredQuizzes);
+
+      const attemptsByQuiz: Record<string, QuizResult[]> = {};
+      filteredQuizzes.forEach((quiz: Quiz) => {
+        attemptsByQuiz[quiz.id] = [];
+      });
+
+      (Array.isArray(attemptHistory) ? (attemptHistory as QuizResult[]) : []).forEach((attempt) => {
+        if (attemptsByQuiz[attempt.quiz_id]) {
+          attemptsByQuiz[attempt.quiz_id].push(attempt);
+        }
+      });
+
+      Object.values(attemptsByQuiz).forEach((attempts) => {
+        attempts.sort((a, b) => {
+          const aTime = new Date(a.completed_at).getTime();
+          const bTime = new Date(b.completed_at).getTime();
+          return bTime - aTime;
+        });
+      });
+
+      setQuizAttemptsById(attemptsByQuiz);
     } catch (error) {
       console.error('Failed to load artifacts:', error);
     } finally {
@@ -787,6 +840,144 @@ export default function DocumentDetailPage() {
   const canOpenWorkspace = supportsStudyWorkspace(document.content_type);
   const readyForGeneration = isDocumentReadyForGeneration(document);
   const statusDescription = getDocumentStatusDescription(document);
+  const completedAttempts = Object.values(quizAttemptsById).flat();
+  const bestQuizScore = completedAttempts.length > 0
+    ? Math.max(...completedAttempts.map((attempt) => Number(attempt.score ?? 0)))
+    : null;
+  const studyLoopCounts = {
+    summaries: summaries.length,
+    notes: notes.length,
+    quizzes: quizzes.length,
+    quizAttempts: completedAttempts.length,
+    bestQuizScore,
+  };
+  const nextStep = getStudyLoopNextStep(readyForGeneration, studyLoopCounts);
+  const firstQuiz = quizzes[0];
+  const followUpDifficulty =
+    bestQuizScore == null
+      ? 'medium'
+      : bestQuizScore < 50
+        ? 'easy'
+        : bestQuizScore < 80
+          ? 'medium'
+          : 'hard';
+  const followUpQuestionCount =
+    bestQuizScore == null
+      ? 6
+      : bestQuizScore < 50
+        ? 5
+        : bestQuizScore < 80
+          ? 6
+          : 8;
+  const followUpHref = `/dashboard/quizzes/new?document=${documentId}&mode=followup&difficulty=${followUpDifficulty}&count=${followUpQuestionCount}${firstQuiz ? `&sourceQuiz=${firstQuiz.id}` : ''}`;
+
+  const renderStudyLoopAction = () => {
+    if (!readyForGeneration) {
+      return (
+        <span className="text-sm text-[var(--text-secondary)]">
+          The source is still being prepared. Study actions will unlock automatically once processing finishes.
+        </span>
+      );
+    }
+
+    switch (nextStep.action) {
+      case 'summary':
+        return (
+          <>
+            <Button variant="default" size="sm" onClick={openSummaryModal}>
+              <Sparkles className="h-4 w-4 mr-2" />
+              Generate summary
+            </Button>
+            {canOpenWorkspace && (
+              <Link href={`/dashboard/workspace?id=${documentId}`}>
+                <Button variant="outline" size="sm">
+                  <Play className="h-4 w-4 mr-2" />
+                  Open study desk
+                </Button>
+              </Link>
+            )}
+          </>
+        );
+      case 'notes':
+        return (
+          <>
+            <Link href={`/dashboard/notes/new?document=${documentId}`}>
+              <Button variant="default" size="sm">
+                <BookOpen className="h-4 w-4 mr-2" />
+                Create notes
+              </Button>
+            </Link>
+            {canOpenWorkspace && (
+              <Link href={`/dashboard/workspace?id=${documentId}`}>
+                <Button variant="outline" size="sm">
+                  <Play className="h-4 w-4 mr-2" />
+                  Open study desk
+                </Button>
+              </Link>
+            )}
+          </>
+        );
+      case 'quiz':
+        return (
+          <>
+            <Link href={`/dashboard/quizzes/new?document=${documentId}`}>
+              <Button variant="default" size="sm">
+                <ClipboardCheck className="h-4 w-4 mr-2" />
+                Generate quiz
+              </Button>
+            </Link>
+            <Link href={`/dashboard/notes/new?document=${documentId}&type=study`}>
+              <Button variant="outline" size="sm">
+                <BookOpen className="h-4 w-4 mr-2" />
+                Add study note
+              </Button>
+            </Link>
+          </>
+        );
+      case 'attempt':
+        return (
+          <>
+            {firstQuiz ? (
+              <Link href={`/dashboard/quizzes/${firstQuiz.id}`}>
+                <Button variant="default" size="sm">
+                  <Target className="h-4 w-4 mr-2" />
+                  Take quiz
+                </Button>
+              </Link>
+            ) : null}
+            {canOpenWorkspace && (
+              <Link href={`/dashboard/workspace?id=${documentId}`}>
+                <Button variant="outline" size="sm">
+                  <Play className="h-4 w-4 mr-2" />
+                  Review in study desk
+                </Button>
+              </Link>
+            )}
+          </>
+        );
+      case 'review':
+        return (
+          <>
+            {canOpenWorkspace && (
+              <Link href={`/dashboard/workspace?id=${documentId}`}>
+                <Button variant="default" size="sm">
+                  <Play className="h-4 w-4 mr-2" />
+                  Resume study desk
+                </Button>
+              </Link>
+            )}
+            <Link href={followUpHref}>
+              <Button variant="outline" size="sm">
+                <ClipboardCheck className="h-4 w-4 mr-2" />
+                Build follow-up quiz
+              </Button>
+            </Link>
+          </>
+        );
+      default:
+        return null;
+    }
+  };
 
   const tabs = [
     { id: 'content', label: 'Content', icon: FileText },
@@ -860,6 +1051,13 @@ export default function DocumentDetailPage() {
           {statusDescription || 'This document is still being prepared.'}
         </div>
       )}
+
+      <StudyLoopStrip
+        title="Document study pipeline"
+        readyForGeneration={readyForGeneration}
+        counts={studyLoopCounts}
+        actionSlot={renderStudyLoopAction()}
+      />
 
       {/* Quick Actions Bar */}
       <div className="flex flex-wrap items-center gap-2 p-3 rounded-xl bg-[var(--bg-secondary)] border border-[var(--card-border)]">

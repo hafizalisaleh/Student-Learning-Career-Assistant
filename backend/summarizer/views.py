@@ -55,7 +55,7 @@ async def generate_summary(
         retrieval_result = rag_retriever.get_content_for_generation(
             document=document,
             task_type="summary",
-            chunk_count=5
+            chunk_count=8
         )
 
         content = retrieval_result.get("content")
@@ -83,7 +83,7 @@ async def generate_summary(
                 )
             )
         
-        # Generate summary using Gemini AI
+        # Generate summary using the active provider-aware LLM client
         try:
             logger.info(f"Starting AI summary generation...")
             summary_text = summarizer.generate_summary(

@@ -36,6 +36,13 @@ import { formatDate, formatFileSize } from '@/lib/utils';
 import toast from 'react-hot-toast';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
+import type { Note, Quiz, QuizResult, Summary } from '@/lib/types';
+import { StudyLoopStrip } from '@/components/documents/study-loop-strip';
+import {
+  createEmptyStudyLoopCounts,
+  getStudyLoopNextStep,
+  type StudyLoopCounts,
+} from '@/lib/study-loop';
 
 type UploadStatus = 'idle' | 'uploading' | 'processing' | 'success' | 'background' | 'error';
 
@@ -58,6 +65,7 @@ function getDeleteConfirmationMessage(doc: Document) {
 
 export default function DocumentsPage() {
   const [documents, setDocuments] = useState<Document[]>([]);
+  const [studyLoopByDocument, setStudyLoopByDocument] = useState<Record<string, StudyLoopCounts>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
   const [showUrlInput, setShowUrlInput] = useState(false);
@@ -75,6 +83,28 @@ export default function DocumentsPage() {
 
   useEffect(() => {
     fetchDocuments();
+    fetchLibraryArtifacts();
+  }, []);
+
+  useEffect(() => {
+    const refreshLibraryState = () => {
+      fetchDocuments(false);
+      fetchLibraryArtifacts();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        refreshLibraryState();
+      }
+    };
+
+    window.addEventListener('focus', refreshLibraryState);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener('focus', refreshLibraryState);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, []);
 
   useEffect(() => {
@@ -105,6 +135,72 @@ export default function DocumentsPage() {
       setDocuments([]);
     } finally {
       if (showLoader) setIsLoading(false);
+    }
+  }
+
+  async function fetchLibraryArtifacts() {
+    try {
+      const [notesData, summariesData, quizzesData, attemptHistory] = await Promise.all([
+        api.getNotes(),
+        api.getSummaries(),
+        api.getQuizzes(),
+        api.getQuizAttemptHistory(),
+      ]);
+
+      const nextState: Record<string, StudyLoopCounts> = {};
+
+      const ensureCounts = (documentId: string) => {
+        if (!nextState[documentId]) {
+          nextState[documentId] = createEmptyStudyLoopCounts();
+        }
+        return nextState[documentId];
+      };
+
+      (Array.isArray(notesData) ? (notesData as Note[]) : []).forEach((note) => {
+        if (!note.document_id) return;
+        ensureCounts(note.document_id).notes += 1;
+      });
+
+      (Array.isArray(summariesData) ? (summariesData as Summary[]) : []).forEach((summary) => {
+        if (!summary.document_id) return;
+        ensureCounts(summary.document_id).summaries += 1;
+      });
+
+      (Array.isArray(quizzesData) ? (quizzesData as Quiz[]) : []).forEach((quiz) => {
+        const references =
+          quiz.document_references?.length
+            ? quiz.document_references
+            : ((quiz as any).document_id ? [(quiz as any).document_id] : []);
+
+        references.forEach((documentId) => {
+          ensureCounts(documentId).quizzes += 1;
+        });
+      });
+
+      const quizReferenceMap = new Map<string, string[]>();
+      (Array.isArray(quizzesData) ? (quizzesData as Quiz[]) : []).forEach((quiz) => {
+        const references =
+          quiz.document_references?.length
+            ? quiz.document_references
+            : ((quiz as any).document_id ? [(quiz as any).document_id] : []);
+        quizReferenceMap.set(quiz.id, references);
+      });
+
+      (Array.isArray(attemptHistory) ? (attemptHistory as QuizResult[]) : []).forEach((attempt) => {
+        const references = quizReferenceMap.get(attempt.quiz_id) || [];
+        references.forEach((documentId) => {
+          const counts = ensureCounts(documentId);
+          counts.quizAttempts += 1;
+          counts.bestQuizScore = Math.max(
+            Number(counts.bestQuizScore ?? 0),
+            Number(attempt.score ?? 0)
+          );
+        });
+      });
+
+      setStudyLoopByDocument(nextState);
+    } catch (error) {
+      console.error('Failed to load study loop artifacts:', error);
     }
   }
 
@@ -292,6 +388,7 @@ export default function DocumentsPage() {
       toast.success(result?.warnings?.length ? 'Document deleted with cleanup warnings' : 'Document deleted successfully');
       (result?.warnings || []).forEach((warning: string) => toast.error(warning));
       setDocuments(documents.filter((doc) => doc.id !== id));
+      await fetchLibraryArtifacts();
     } catch (error: any) {
       toast.error(error.response?.data?.detail || 'Failed to delete document');
     }
@@ -543,15 +640,26 @@ export default function DocumentsPage() {
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2 2xl:grid-cols-3">
+        <div className={cn(
+          'grid grid-cols-1 gap-4',
+          filteredDocuments.length === 1
+            ? 'max-w-5xl'
+            : 'xl:grid-cols-2 2xl:grid-cols-3'
+        )}>
           {filteredDocuments.map((doc) => {
+            const isSingleDocumentCard = filteredDocuments.length === 1;
             const canOpenWorkspace = supportsStudyWorkspace(doc.content_type);
             const readyForGeneration = isDocumentReadyForGeneration(doc);
+            const studyLoopCounts = studyLoopByDocument[doc.id] || createEmptyStudyLoopCounts();
+            const nextStep = getStudyLoopNextStep(readyForGeneration, studyLoopCounts);
 
             return (
               <div key={doc.id} className="dashboard-panel group overflow-hidden">
                 <div className="panel-content flex h-full flex-col">
-                  <div className="relative flex min-h-[168px] items-end overflow-hidden border-b border-[var(--card-border)] bg-[linear-gradient(135deg,color-mix(in_srgb,var(--documents-bg)_84%,transparent),color-mix(in_srgb,var(--accent)_60%,transparent))] p-5">
+                  <div className={cn(
+                    'relative overflow-hidden border-b border-[var(--card-border)] bg-[linear-gradient(135deg,color-mix(in_srgb,var(--documents-bg)_84%,transparent),color-mix(in_srgb,var(--accent)_60%,transparent))]',
+                    isSingleDocumentCard ? 'min-h-[240px]' : 'min-h-[168px] p-5 flex items-end'
+                  )}>
                     {doc.thumbnail_path ? (
                       <img
                         src={api.getDocumentThumbnailUrl(doc.id)}
@@ -563,26 +671,74 @@ export default function DocumentsPage() {
                         }}
                       />
                     ) : null}
-                    <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(10,16,24,0.04),rgba(10,16,24,0.58))]" />
-                    <div className="relative flex items-center gap-3">
-                      <div className={cn('flex h-12 w-12 items-center justify-center rounded-2xl border border-white/20 shadow-lg backdrop-blur-sm', getTypeColor(doc.content_type))}>
-                        {getTypeIcon(doc.content_type)}
+                    <div
+                      className={cn(
+                        'absolute inset-0',
+                        isSingleDocumentCard
+                          ? 'bg-[linear-gradient(180deg,rgba(10,16,24,0.04),rgba(10,16,24,0.32)_58%,rgba(10,16,24,0.72))]'
+                          : 'bg-[linear-gradient(180deg,rgba(10,16,24,0.02),rgba(10,16,24,0.78))]'
+                      )}
+                    />
+                    {isSingleDocumentCard ? (
+                      <div className="absolute inset-x-0 bottom-0 p-5">
+                        <div className="flex items-end justify-between gap-3">
+                          <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-[rgba(10,16,24,0.42)] px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-white/80 backdrop-blur-md">
+                            <span className={cn('flex h-8 w-8 items-center justify-center rounded-2xl border border-white/15 shadow-lg', getTypeColor(doc.content_type))}>
+                              {getTypeIcon(doc.content_type)}
+                            </span>
+                            {doc.content_type}
+                          </div>
+                          <span className={cn('rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] backdrop-blur-sm', getStatusBadge(doc.processing_status), 'border-white/20 bg-white/10 text-white')}>
+                            {doc.processing_status?.toLowerCase() || 'pending'}
+                          </span>
+                        </div>
                       </div>
-                      <div className="min-w-0">
-                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/75">
-                          {doc.content_type}
-                        </p>
-                        <p className="truncate text-lg font-medium text-white">{doc.title}</p>
+                    ) : (
+                      <div className="relative flex items-center gap-3 rounded-[1.4rem] bg-[rgba(10,16,24,0.32)] px-3 py-3 backdrop-blur-md">
+                        <div className={cn('flex h-12 w-12 items-center justify-center rounded-2xl border border-white/20 shadow-lg backdrop-blur-sm', getTypeColor(doc.content_type))}>
+                          {getTypeIcon(doc.content_type)}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/75">
+                            {doc.content_type}
+                          </p>
+                          <p className="truncate text-lg font-medium text-white">
+                            {doc.title}
+                          </p>
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
 
                   <div className="flex flex-1 flex-col p-5">
+                    {isSingleDocumentCard ? (
+                      <div className="mb-4 flex items-start gap-3">
+                        <div className={cn('mt-1 flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-[var(--card-border)] shadow-sm', getTypeColor(doc.content_type))}>
+                          {getTypeIcon(doc.content_type)}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
+                            {doc.content_type} source
+                          </p>
+                          <h3 className="mt-1 text-2xl font-semibold tracking-[-0.03em] text-[var(--text-primary)]">
+                            {doc.title}
+                          </h3>
+                          {doc.original_filename && doc.original_filename !== doc.title ? (
+                            <p className="mt-1 text-sm text-[var(--text-secondary)]">
+                              {doc.original_filename}
+                            </p>
+                          ) : null}
+                        </div>
+                      </div>
+                    ) : null}
+
                     <div className="flex items-center justify-between gap-3">
                       <p className="text-sm text-[var(--text-secondary)]">{formatDate(doc.created_at)}</p>
-                      <span className={cn('rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]', getStatusBadge(doc.processing_status))}>
-                        {doc.processing_status?.toLowerCase() || 'pending'}
-                      </span>
+                      {!isSingleDocumentCard ? (
+                        <span className={cn('rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]', getStatusBadge(doc.processing_status))}>
+                          {doc.processing_status?.toLowerCase() || 'pending'}
+                        </span>
+                      ) : null}
                     </div>
 
                     <div className="mt-5 grid gap-3 sm:grid-cols-2">
@@ -601,6 +757,24 @@ export default function DocumentsPage() {
                     <p className="mt-4 text-sm leading-6 text-[var(--text-secondary)]">
                       {getDocumentStatusDescription(doc)}
                     </p>
+
+                    <div className="mt-4">
+                      <StudyLoopStrip
+                        compact
+                        title="Document study loop"
+                        readyForGeneration={readyForGeneration}
+                        counts={studyLoopCounts}
+                      />
+                    </div>
+
+                    <div className="mt-3 rounded-[1.15rem] border border-[var(--card-border)] bg-[color:color-mix(in_srgb,var(--bg-elevated)_74%,transparent)] px-3.5 py-3">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-tertiary)]">
+                        Next step
+                      </p>
+                      <p className="mt-2 text-sm font-medium text-[var(--text-primary)]">
+                        {nextStep.label}
+                      </p>
+                    </div>
 
                     <div className="mt-5 flex flex-wrap gap-2 border-t border-[var(--card-border)] pt-4">
                       {canOpenWorkspace && readyForGeneration ? (

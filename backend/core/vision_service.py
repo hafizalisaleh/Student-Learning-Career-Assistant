@@ -1088,11 +1088,39 @@ class VisionService:
                 }
             )
 
+        response_schema = {
+            "type": "object",
+            "properties": {
+                "images": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "image_index": {"type": "integer"},
+                            "asset_ref": {"type": "string"},
+                            "summary": {"type": "string"},
+                            "ocr_text": {"type": "string"},
+                            "relevance": {"type": "string"},
+                        },
+                        "required": ["asset_ref", "summary", "ocr_text", "relevance"],
+                    },
+                }
+            },
+            "required": ["images"],
+        }
+
         try:
             response = self.groq_client.chat.completions.create(
                 model=self.vision_model,
                 messages=[{"role": "user", "content": content_parts}],
-                response_format={"type": "json_object"},
+                response_format={
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "vision_image_analysis",
+                        "strict": False,
+                        "schema": response_schema,
+                    },
+                },
                 temperature=0.2,
                 max_completion_tokens=800,
             )

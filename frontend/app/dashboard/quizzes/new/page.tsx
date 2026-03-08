@@ -70,11 +70,22 @@ function NewQuizContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const docIdFromQuery = searchParams.get('document');
+  const modeFromQuery = searchParams.get('mode');
+  const difficultyFromQuery = searchParams.get('difficulty');
+  const countFromQuery = searchParams.get('count');
+  const sourceQuizFromQuery = searchParams.get('sourceQuiz');
   const [isLoading, setIsLoading] = useState(false);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [selectedTypes, setSelectedTypes] = useState<string[]>(['mcq']);
-  const [selectedDifficulty, setSelectedDifficulty] = useState('medium');
-  const [numQuestions, setNumQuestions] = useState(10);
+  const [selectedDifficulty, setSelectedDifficulty] = useState(
+    difficultyFromQuery && ['easy', 'medium', 'hard'].includes(difficultyFromQuery)
+      ? difficultyFromQuery
+      : 'medium'
+  );
+  const initialCount = Number.parseInt(countFromQuery || '', 10);
+  const [numQuestions, setNumQuestions] = useState(
+    Number.isFinite(initialCount) ? Math.min(50, Math.max(1, initialCount)) : 10
+  );
   const [isDocDropdownOpen, setIsDocDropdownOpen] = useState(false);
   const [selectedDoc, setSelectedDoc] = useState<Document | null>(null);
 
@@ -86,11 +97,27 @@ function NewQuizContent() {
   } = useForm<GenerateQuizFormData>({
     resolver: zodResolver(generateQuizSchema),
     defaultValues: {
-      num_questions: 10,
-      difficulty: 'medium',
+      num_questions: Number.isFinite(initialCount) ? Math.min(50, Math.max(1, initialCount)) : 10,
+      difficulty:
+        difficultyFromQuery && ['easy', 'medium', 'hard'].includes(difficultyFromQuery)
+          ? (difficultyFromQuery as 'easy' | 'medium' | 'hard')
+          : 'medium',
       question_types: ['mcq'],
     },
   });
+
+  useEffect(() => {
+    if (difficultyFromQuery && ['easy', 'medium', 'hard'].includes(difficultyFromQuery)) {
+      setSelectedDifficulty(difficultyFromQuery);
+      setValue('difficulty', difficultyFromQuery as 'easy' | 'medium' | 'hard');
+    }
+
+    if (Number.isFinite(initialCount)) {
+      const safeCount = Math.min(50, Math.max(1, initialCount));
+      setNumQuestions(safeCount);
+      setValue('num_questions', safeCount);
+    }
+  }, [difficultyFromQuery, initialCount, setValue]);
 
   useEffect(() => {
     async function fetchDocuments() {
@@ -154,7 +181,12 @@ function NewQuizContent() {
         num_questions: numQuestions,
         difficulty: selectedDifficulty,
         question_type: selectedTypes.length === 1 ? selectedTypes[0] : 'mixed',
-        title: data.topic || undefined,
+        title:
+          data.topic ||
+          (modeFromQuery === 'followup'
+            ? `${selectedDoc.title} · Follow-up Quiz`
+            : undefined),
+        follow_up_from_quiz_id: sourceQuizFromQuery || undefined,
       };
 
       const quiz = await api.generateQuiz(requestData);
@@ -199,6 +231,31 @@ function NewQuizContent() {
         </div>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-8">
+          {modeFromQuery === 'followup' ? (
+            <div className="quiz-glass-card p-5">
+              <div className="flex items-start gap-3">
+                <div className="w-11 h-11 rounded-xl bg-[var(--accent-purple)]/12 flex items-center justify-center">
+                  <Target className="w-5 h-5 text-[var(--accent-purple)]" />
+                </div>
+                <div>
+                  <h2 className="text-sm font-semibold text-[var(--text-primary)]">
+                    Follow-up quiz preset
+                  </h2>
+                  <p className="mt-1 text-sm text-[var(--text-secondary)]">
+                    {selectedDifficulty === 'easy'
+                      ? 'This recovery quiz is shorter and easier so you can repair weak areas before moving up again.'
+                      : selectedDifficulty === 'medium'
+                        ? 'This follow-up quiz keeps the same source in focus and asks a balanced set of revision questions.'
+                        : 'This reinforcement quiz is tuned harder to push recall and transfer beyond the last attempt.'}
+                  </p>
+                  <p className="mt-2 text-xs text-[var(--text-tertiary)]">
+                    {sourceQuizFromQuery ? `Based on quiz ${sourceQuizFromQuery.slice(0, 8)}...` : 'Built from your previous performance on this source.'}
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
           {/* Document Selection */}
           <div className="quiz-glass-card p-8">
             <div className="mb-4">

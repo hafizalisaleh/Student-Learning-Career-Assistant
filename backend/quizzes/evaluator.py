@@ -1,14 +1,16 @@
 """
-Quiz evaluator for grading and providing feedback
+Quiz evaluator for grading and providing feedback.
 """
-from typing import Dict, List, Any
-from utils.gemini_client import gemini_client
+
+from typing import Any, Dict, List
+
+from utils.rag_llm_client import RAGLLMClient, safe_load_json
 
 class QuizEvaluator:
     """Evaluate quiz answers and provide feedback"""
     
     def __init__(self):
-        self.gemini_client = gemini_client
+        self.client = RAGLLMClient()
     
     def evaluate_mcq(
         self, 
@@ -99,38 +101,44 @@ class QuizEvaluator:
             Evaluation result with AI feedback
         """
         prompt = f"""
-        Evaluate the following student answer to a question.
-        
-        Question: {question_text}
-        
-        Expected Answer: {correct_answer}
-        
-        Student's Answer: {user_answer}
-        
-        Provide evaluation in this format:
-        SCORE: [0.0 to 1.0]
-        FEEDBACK: [Detailed feedback explaining the score, what was correct, what was missing, and suggestions]
-        
-        Be fair and consider partial credit for partially correct answers.
-        """
+Evaluate the student's short-answer response against the expected answer.
+
+QUESTION:
+{question_text}
+
+EXPECTED ANSWER:
+{correct_answer}
+
+STUDENT ANSWER:
+{user_answer}
+
+Return JSON only with:
+- score: number between 0 and 1
+- feedback: concise explanation of what was correct, missing, or wrong
+""".strip()
         
         try:
-            response = self.gemini_client.generate_text(prompt, temperature=0.3)
-            
-            # Parse response
-            score = 0.0
-            feedback = "Unable to evaluate answer."
-            
-            lines = response.split('\n')
-            for line in lines:
-                if line.startswith('SCORE:'):
-                    try:
-                        score = float(line.split(':')[1].strip())
-                        score = max(0.0, min(1.0, score))  # Clamp between 0 and 1
-                    except:
-                        score = 0.0
-                elif line.startswith('FEEDBACK:'):
-                    feedback = line.split(':', 1)[1].strip()
+            response = self.client.generate_json(
+                prompt=prompt,
+                system_prompt=(
+                    "You are grading a student's short-answer response. "
+                    "Be strict but fair, award partial credit when justified, and return valid JSON only."
+                ),
+                temperature=0.1,
+                max_tokens=500,
+                schema={
+                    "type": "object",
+                    "properties": {
+                        "score": {"type": "number"},
+                        "feedback": {"type": "string"},
+                    },
+                    "required": ["score", "feedback"],
+                },
+            )
+            parsed = safe_load_json(response)
+            score = float(parsed.get('score', 0.0))
+            score = max(0.0, min(1.0, score))
+            feedback = str(parsed.get('feedback', 'Unable to evaluate answer.')).strip()
             
             return {
                 'is_correct': score >= 0.7,  # 70% or higher is considered correct
@@ -139,7 +147,7 @@ class QuizEvaluator:
                 'explanation': feedback
             }
             
-        except Exception as e:
+        except Exception:
             # Fallback to simple string matching
             user_lower = user_answer.strip().lower()
             correct_lower = correct_answer.strip().lower()

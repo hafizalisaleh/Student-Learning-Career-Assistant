@@ -112,6 +112,26 @@ export interface QuizAttempt {
   time_taken?: number;
 }
 
+export interface QuizResult {
+  attempt_id: string;
+  quiz_id: string;
+  score: number;
+  total_questions: number;
+  correct_answers: number;
+  time_taken?: number;
+  completed_at: string;
+  feedback: Array<{
+    question_id: string;
+    question_text: string;
+    user_answer: string;
+    correct_answer: string;
+    is_correct: boolean;
+    explanation: string;
+    points_earned: number;
+    points_possible: number;
+  }>;
+}
+
 export interface QuizAnalytics {
   total_quizzes: number;
   total_attempts: number;

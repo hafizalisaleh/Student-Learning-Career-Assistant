@@ -26,6 +26,8 @@ class QuizCreate(BaseModel):
     difficulty: DifficultyLevelEnum = DifficultyLevelEnum.MEDIUM
     num_questions: int = Field(default=10, ge=1, le=50)
     title: Optional[str] = None
+    follow_up_from_quiz_id: Optional[uuid.UUID] = None
+    focus_context: Optional[str] = None
 
 class QuestionResponse(BaseModel):
     """Schema for quiz question response"""

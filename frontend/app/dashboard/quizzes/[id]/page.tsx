@@ -171,11 +171,25 @@ export default function TakeQuizPage() {
 
   // Results view
   if (attempt) {
+    const sourceDocumentId =
+      quiz?.document_references?.length
+        ? quiz.document_references[0]
+        : ((quiz as any)?.document_id as string | undefined);
+    const incorrectFeedback = Array.isArray(attempt.feedback)
+      ? attempt.feedback.filter((fb: any) => !fb.is_correct)
+      : [];
     const timeTaken = attempt.time_taken
       ? Math.round(attempt.time_taken / 60)
       : timeStarted
         ? Math.round((new Date().getTime() - timeStarted.getTime()) / 60000)
         : 0;
+    const followUpDifficulty =
+      attempt.score < 50 ? 'easy' : attempt.score < 80 ? 'medium' : 'hard';
+    const followUpQuestionCount =
+      attempt.score < 50 ? 5 : attempt.score < 80 ? 6 : 8;
+    const followUpHref = sourceDocumentId
+      ? `/dashboard/quizzes/new?document=${sourceDocumentId}&mode=followup&difficulty=${followUpDifficulty}&count=${followUpQuestionCount}&sourceQuiz=${quizId}`
+      : `/dashboard/quizzes/new?mode=followup&difficulty=${followUpDifficulty}&count=${followUpQuestionCount}&sourceQuiz=${quizId}`;
 
     const grade = getScoreGrade(attempt.score);
     const GradeIcon = grade.icon;
@@ -432,10 +446,21 @@ export default function TakeQuizPage() {
               </div>
             </div>
 
+            {incorrectFeedback.length > 0 ? (
+              <div className="mb-5 rounded-2xl border border-[var(--warning)]/25 bg-[var(--warning)]/6 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-tertiary)]">
+                  Recovery focus
+                </p>
+                <p className="mt-2 text-sm text-[var(--text-primary)]">
+                  {incorrectFeedback.length} question{incorrectFeedback.length === 1 ? '' : 's'} need reinforcement. Reopen the source, capture a note, then verify again with a follow-up quiz.
+                </p>
+              </div>
+            ) : null}
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {attempt.score < 70 && (
+              {sourceDocumentId ? (
                 <Link
-                  href="/dashboard/notes"
+                  href={`/dashboard/documents/${sourceDocumentId}`}
                   className="group p-5 rounded-xl bg-[var(--bg-elevated)] border border-[var(--card-border)] hover:border-[var(--accent-blue)]/50 transition-all"
                 >
                   <div className="flex items-center justify-between">
@@ -444,9 +469,31 @@ export default function TakeQuizPage() {
                         <BookOpen className="w-5 h-5 text-[var(--accent-blue)]" />
                       </div>
                       <div>
-                        <p className="font-semibold text-[var(--text-primary)]">Review Notes</p>
+                        <p className="font-semibold text-[var(--text-primary)]">Open source dossier</p>
                         <p className="text-sm text-[var(--text-tertiary)]">
-                          Revisit the material
+                          Jump back to the document pipeline
+                        </p>
+                      </div>
+                    </div>
+                    <ChevronRight className="w-5 h-5 text-[var(--text-tertiary)] group-hover:text-[var(--accent-blue)] transition-colors" />
+                  </div>
+                </Link>
+              ) : null}
+
+              {attempt.score < 70 && sourceDocumentId && (
+                <Link
+                  href={`/dashboard/notes/new?document=${sourceDocumentId}&type=study`}
+                  className="group p-5 rounded-xl bg-[var(--bg-elevated)] border border-[var(--card-border)] hover:border-[var(--accent-blue)]/50 transition-all"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-lg bg-[var(--accent-blue)]/10 flex items-center justify-center">
+                        <BookOpen className="w-5 h-5 text-[var(--accent-blue)]" />
+                      </div>
+                      <div>
+                        <p className="font-semibold text-[var(--text-primary)]">Capture a study note</p>
+                        <p className="text-sm text-[var(--text-tertiary)]">
+                          Turn weak areas into a personal review sheet
                         </p>
                       </div>
                     </div>
@@ -456,7 +503,7 @@ export default function TakeQuizPage() {
               )}
 
               <Link
-                href="/dashboard/quizzes/new"
+                href={followUpHref}
                 className="group p-5 rounded-xl bg-[var(--bg-elevated)] border border-[var(--card-border)] hover:border-[var(--accent-purple)]/50 transition-all"
               >
                 <div className="flex items-center justify-between">
@@ -464,16 +511,42 @@ export default function TakeQuizPage() {
                     <div className="w-10 h-10 rounded-lg bg-[var(--accent-purple)]/10 flex items-center justify-center">
                       <Target className="w-5 h-5 text-[var(--accent-purple)]" />
                     </div>
-                    <div>
-                      <p className="font-semibold text-[var(--text-primary)]">Try Another Quiz</p>
-                      <p className="text-sm text-[var(--text-tertiary)]">
-                        Test different topics
-                      </p>
+                      <div>
+                        <p className="font-semibold text-[var(--text-primary)]">Build a follow-up quiz</p>
+                        <p className="text-sm text-[var(--text-tertiary)]">
+                          {attempt.score < 50
+                            ? 'Recover with an easier, shorter quiz on the same source'
+                            : attempt.score < 80
+                              ? 'Retest the same source with a medium-difficulty follow-up'
+                              : 'Push further with a harder reinforcement quiz'}
+                        </p>
+                      </div>
                     </div>
+                    <ChevronRight className="w-5 h-5 text-[var(--text-tertiary)] group-hover:text-[var(--accent-purple)] transition-colors" />
                   </div>
-                  <ChevronRight className="w-5 h-5 text-[var(--text-tertiary)] group-hover:text-[var(--accent-purple)] transition-colors" />
-                </div>
-              </Link>
+                </Link>
+
+              {sourceDocumentId ? (
+                <Link
+                  href={`/dashboard/workspace?id=${sourceDocumentId}`}
+                  className="group p-5 rounded-xl bg-[var(--bg-elevated)] border border-[var(--card-border)] hover:border-[var(--accent-green)]/50 transition-all"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-lg bg-[var(--accent-green)]/10 flex items-center justify-center">
+                        <Sparkles className="w-5 h-5 text-[var(--accent-green)]" />
+                      </div>
+                      <div>
+                        <p className="font-semibold text-[var(--text-primary)]">Resume in study desk</p>
+                        <p className="text-sm text-[var(--text-tertiary)]">
+                          Ask grounded questions against the exact source
+                        </p>
+                      </div>
+                    </div>
+                    <ChevronRight className="w-5 h-5 text-[var(--text-tertiary)] group-hover:text-[var(--accent-green)] transition-colors" />
+                  </div>
+                </Link>
+              ) : null}
             </div>
           </div>
         </div>

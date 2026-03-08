@@ -1,15 +1,21 @@
 """
 Quiz API endpoints
 """
+from datetime import datetime, timezone
+from typing import List, Optional
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from typing import List
-from datetime import datetime, timezone
+
 from config.database import get_db
-from quizzes.models import Quiz, QuizQuestion, QuizAttempt, DifficultyLevel, QuestionType
+from quizzes.models import DifficultyLevel, QuestionType, Quiz, QuizAttempt, QuizQuestion
 from quizzes.schemas import (
-    QuizCreate, QuizResponse, QuestionResponse, QuizSubmission,
-    QuizResultResponse, QuestionFeedback
+    QuestionFeedback,
+    QuestionResponse,
+    QuizCreate,
+    QuizResponse,
+    QuizResultResponse,
+    QuizSubmission,
 )
 from documents.models import Document, ProcessingStatus
 from users.auth import get_current_user
@@ -21,6 +27,93 @@ from core.rag_retriever import rag_retriever
 from utils.logger import logger
 
 router = APIRouter(prefix="/api/quizzes", tags=["quizzes"])
+
+
+def _build_follow_up_focus_context(
+    db: Session,
+    current_user: User,
+    source_quiz_id: Optional[str],
+) -> Optional[str]:
+    if not source_quiz_id:
+        return None
+
+    import uuid
+
+    try:
+        source_quiz_uuid = uuid.UUID(source_quiz_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid source quiz ID format",
+        )
+
+    source_quiz = db.query(Quiz).filter(
+        Quiz.id == source_quiz_uuid,
+        Quiz.user_id == current_user.id,
+    ).first()
+
+    if not source_quiz:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Source quiz for follow-up was not found",
+        )
+
+    latest_attempt = db.query(QuizAttempt).filter(
+        QuizAttempt.quiz_id == source_quiz.id,
+        QuizAttempt.user_id == current_user.id,
+        QuizAttempt.completed_at.isnot(None),
+    ).order_by(QuizAttempt.completed_at.desc()).first()
+
+    if not latest_attempt or not latest_attempt.answers:
+        return None
+
+    question_map = {
+        str(question.id): question
+        for question in db.query(QuizQuestion).filter(
+            QuizQuestion.quiz_id == source_quiz.id
+        ).all()
+    }
+
+    incorrect_lines: List[str] = []
+    correct_lines: List[str] = []
+
+    for answer in latest_attempt.answers:
+        question_id = answer.get("question_id")
+        question = question_map.get(question_id)
+        if not question:
+            continue
+
+        line = (
+            f"- Question: {question.question_text}\n"
+            f"  User answer: {answer.get('user_answer', 'No answer')}\n"
+            f"  Correct answer: {answer.get('correct_answer', question.correct_answer)}\n"
+            f"  Why it matters: {question.explanation or 'Review the supporting detail from the source.'}"
+        )
+
+        if answer.get("is_correct"):
+            correct_lines.append(line)
+        else:
+            incorrect_lines.append(line)
+
+    if incorrect_lines:
+        return (
+            f"Previous quiz score: {latest_attempt.score}%.\n"
+            "Focus the follow-up quiz on the weak areas below. Re-test the same concepts from a different angle, "
+            "prefer application and source-grounded explanations, and avoid repeating wording exactly.\n\n"
+            "WEAK AREAS:\n"
+            + "\n".join(incorrect_lines[:6])
+        )
+
+    if correct_lines:
+        return (
+            f"Previous quiz score: {latest_attempt.score}% with all answered questions correct.\n"
+            "Generate a stronger reinforcement quiz that raises difficulty through comparison, transfer, and application. "
+            "Build on the successfully answered concepts below instead of repeating simple recall.\n\n"
+            "MASTERED AREAS:\n"
+            + "\n".join(correct_lines[:5])
+        )
+
+    return None
 
 @router.post("/generate", response_model=QuizResponse, status_code=status.HTTP_201_CREATED)
 def generate_quiz(
@@ -67,7 +160,7 @@ def generate_quiz(
             retrieval_result = rag_retriever.get_content_for_generation(
                 document=doc,
                 task_type="quiz",
-                chunk_count=5
+                chunk_count=8
             )
 
             content = retrieval_result.get("content")
@@ -100,37 +193,48 @@ def generate_quiz(
             )
         )
     
+    focus_context = quiz_data.focus_context or _build_follow_up_focus_context(
+        db=db,
+        current_user=current_user,
+        source_quiz_id=str(quiz_data.follow_up_from_quiz_id) if quiz_data.follow_up_from_quiz_id else None,
+    )
+
     # Generate questions based on type
     try:
         if quiz_data.question_type.value == "mcq":
             generated_questions = quiz_generator.generate_mcq_questions(
                 combined_content,
                 quiz_data.num_questions,
-                quiz_data.difficulty.value
+                quiz_data.difficulty.value,
+                focus_context=focus_context,
             )
         elif quiz_data.question_type.value == "short":
             generated_questions = quiz_generator.generate_short_answer_questions(
                 combined_content,
                 quiz_data.num_questions,
-                quiz_data.difficulty.value
+                quiz_data.difficulty.value,
+                focus_context=focus_context,
             )
         elif quiz_data.question_type.value == "true_false":
             generated_questions = quiz_generator.generate_true_false_questions(
                 combined_content,
                 quiz_data.num_questions,
-                quiz_data.difficulty.value
+                quiz_data.difficulty.value,
+                focus_context=focus_context,
             )
         elif quiz_data.question_type.value == "fill_blank":
             generated_questions = quiz_generator.generate_fill_blank_questions(
                 combined_content,
                 quiz_data.num_questions,
-                quiz_data.difficulty.value
+                quiz_data.difficulty.value,
+                focus_context=focus_context,
             )
         else:  # mixed
             generated_questions = quiz_generator.generate_mixed_questions(
                 combined_content,
                 quiz_data.num_questions,
-                quiz_data.difficulty.value
+                quiz_data.difficulty.value,
+                focus_context=focus_context,
             )
     except Exception as e:
         raise HTTPException(
@@ -267,7 +371,8 @@ def get_quiz_analytics(
         
         # Get total attempts
         total_attempts = db.query(QuizAttempt).filter(
-            QuizAttempt.user_id == current_user.id
+            QuizAttempt.user_id == current_user.id,
+            QuizAttempt.completed_at.isnot(None),
         ).count()
         
         # Get average and best scores
@@ -337,7 +442,8 @@ def get_quiz_history(
         List of quiz attempts
     """
     attempts = db.query(QuizAttempt).filter(
-        QuizAttempt.user_id == current_user.id
+        QuizAttempt.user_id == current_user.id,
+        QuizAttempt.completed_at.isnot(None),
     ).order_by(QuizAttempt.completed_at.desc()).all()
     
     return [
@@ -565,11 +671,12 @@ def submit_quiz(
                 detail=f"Error evaluating quiz: {str(e)}"
             )
         
-        # Check if user already attempted this quiz
+        # Resume the latest incomplete attempt if one exists, otherwise store a new completed attempt.
         existing_attempt = db.query(QuizAttempt).filter(
             QuizAttempt.quiz_id == quiz.id,
-            QuizAttempt.user_id == current_user.id
-        ).first()
+            QuizAttempt.user_id == current_user.id,
+            QuizAttempt.completed_at.is_(None),
+        ).order_by(QuizAttempt.started_at.desc()).first()
         
         started_time = existing_attempt.started_at if existing_attempt else datetime.now(timezone.utc)
         completed_time = datetime.now(timezone.utc)
@@ -663,7 +770,7 @@ def submit_quiz(
             detail=f"Failed to submit quiz: {str(e)}"
         )
 
-@router.get("/{quiz_id}/attempt", response_model=QuizResultResponse)
+@router.get("/{quiz_id}/attempt", response_model=Optional[QuizResultResponse])
 def get_quiz_attempt(
     quiz_id: str,
     current_user: User = Depends(get_current_user),
@@ -692,14 +799,12 @@ def get_quiz_attempt(
     
     attempt = db.query(QuizAttempt).filter(
         QuizAttempt.quiz_id == uuid_obj,
-        QuizAttempt.user_id == current_user.id
+        QuizAttempt.user_id == current_user.id,
+        QuizAttempt.completed_at.isnot(None),
     ).order_by(QuizAttempt.completed_at.desc()).first()
     
     if not attempt:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No attempt found for this quiz"
-        )
+        return None
     
     # Get questions for feedback
     questions = db.query(QuizQuestion).filter(
