@@ -224,6 +224,7 @@ def process_document_background(document_id: str):
             indexed=bool(result.get("embeddings_stored")),
             embeddings_stored=bool(result.get("embeddings_stored")),
             chunk_count=result.get("chunk_count", 0),
+            extracted_text_char_count=len(extracted_text),
             docling_markdown_path=result.get("markdown_path"),
             indexed_at=datetime.now(timezone.utc).isoformat(),
             technical_skills=topic_data.get('technical_skills', []),
@@ -370,6 +371,8 @@ async def upload_file(
 
         return DocumentResponse.from_orm(new_document)
 
+    except HTTPException:
+        raise
     except Exception as e:
         from utils.logger import logger
         logger.error(f"File upload failed: {str(e)}")
@@ -380,6 +383,14 @@ async def upload_file(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Upload failed: {str(e)}"
         )
+
+
+@router.get("/upload/config")
+def get_upload_config(
+    current_user: User = Depends(get_current_user)
+):
+    """Return the effective upload constraints for the current environment."""
+    return DocumentValidator.get_upload_constraints()
 
 @router.post("/upload/youtube", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
 async def upload_youtube(

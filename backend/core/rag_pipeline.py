@@ -303,34 +303,38 @@ class RAGPipeline:
         question: str,
         document_id: Optional[str] = None,
         n_results: int = 5,
-        mode: str = "structured_output"
+        mode: str = "structured_output",
+        user_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Query documents using RAG."""
         return self.vector_store.rag_query(
             question=question,
             n_results=n_results,
             document_id=document_id,
-            mode=mode
+            mode=mode,
+            user_id=user_id,
         )
 
     def search_similar(
         self,
         query: str,
         document_id: Optional[str] = None,
-        n_results: int = 5
+        n_results: int = 5,
+        user_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Search for similar chunks without generating an answer."""
         return self.vector_store.query(
             query_text=query,
             n_results=n_results,
-            document_id=document_id
+            document_id=document_id,
+            user_id=user_id,
         )
 
     def get_document_embeddings(self, document_id: str) -> Dict[str, Any]:
         return self.vector_store.get_document_chunks(document_id)
 
-    def get_vector_store_stats(self) -> Dict[str, Any]:
-        return self.vector_store.get_collection_stats()
+    def get_vector_store_stats(self, user_id: Optional[str] = None) -> Dict[str, Any]:
+        return self.vector_store.get_collection_stats(user_id=user_id)
 
     def delete_document_embeddings(self, document_id: str) -> Dict[str, Any]:
         return self.vector_store.delete_document(document_id)

@@ -71,6 +71,7 @@ export default function LoginPage() {
               label="Email"
               type="email"
               placeholder="you@example.com"
+              autoComplete="email"
               error={errors.email?.message}
               {...register('email')}
             />
@@ -79,6 +80,7 @@ export default function LoginPage() {
               label="Password"
               type="password"
               placeholder="Enter your password"
+              autoComplete="current-password"
               error={errors.password?.message}
               {...register('password')}
             />

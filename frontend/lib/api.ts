@@ -8,6 +8,7 @@ interface ApiInstance extends AxiosInstance {
   // Documents
   getDocuments: () => Promise<any>;
   getDocument: (id: string) => Promise<any>;
+  getDocumentUploadConfig: () => Promise<any>;
   uploadDocument: (formData: FormData) => Promise<any>;
   deleteDocument: (id: string) => Promise<any>;
   processUrl: (url: string) => Promise<any>;
@@ -129,6 +130,11 @@ axiosInstance.getDocuments = async () => {
 
 axiosInstance.getDocument = async (id: string) => {
   const response = await axiosInstance.get(`/api/documents/${id}`);
+  return response.data;
+};
+
+axiosInstance.getDocumentUploadConfig = async () => {
+  const response = await axiosInstance.get('/api/documents/upload/config');
   return response.data;
 };
 

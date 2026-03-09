@@ -48,6 +48,8 @@ type UploadStatus = 'idle' | 'uploading' | 'processing' | 'success' | 'backgroun
 
 const UPLOAD_POLL_INTERVAL_MS = 1500;
 const UPLOAD_TIMEOUT_MS = 60000;
+const DEFAULT_UPLOAD_ACCEPT = '.pdf,.docx,.doc,.pptx,.ppt,.txt,.md,.csv,.xlsx,.xls,.jpg,.jpeg,.png,.bmp,.tiff,.tif,.json';
+const DEFAULT_MAX_UPLOAD_MB = 50;
 
 function supportsStudyWorkspace(contentType?: string) {
   return contentType?.toLowerCase() === 'pdf';
@@ -80,10 +82,14 @@ export default function DocumentsPage() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadError, setUploadError] = useState('');
   const [uploadStatusMessage, setUploadStatusMessage] = useState('');
+  const [uploadAccept, setUploadAccept] = useState(DEFAULT_UPLOAD_ACCEPT);
+  const [maxUploadSizeMb, setMaxUploadSizeMb] = useState(DEFAULT_MAX_UPLOAD_MB);
+  const [allowedUploadExtensions, setAllowedUploadExtensions] = useState<string[]>([]);
 
   useEffect(() => {
     fetchDocuments();
     fetchLibraryArtifacts();
+    fetchUploadConfig();
   }, []);
 
   useEffect(() => {
@@ -204,6 +210,31 @@ export default function DocumentsPage() {
     }
   }
 
+  async function fetchUploadConfig() {
+    try {
+      const config = await api.getDocumentUploadConfig();
+      const allowedExtensions = Array.isArray(config?.allowed_extensions)
+        ? config.allowed_extensions.map((ext: string) => String(ext).toLowerCase())
+        : [];
+      setAllowedUploadExtensions(allowedExtensions);
+      setUploadAccept(
+        typeof config?.accept === 'string' && config.accept.trim().length > 0
+          ? config.accept
+          : DEFAULT_UPLOAD_ACCEPT
+      );
+      setMaxUploadSizeMb(
+        typeof config?.max_file_size_mb === 'number' && Number.isFinite(config.max_file_size_mb)
+          ? config.max_file_size_mb
+          : DEFAULT_MAX_UPLOAD_MB
+      );
+    } catch (error) {
+      console.error('Failed to load upload config:', error);
+      setAllowedUploadExtensions([]);
+      setUploadAccept(DEFAULT_UPLOAD_ACCEPT);
+      setMaxUploadSizeMb(DEFAULT_MAX_UPLOAD_MB);
+    }
+  }
+
   async function waitForDocumentReady(documentId: string) {
     const startedAt = Date.now();
     let progressFloor = 92;
@@ -241,8 +272,16 @@ export default function DocumentsPage() {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error('File size must be less than 10MB');
+    const fileExtension = file.name.split('.').pop()?.toLowerCase() || '';
+    if (allowedUploadExtensions.length > 0 && !allowedUploadExtensions.includes(fileExtension)) {
+      toast.error(`.${fileExtension || 'unknown'} files are not enabled for upload right now`);
+      event.target.value = '';
+      return;
+    }
+
+    if (file.size > maxUploadSizeMb * 1024 * 1024) {
+      toast.error(`File size must be less than ${maxUploadSizeMb}MB`);
+      event.target.value = '';
       return;
     }
 
@@ -511,7 +550,7 @@ export default function DocumentsPage() {
               ref={fileInputRef}
               type="file"
               className="hidden"
-              accept=".pdf,.docx,.pptx,.txt,.md,.csv,.xlsx,.jpg,.jpeg,.png"
+              accept={uploadAccept}
               onChange={handleFileUpload}
               disabled={isUploading}
             />

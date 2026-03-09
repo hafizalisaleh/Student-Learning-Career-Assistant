@@ -7,15 +7,28 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { api } from '@/lib/api';
 import { generateSummarySchema, type GenerateSummaryFormData } from '@/lib/validations';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
-import { ArrowLeft, Sparkles, FileText, CheckCircle } from 'lucide-react';
+import { AlertCircle, ArrowLeft, Sparkles, FileText, CheckCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
 import type { Document } from '@/lib/types';
 import { isDocumentReadyForGeneration } from '@/lib/document-status';
+
+const MIN_SUMMARY_SOURCE_CHARS = 200;
+
+function getDocumentContentLength(doc?: Document | null) {
+  if (!doc) return null;
+  const metadataLength = Number(doc.doc_metadata?.extracted_text_char_count ?? 0);
+  if (Number.isFinite(metadataLength) && metadataLength > 0) {
+    return metadataLength;
+  }
+  if (typeof doc.extracted_text === 'string') {
+    return doc.extracted_text.trim().length;
+  }
+  return null;
+}
 
 function NewSummaryContent() {
   const router = useRouter();
@@ -75,7 +88,23 @@ function NewSummaryContent() {
     fetchDocuments();
   }, [preSelectedDocId, setValue]);
 
+  const selectedDocumentId = preSelectedDoc?.id || watch('document_id');
+  const selectedDocument =
+    preSelectedDoc || documents.find((doc) => doc.id === selectedDocumentId) || null;
+  const selectedDocumentContentLength = getDocumentContentLength(selectedDocument);
+  const selectedDocumentTooShort =
+    !!selectedDocument &&
+    selectedDocumentContentLength !== null &&
+    selectedDocumentContentLength < MIN_SUMMARY_SOURCE_CHARS;
+
   const onSubmit = async (data: GenerateSummaryFormData) => {
+    if (selectedDocumentTooShort) {
+      toast.error(
+        `This document needs at least ${MIN_SUMMARY_SOURCE_CHARS} extracted characters before a summary can be generated.`
+      );
+      return;
+    }
+
     try {
       setIsLoading(true);
       console.log('Submitting summary data:', data);
@@ -145,11 +174,26 @@ function NewSummaryContent() {
                 </div>
               ) : preSelectedDoc ? (
                 /* Show pre-selected document as a card instead of dropdown */
-                <div className="flex items-center gap-3 p-4 bg-[var(--accent-green-subtle)] border border-[var(--accent-green)] rounded-xl">
-                  <CheckCircle className="h-5 w-5 text-[var(--accent-green)]" />
+                <div
+                  className={cn(
+                    'flex items-center gap-3 rounded-xl border p-4',
+                    selectedDocumentTooShort
+                      ? 'border-[var(--warning)] bg-[var(--warning-subtle)]'
+                      : 'border-[var(--accent-green)] bg-[var(--accent-green-subtle)]'
+                  )}
+                >
+                  {selectedDocumentTooShort ? (
+                    <AlertCircle className="h-5 w-5 text-[var(--warning)]" />
+                  ) : (
+                    <CheckCircle className="h-5 w-5 text-[var(--accent-green)]" />
+                  )}
                   <div className="flex-1">
                     <p className="font-medium text-[var(--text-primary)]">{preSelectedDoc.title}</p>
-                    <p className="text-xs text-[var(--text-secondary)]">Ready to generate summary</p>
+                    <p className="text-xs text-[var(--text-secondary)]">
+                      {selectedDocumentTooShort
+                        ? `Needs at least ${MIN_SUMMARY_SOURCE_CHARS} extracted characters before summarization`
+                        : 'Ready to generate summary'}
+                    </p>
                   </div>
                 </div>
               ) : (
@@ -159,11 +203,22 @@ function NewSummaryContent() {
                     {...register('document_id')}
                   >
                     <option value="">Choose a document</option>
-                    {documents.map((doc) => (
-                      <option key={doc.id} value={doc.id}>
-                        {doc.title}
-                      </option>
-                    ))}
+                    {documents.map((doc) => {
+                      const contentLength = getDocumentContentLength(doc);
+                      const isTooShort =
+                        contentLength !== null && contentLength < MIN_SUMMARY_SOURCE_CHARS;
+
+                      return (
+                        <option
+                          key={doc.id}
+                          value={doc.id}
+                          disabled={isTooShort}
+                        >
+                          {doc.title}
+                          {isTooShort ? ' (needs more content)' : ''}
+                        </option>
+                      );
+                    })}
                   </select>
                   {documents.length === 0 && (
                     <p className="mt-3 text-sm text-[var(--warning)] bg-[var(--warning-subtle)] px-4 py-3 rounded-lg">
@@ -174,10 +229,20 @@ function NewSummaryContent() {
                       first and wait for it to finish processing.
                     </p>
                   )}
+                  {documents.length > 0 && (
+                    <p className="mt-3 text-xs text-[var(--text-secondary)]">
+                      Documents need at least {MIN_SUMMARY_SOURCE_CHARS} extracted characters to generate a summary.
+                    </p>
+                  )}
                 </>
               )}
               {errors.document_id && (
                 <p className="mt-2 text-sm text-[var(--error)]">{errors.document_id.message}</p>
+              )}
+              {selectedDocumentTooShort && (
+                <p className="mt-3 rounded-lg bg-[var(--warning-subtle)] px-4 py-3 text-sm text-[var(--warning)]">
+                  This source is too short for reliable summarization right now. Choose a fuller document or upload one with more extractable text.
+                </p>
               )}
             </div>
 
@@ -234,7 +299,7 @@ function NewSummaryContent() {
               <Button
                 type="submit"
                 variant="default"
-                disabled={isLoading}
+                disabled={isLoading || !selectedDocumentId || selectedDocumentTooShort}
                 className="flex-1"
               >
                 <Sparkles className="h-4 w-4 mr-2" />

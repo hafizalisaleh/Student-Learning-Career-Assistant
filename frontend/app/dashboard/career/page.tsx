@@ -6,7 +6,7 @@ import { api } from '@/lib/api';
 import { CareerAnalysis } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { cn } from '@/lib/utils';
@@ -60,9 +60,16 @@ export default function CareerPage() {
       setUploading(true);
       toast.loading('Uploading and analyzing resume...', { id: 'resume-upload' });
 
-      const { resume, analysis: analysisData } = await api.uploadAndAnalyzeResume(file);
+      const response = await api.uploadAndAnalyzeResume(file);
+      const analysisData = response?.analysis;
 
-      setAnalysis(analysisData);
+      if (analysisData) {
+        setAnalysis(analysisData);
+        setLoading(false);
+        router.refresh();
+      } else {
+        await loadAnalysis();
+      }
       toast.success('Resume analyzed successfully!', { id: 'resume-upload' });
     } catch (error: any) {
       console.error('Resume analysis error:', error);

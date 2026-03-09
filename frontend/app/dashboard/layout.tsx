@@ -95,12 +95,28 @@ const bottomNavItems = [
   { name: 'Career', href: '/dashboard/career', icon: Briefcase },
 ];
 
+const workspaceNav = {
+  name: 'Study Workspace',
+  href: '/dashboard/documents',
+  icon: FileText,
+  description: 'Read the source, inspect pages, and ask grounded questions in context.',
+};
+
+function isNavPathActive(itemHref: string, pathname: string | null) {
+  if (!pathname) return false;
+  if (pathname.startsWith('/dashboard/workspace')) {
+    return itemHref === workspaceNav.href;
+  }
+  if (itemHref === '/dashboard') return pathname === '/dashboard';
+  return pathname.startsWith(itemHref);
+}
+
 function getActiveNav(pathname: string | null) {
   if (!pathname) return navigation[0];
-  return navigation.find((item) => {
-    if (item.href === '/dashboard') return pathname === '/dashboard';
-    return pathname.startsWith(item.href);
-  }) || navigation[0];
+  if (pathname.startsWith('/dashboard/workspace')) {
+    return workspaceNav;
+  }
+  return navigation.find((item) => isNavPathActive(item.href, pathname)) || navigation[0];
 }
 
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
@@ -134,13 +150,17 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     const handleKeyDown = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key === '\\') {
         event.preventDefault();
-        toggleSidebar();
+        setIsSidebarCollapsed((current) => {
+          const nextState = !current;
+          localStorage.setItem('sidebar-collapsed', String(nextState));
+          return nextState;
+        });
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isSidebarCollapsed]);
+  }, []);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -262,9 +282,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             )}
             <nav className="space-y-1.5">
               {navigation.map((item) => {
-                const active = item.href === '/dashboard'
-                  ? pathname === '/dashboard'
-                  : pathname?.startsWith(item.href);
+                const active = isNavPathActive(item.href, pathname);
                 const Icon = item.icon;
 
                 return (
@@ -439,9 +457,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       <nav className="fixed inset-x-4 bottom-4 z-30 rounded-[1.6rem] border border-[var(--card-border)] bg-[var(--card-bg)] p-2 shadow-[var(--card-shadow)] backdrop-blur-xl lg:hidden">
         <div className="flex items-center justify-around">
           {bottomNavItems.map((item) => {
-            const active = item.href === '/dashboard'
-              ? pathname === '/dashboard'
-              : pathname?.startsWith(item.href);
+            const active = isNavPathActive(item.href, pathname);
             const Icon = item.icon;
 
             return (

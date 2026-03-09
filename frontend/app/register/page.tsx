@@ -93,6 +93,7 @@ export default function RegisterPage() {
               label="Email"
               type="email"
               placeholder="you@example.com"
+              autoComplete="email"
               error={errors.email?.message}
               {...register('email')}
             />
@@ -101,6 +102,7 @@ export default function RegisterPage() {
               label="Password"
               type="password"
               placeholder="Create a password"
+              autoComplete="new-password"
               error={errors.password?.message}
               {...register('password')}
             />
@@ -109,6 +111,7 @@ export default function RegisterPage() {
               label="Confirm password"
               type="password"
               placeholder="Confirm your password"
+              autoComplete="new-password"
               error={errors.confirmPassword?.message}
               {...register('confirmPassword')}
             />

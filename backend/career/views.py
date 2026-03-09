@@ -766,9 +766,9 @@ async def upload_and_analyze_resume(
             for role in job_roles[:5]:
                 if isinstance(role, dict):
                     career_analysis['recommendations'].append({
-                        'role_title': role.get('role_title', role.get('title', 'Role')),
-                        'match_percentage': role.get('match_score', 75),
-                        'description': role.get('description', ''),
+                        'role_title': role.get('role_title') or role.get('role') or role.get('title') or 'Role',
+                        'match_percentage': role.get('match_percentage', role.get('match_score', 75)),
+                        'description': role.get('description') or role.get('reason', ''),
                         'required_skills': role.get('required_skills', []),
                         'growth_potential': role.get('growth_potential', 'Good')
                     })

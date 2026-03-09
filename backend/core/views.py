@@ -4,7 +4,10 @@ Vector Store and RAG API endpoints
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from typing import Optional, List, Any
+from sqlalchemy.orm import Session
+from config.database import get_db, SessionLocal
 from config.settings import settings
+from documents.models import Document
 from users.auth import get_current_user
 from users.models import User
 from core.rag_pipeline import rag_pipeline
@@ -52,6 +55,25 @@ class SearchResponse(BaseModel):
     error: Optional[str] = None
 
 
+def _get_owned_document_or_404(
+    db: Session,
+    document_id: str,
+    current_user: User,
+) -> Document:
+    document = db.query(Document).filter(
+        Document.id == document_id,
+        Document.user_id == current_user.id,
+    ).first()
+
+    if not document:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found",
+        )
+
+    return document
+
+
 # Endpoints
 @router.get("/stats")
 def get_vector_store_stats(
@@ -64,7 +86,7 @@ def get_vector_store_stats(
         Collection statistics including total chunks, unique documents, etc.
     """
     try:
-        stats = rag_pipeline.get_vector_store_stats()
+        stats = rag_pipeline.get_vector_store_stats(user_id=str(current_user.id))
         return stats
     except Exception as e:
         logger.error(f"Error getting vector store stats: {e}")
@@ -77,7 +99,8 @@ def get_vector_store_stats(
 @router.get("/documents/{document_id}/embeddings")
 def get_document_embeddings(
     document_id: str,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     """
     Get all embeddings and chunks for a specific document
@@ -89,6 +112,7 @@ def get_document_embeddings(
         Document chunks with embedding previews
     """
     try:
+        _get_owned_document_or_404(db, document_id, current_user)
         result = rag_pipeline.get_document_embeddings(document_id)
 
         if not result.get("success"):
@@ -111,7 +135,8 @@ def get_document_embeddings(
 @router.post("/query", response_model=QueryResponse)
 def query_documents(
     request: QueryRequest,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     """
     Query documents using RAG - retrieves relevant chunks and generates answer
@@ -125,11 +150,15 @@ def query_documents(
     try:
         logger.info(f"RAG Query from user {current_user.email} [mode={request.mode}]: {request.question[:100]}")
 
+        if request.document_id:
+            _get_owned_document_or_404(db, request.document_id, current_user)
+
         result = rag_pipeline.query_documents(
             question=request.question,
             document_id=request.document_id,
             n_results=request.n_results,
-            mode=request.mode
+            mode=request.mode,
+            user_id=str(current_user.id),
         )
 
         return QueryResponse(
@@ -155,7 +184,8 @@ def query_documents(
 @router.post("/search", response_model=SearchResponse)
 def search_similar(
     request: SearchRequest,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     """
     Search for similar chunks without generating an answer
@@ -169,10 +199,14 @@ def search_similar(
     try:
         logger.info(f"Similarity search from user {current_user.email}: {request.query[:100]}")
 
+        if request.document_id:
+            _get_owned_document_or_404(db, request.document_id, current_user)
+
         result = rag_pipeline.search_similar(
             query=request.query,
             document_id=request.document_id,
-            n_results=request.n_results
+            n_results=request.n_results,
+            user_id=str(current_user.id),
         )
 
         return SearchResponse(
@@ -193,7 +227,8 @@ def search_similar(
 @router.delete("/documents/{document_id}")
 def delete_document_embeddings(
     document_id: str,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     """
     Delete all embeddings for a document from the vector store
@@ -205,6 +240,7 @@ def delete_document_embeddings(
         Deletion result
     """
     try:
+        _get_owned_document_or_404(db, document_id, current_user)
         result = rag_pipeline.delete_document_embeddings(document_id)
 
         if not result.get("success"):
@@ -313,14 +349,9 @@ def reprocess_document_embeddings(
     Returns:
         Processing result
     """
-    from config.database import SessionLocal
-    from documents.models import Document
-
     db = SessionLocal()
     try:
-        doc = db.query(Document).filter(Document.id == document_id).first()
-        if not doc:
-            return {"success": False, "error": "Document not found"}
+        doc = _get_owned_document_or_404(db, document_id, current_user)
 
         if not doc.file_path:
             return {"success": False, "error": "Document has no file path"}
@@ -374,18 +405,11 @@ def index_for_file_search(
     Index a document for Gemini File Search mode.
     Creates a File Search store and uploads the document.
     """
-    from config.database import SessionLocal
-    from documents.models import Document
     from core.file_search_manager import file_search_manager
 
     db = SessionLocal()
     try:
-        doc = db.query(Document).filter(Document.id == document_id).first()
-        if not doc:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Document not found"
-            )
+        doc = _get_owned_document_or_404(db, document_id, current_user)
 
         if not doc.file_path:
             raise HTTPException(
@@ -439,12 +463,16 @@ def file_search_status(
 ):
     """Check if a document has been indexed for File Search"""
     from core.file_search_manager import file_search_manager
-
-    store_name = file_search_manager.get_or_create_store(document_id)
-    return {
-        "indexed": store_name is not None,
-        "store_name": store_name
-    }
+    db = SessionLocal()
+    try:
+        _get_owned_document_or_404(db, document_id, current_user)
+        store_name = file_search_manager.get_or_create_store(document_id)
+        return {
+            "indexed": store_name is not None,
+            "store_name": store_name
+        }
+    finally:
+        db.close()
 
 
 # --- Vision Query ---

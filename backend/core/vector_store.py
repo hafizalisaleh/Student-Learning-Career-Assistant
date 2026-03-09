@@ -161,7 +161,8 @@ class VectorStore:
         self,
         query_text: str,
         n_results: int = 5,
-        document_id: Optional[str] = None
+        document_id: Optional[str] = None,
+        user_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Query PGVector for similar chunks using cosine similarity.
@@ -187,13 +188,15 @@ class VectorStore:
                     FROM chunks c
                     JOIN documents d ON d.id = c.document_id
                     WHERE c.embedding IS NOT NULL
+                      AND (:filter_user_id IS NULL OR d.user_id = CAST(:filter_user_id AS uuid))
                       AND (:filter_doc_id IS NULL OR c.document_id = CAST(:filter_doc_id AS uuid))
                     ORDER BY c.embedding <=> CAST(:query_embedding AS vector)
                     LIMIT :match_count
                 """), {
                     "query_embedding": embedding_str,
                     "match_count": n_results,
-                    "filter_doc_id": document_id
+                    "filter_doc_id": document_id,
+                    "filter_user_id": user_id,
                 })
 
                 formatted_results = []
@@ -231,10 +234,11 @@ class VectorStore:
         self,
         query_text: str,
         n_results: int = 5,
-        document_id: Optional[str] = None
+        document_id: Optional[str] = None,
+        user_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Query and return combined context string for RAG."""
-        results = self.query(query_text, n_results, document_id)
+        results = self.query(query_text, n_results, document_id, user_id)
 
         if not results.get("success") or not results.get("results"):
             return {"context": "", "results": []}
@@ -257,7 +261,8 @@ class VectorStore:
         question: str,
         n_results: int = 5,
         document_id: Optional[str] = None,
-        mode: RAGMode = "structured_output"
+        mode: RAGMode = "structured_output",
+        user_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Full RAG query: retrieves context from PGVector, generates answer with Groq.
@@ -265,21 +270,22 @@ class VectorStore:
         logger.info(f"RAG query mode={mode}, question={question[:80]}")
 
         if mode == "file_search":
-            return self._rag_file_search(question, document_id)
+            return self._rag_file_search(question, document_id, user_id)
         elif mode == "nli_verification":
-            return self._rag_nli_verified(question, n_results, document_id)
+            return self._rag_nli_verified(question, n_results, document_id, user_id)
         else:
-            return self._rag_structured_output(question, n_results, document_id)
+            return self._rag_structured_output(question, n_results, document_id, user_id)
 
     def _rag_structured_output(
         self,
         question: str,
         n_results: int = 5,
-        document_id: Optional[str] = None
+        document_id: Optional[str] = None,
+        user_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Structured output mode with provider-aware answer generation."""
         try:
-            retrieval = self.query_with_context(question, n_results, document_id)
+            retrieval = self.query_with_context(question, n_results, document_id, user_id)
             context = retrieval.get("context", "")
             sources = retrieval.get("results", [])
 
@@ -402,19 +408,25 @@ Question: {question}"""
                 "mode": "structured_output"
             }
 
-    def _rag_file_search(self, question: str, document_id: Optional[str] = None) -> Dict[str, Any]:
+    def _rag_file_search(
+        self,
+        question: str,
+        document_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """File Search mode placeholder - uses standard retrieval."""
-        return self._rag_structured_output(question, 5, document_id)
+        return self._rag_structured_output(question, 5, document_id, user_id)
 
     def _rag_nli_verified(
         self,
         question: str,
         n_results: int = 5,
-        document_id: Optional[str] = None
+        document_id: Optional[str] = None,
+        user_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """NLI Verification mode: structured output + second verification pass."""
         try:
-            structured_result = self._rag_structured_output(question, n_results, document_id)
+            structured_result = self._rag_structured_output(question, n_results, document_id, user_id)
 
             if not structured_result.get("success"):
                 return {**structured_result, "mode": "nli_verification"}
@@ -551,14 +563,30 @@ Source passage: "{source_text}"
             logger.error(f"Error getting document chunks: {e}")
             return {"success": False, "error": str(e)}
 
-    def get_collection_stats(self) -> Dict[str, Any]:
+    def get_collection_stats(self, user_id: Optional[str] = None) -> Dict[str, Any]:
         """Get statistics about the PGVector store."""
         try:
             db = self._get_db()
             try:
-                chunk_count = db.execute(text("SELECT COUNT(*) FROM chunks")).scalar()
-                doc_count = db.execute(text("SELECT COUNT(DISTINCT document_id) FROM chunks")).scalar()
-                doc_ids_result = db.execute(text("SELECT DISTINCT document_id::text FROM chunks LIMIT 100"))
+                chunk_count = db.execute(text("""
+                    SELECT COUNT(*)
+                    FROM chunks c
+                    JOIN documents d ON d.id = c.document_id
+                    WHERE (:filter_user_id IS NULL OR d.user_id = CAST(:filter_user_id AS uuid))
+                """), {"filter_user_id": user_id}).scalar()
+                doc_count = db.execute(text("""
+                    SELECT COUNT(DISTINCT c.document_id)
+                    FROM chunks c
+                    JOIN documents d ON d.id = c.document_id
+                    WHERE (:filter_user_id IS NULL OR d.user_id = CAST(:filter_user_id AS uuid))
+                """), {"filter_user_id": user_id}).scalar()
+                doc_ids_result = db.execute(text("""
+                    SELECT DISTINCT c.document_id::text
+                    FROM chunks c
+                    JOIN documents d ON d.id = c.document_id
+                    WHERE (:filter_user_id IS NULL OR d.user_id = CAST(:filter_user_id AS uuid))
+                    LIMIT 100
+                """), {"filter_user_id": user_id})
                 doc_ids = [row[0] for row in doc_ids_result]
 
                 return {

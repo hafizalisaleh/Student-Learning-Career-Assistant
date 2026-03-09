@@ -2,11 +2,32 @@
 
 import { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
-import { CareerRecommendation } from '@/lib/types';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import toast from 'react-hot-toast';
 import { Briefcase, TrendingUp, Award, Target, BookOpen, ArrowRight } from 'lucide-react';
+
+function getTextValue(value: any, keys: string[], fallback = '') {
+  if (!value || typeof value !== 'object') return fallback;
+  for (const key of keys) {
+    const candidate = value[key];
+    if (typeof candidate === 'string' && candidate.trim()) {
+      return candidate.trim();
+    }
+  }
+  return fallback;
+}
+
+function getNumberValue(value: any, keys: string[]) {
+  if (!value || typeof value !== 'object') return null;
+  for (const key of keys) {
+    const candidate = value[key];
+    if (typeof candidate === 'number' && Number.isFinite(candidate)) {
+      return candidate;
+    }
+  }
+  return null;
+}
 
 export default function RecommendationsPage() {
   const [recommendations, setRecommendations] = useState<any>(null);
@@ -220,11 +241,13 @@ export default function RecommendationsPage() {
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {recommendations.recommendations.certifications_to_pursue.map((cert: any, idx: number) => {
-              const certName = typeof cert === 'string' ? cert : (cert.certification_name || cert.name || 'Certification');
-              const provider = typeof cert === 'object' && cert.provider ? cert.provider : '';
-              const reason = typeof cert === 'object' && cert.reason ? cert.reason : '';
-              const duration = typeof cert === 'object' && cert.duration ? cert.duration : null;
-              const difficulty = typeof cert === 'object' && cert.difficulty ? cert.difficulty : null;
+              const certName = typeof cert === 'string'
+                ? cert
+                : getTextValue(cert, ['certification_name', 'certification', 'name'], 'Certification');
+              const provider = getTextValue(cert, ['provider']);
+              const reason = getTextValue(cert, ['reason', 'relevance']);
+              const duration = getTextValue(cert, ['duration', 'estimated_time']);
+              const difficulty = getTextValue(cert, ['difficulty', 'priority']);
               const costEstimate = typeof cert === 'object' && cert.cost_estimate ? cert.cost_estimate : null;
 
               return (
@@ -263,13 +286,15 @@ export default function RecommendationsPage() {
             <div className="icon-wrapper icon-career">
               <Briefcase className="w-4 h-4" />
             </div>
-            Job Roles You're Suited For
+            Job Roles You&apos;re Suited For
           </h2>
           <div className="space-y-3">
             {recommendations.recommendations.job_roles_suited.map((role: any, idx: number) => {
-              const roleTitle = typeof role === 'string' ? role : (role.role_title || role.title || role.name || 'Job Role');
-              const description = typeof role === 'object' && role.description ? role.description : '';
-              const matchScore = typeof role === 'object' && role.match_score ? role.match_score : null;
+              const roleTitle = typeof role === 'string'
+                ? role
+                : getTextValue(role, ['role_title', 'role', 'title', 'name'], 'Job Role');
+              const description = getTextValue(role, ['description', 'reason']);
+              const matchScore = getNumberValue(role, ['match_score', 'match_percentage']);
               const requiredSkills = typeof role === 'object' && Array.isArray(role.required_skills) ? role.required_skills : [];
               const salaryRange = typeof role === 'object' && role.salary_range ? role.salary_range : null;
 
@@ -315,7 +340,11 @@ export default function RecommendationsPage() {
           </h2>
           <div className="space-y-3">
             {recommendations.recommendations.immediate_actions.map((action: any, idx: number) => {
-              const actionText = typeof action === 'string' ? action : action.action || action.step || JSON.stringify(action);
+              const actionText = typeof action === 'string'
+                ? action
+                : getTextValue(action, ['action', 'title']) ||
+                  (typeof action?.step === 'string' ? action.step : '') ||
+                  JSON.stringify(action);
               return (
                 <div key={idx} className="flex items-start gap-3 bg-[var(--card-bg)] rounded-lg p-3 border border-[var(--error-border)]">
                   <span className="flex items-center justify-center w-6 h-6 bg-[var(--error)] text-white rounded-full text-xs font-bold flex-shrink-0">
@@ -340,8 +369,12 @@ export default function RecommendationsPage() {
           </h2>
           <div className="space-y-3">
             {recommendations.recommendations.learning_path.map((step: any, idx: number) => {
-              const stepText = typeof step === 'string' ? step : step.step || step.action || JSON.stringify(step);
-              const timeframe = typeof step === 'object' && step.timeframe ? step.timeframe : null;
+              const stepText = typeof step === 'string'
+                ? step
+                : getTextValue(step, ['action', 'title']) ||
+                  (typeof step?.step === 'string' ? step.step : '') ||
+                  JSON.stringify(step);
+              const timeframe = getTextValue(step, ['timeframe']);
               const resources = typeof step === 'object' && step.resources ? step.resources : null;
 
               return (

@@ -1,14 +1,62 @@
 """
 Document validation utilities
 """
-import os
 from pathlib import Path
-from typing import Optional
+from typing import Dict, List
 from fastapi import UploadFile, HTTPException, status
 from config.settings import settings
 
 class DocumentValidator:
     """Validate document uploads"""
+
+    SUPPORTED_EXTENSION_TYPES: Dict[str, str] = {
+        "pdf": "pdf",
+        "docx": "docx",
+        "doc": "docx",
+        "pptx": "ppt",
+        "ppt": "ppt",
+        "xlsx": "excel",
+        "xls": "excel",
+        "csv": "excel",
+        "txt": "text",
+        "md": "text",
+        "json": "text",
+        "jpg": "image",
+        "jpeg": "image",
+        "png": "image",
+        "bmp": "image",
+        "tiff": "image",
+        "tif": "image",
+    }
+
+    @classmethod
+    def get_enabled_extensions(cls) -> List[str]:
+        """
+        Return the currently enabled upload extensions.
+        Uses app config when present, but always stays inside the
+        formats the pipeline can actually classify.
+        """
+        configured = {
+            ext.strip().lower().lstrip(".")
+            for ext in settings.allowed_extensions_list
+            if ext.strip()
+        }
+        supported = list(cls.SUPPORTED_EXTENSION_TYPES.keys())
+        if not configured:
+            return supported
+
+        enabled = [ext for ext in supported if ext in configured]
+        return enabled or supported
+
+    @classmethod
+    def get_upload_constraints(cls) -> Dict[str, object]:
+        """Return frontend-safe upload capabilities."""
+        allowed_extensions = cls.get_enabled_extensions()
+        return {
+            "allowed_extensions": allowed_extensions,
+            "accept": ",".join(f".{ext}" for ext in allowed_extensions),
+            "max_file_size_mb": settings.MAX_FILE_SIZE_MB,
+        }
     
     @staticmethod
     def validate_file_size(file: UploadFile) -> bool:
@@ -54,11 +102,13 @@ class DocumentValidator:
             HTTPException if invalid
         """
         ext = Path(filename).suffix.lower().lstrip('.')
-        
-        if ext not in settings.allowed_extensions_list:
+
+        allowed_extensions = DocumentValidator.get_enabled_extensions()
+
+        if ext not in allowed_extensions:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Unsupported file format. Allowed formats: {', '.join(settings.allowed_extensions_list)}"
+                detail=f"Unsupported file format. Allowed formats: {', '.join(allowed_extensions)}"
             )
         
         return True
@@ -90,24 +140,5 @@ class DocumentValidator:
             Content type string
         """
         ext = Path(filename).suffix.lower()
-        
-        type_mapping = {
-            '.pdf': 'pdf',
-            '.docx': 'docx',
-            '.doc': 'docx',
-            '.pptx': 'ppt',
-            '.ppt': 'ppt',
-            '.xlsx': 'excel',
-            '.xls': 'excel',
-            '.csv': 'excel',
-            '.txt': 'text',
-            '.md': 'text',
-            '.jpg': 'image',
-            '.jpeg': 'image',
-            '.png': 'image',
-            '.bmp': 'image',
-            '.tiff': 'image',
-            '.tif': 'image',
-        }
-        
-        return type_mapping.get(ext, 'text')
+
+        return DocumentValidator.SUPPORTED_EXTENSION_TYPES.get(ext.lstrip("."), 'text')
