@@ -29,7 +29,7 @@ import { AnswerActions } from '@/components/ai/answer-actions';
 interface GraphApiNode {
   id: string;
   label: string;
-  type: 'document' | 'topic' | 'keyword' | 'note';
+  type: 'document' | 'section' | 'topic' | 'keyword' | 'note';
   group: string;
   size: number;
   metadata?: Record<string, any>;
@@ -48,6 +48,7 @@ interface GraphApiData {
   links: GraphApiLink[];
   stats: {
     documents: number;
+    sections?: number;
     topics: number;
     keywords: number;
     notes: number;
@@ -62,6 +63,14 @@ interface ChatMessage {
   sources?: Array<{ text: string; metadata: Record<string, any>; similarity?: number }>;
   nodeLabel?: string;
   nodeType?: string;
+}
+
+interface ChatScope {
+  documentId?: string;
+  label?: string;
+  nodeType?: string;
+  sectionTitle?: string;
+  sectionPages?: number[];
 }
 
 // ─── Transform graph data → MindElixir tree ─────────────────────────
@@ -89,7 +98,7 @@ function graphToMindMap(data: GraphApiData): MindElixirData {
     const children: NodeObj[] = [];
 
     // Process link types in order: topics first, notes, then keywords
-    const typeOrder = ['has_topic', 'has_note', 'has_keyword'];
+    const typeOrder = ['has_section', 'has_topic', 'has_note', 'has_keyword'];
     for (const linkType of typeOrder) {
       const targetIds = linksByType.get(linkType);
       if (!targetIds) continue;
@@ -181,6 +190,7 @@ export default function KnowledgeGraphPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [chatOpen, setChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatScope, setChatScope] = useState<ChatScope | null>(null);
 
   const chatPanelRef = useRef<HTMLDivElement>(null);
   const lastNodeSelectionRef = useRef<{ topic: string; at: number } | null>(null);
@@ -200,7 +210,18 @@ export default function KnowledgeGraphPage() {
     setChatLoading(true);
 
     try {
-      const response = await api.ragQuery(currentInput, undefined, 5, 'structured_output');
+      const response = await api.ragQuery(
+        currentInput,
+        chatScope?.documentId,
+        5,
+        'structured_output',
+        (chatScope?.sectionTitle || (chatScope?.sectionPages?.length ?? 0) > 0)
+          ? {
+              sectionTitle: chatScope?.sectionTitle,
+              sectionPages: chatScope?.sectionPages,
+            }
+          : undefined
+      );
 
       const assistantMsg: ChatMessage = {
         id: `assistant-${Date.now()}`,
@@ -229,7 +250,7 @@ export default function KnowledgeGraphPage() {
     } finally {
       setChatLoading(false);
     }
-  }, [chatInput, setChatMessages, setChatInput, setChatLoading]);
+  }, [chatInput, chatScope, setChatMessages, setChatInput, setChatLoading]);
 
   // ─── Fetch graph data ───────────────────────────────────────────────
 
@@ -240,6 +261,7 @@ export default function KnowledgeGraphPage() {
       setRawData(data);
       setChatMessages([]);
       setChatOpen(false);
+      setChatScope(null);
     } catch (error) {
       console.error('Failed to load knowledge graph:', error);
       toast.error('Failed to load knowledge graph');
@@ -261,20 +283,27 @@ export default function KnowledgeGraphPage() {
 
   // ─── Ask AI about a node ────────────────────────────────────────────
 
-  const askAIAboutNode = useCallback(async (topic: string) => {
+  const askAIAboutNode = useCallback(async (selectedNode: any) => {
     if (!rawData) return;
 
-    // Find the node and its parent document
-    const node = rawData.nodes.find((n) => n.label === topic || `#${n.label}` === topic);
+    const topic = selectedNode.topic;
+    const node = rawData.nodes.find((n) => n.id === selectedNode.id) ||
+      rawData.nodes.find((n) => n.label === topic || `#${n.label}` === topic);
     const nodeType = node?.type || 'topic';
     const cleanTopic = topic.replace(/^#/, '');
-
-    const docId = node ? findParentDocId(node.id, rawData.links, rawData.nodes) : undefined;
+    const sectionPages = Array.isArray(node?.metadata?.pages)
+      ? node.metadata.pages
+          .map((page: unknown) => Number.parseInt(String(page), 10))
+          .filter((page: number) => Number.isFinite(page) && page > 0)
+      : [];
+    const docId = node?.metadata?.document_id || (node ? findParentDocId(node.id, rawData.links, rawData.nodes) : undefined);
 
     // Build contextual prompt
     let prompt: string;
     if (nodeType === 'document') {
       prompt = `Summarize the key concepts and main topics from "${cleanTopic}". What are the most important takeaways?`;
+    } else if (nodeType === 'section') {
+      prompt = `Explain the section "${cleanTopic}" from my document. Focus on the selected section only, keep the answer grounded in the source, and include the important technical details.`;
     } else if (nodeType === 'topic') {
       prompt = `Explain what my documents say about "${cleanTopic}". Provide a detailed explanation with specific details from the sources.`;
     } else if (nodeType === 'keyword') {
@@ -295,9 +324,27 @@ export default function KnowledgeGraphPage() {
     setChatMessages((prev) => [...prev, userMsg]);
     setChatOpen(true);
     setChatLoading(true);
+    setChatScope({
+      documentId: docId,
+      label: cleanTopic,
+      nodeType,
+      sectionTitle: nodeType === 'section' ? (node?.metadata?.title || cleanTopic) : undefined,
+      sectionPages: nodeType === 'section' ? sectionPages : undefined,
+    });
 
     try {
-      const response = await api.ragQuery(prompt, docId, 5, 'structured_output');
+      const response = await api.ragQuery(
+        prompt,
+        docId,
+        5,
+        'structured_output',
+        nodeType === 'section'
+          ? {
+              sectionTitle: node?.metadata?.title || cleanTopic,
+              sectionPages,
+            }
+          : undefined
+      );
 
       const assistantMsg: ChatMessage = {
         id: `assistant-${Date.now()}`,
@@ -348,7 +395,7 @@ export default function KnowledgeGraphPage() {
           return;
         }
         lastNodeSelectionRef.current = { topic, at: now };
-        askAIAboutNode(topic);
+        askAIAboutNode(selectedNode);
       }
     }
   }, [askAIAboutNode]);
@@ -372,7 +419,7 @@ export default function KnowledgeGraphPage() {
           <p className="text-sm text-[var(--text-tertiary)] mt-0.5">
             {rawData?.stats
               ? `Based on ${rawData.stats.documents} document${rawData.stats.documents !== 1 ? 's' : ''}. Click any node to ask AI about it.`
-              : 'Explore connections between your documents, topics, and notes.'}
+              : 'Explore connections between your documents, sections, topics, and notes.'}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -439,11 +486,23 @@ export default function KnowledgeGraphPage() {
               <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--card-border)] shrink-0">
                 <div className="flex items-center gap-2">
                   <Sparkles className="h-4 w-4 text-[var(--primary)]" />
-                  <span className="text-sm font-medium text-[var(--text-primary)]">AI Explorer</span>
+                  <div>
+                    <span className="text-sm font-medium text-[var(--text-primary)]">AI Explorer</span>
+                    {chatScope?.label && (
+                      <p className="text-[10px] uppercase tracking-[0.12em] text-[var(--primary)]">
+                        {chatScope.nodeType === 'section' && chatScope.sectionPages?.length
+                          ? `${chatScope.label} • pages ${chatScope.sectionPages.join(', ')}`
+                          : chatScope.label}
+                      </p>
+                    )}
+                  </div>
                 </div>
                 <div className="flex items-center gap-1">
                   <button
-                    onClick={() => setChatMessages([])}
+                    onClick={() => {
+                      setChatMessages([]);
+                      setChatScope(null);
+                    }}
                     className="p-1.5 rounded-md hover:bg-[var(--bg-secondary)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
                     title="Clear chat"
                   >
@@ -468,7 +527,7 @@ export default function KnowledgeGraphPage() {
                       Ask AI about your graph
                     </p>
                     <p className="text-xs text-[var(--text-muted)]">
-                      Click any node in the mind map to explore topics with AI-powered explanations grounded in your documents.
+                      Click any node in the mind map to explore topics and sections with AI-powered explanations grounded in your documents.
                     </p>
                   </div>
                 )}
@@ -565,7 +624,7 @@ export default function KnowledgeGraphPage() {
                     className="flex-1 flex flex-row items-end border-none shadow-none p-0 bg-transparent"
                   >
                     <PromptInputTextarea
-                      placeholder="Ask me anything about these topics..."
+                      placeholder={chatScope?.label ? `Ask about ${chatScope.label}...` : 'Ask me anything about these topics...'}
                       disabled={chatLoading}
                       className="min-h-[40px] max-h-40 px-3 py-2 bg-transparent border-none focus:ring-0 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] flex-1"
                     />

@@ -1,5 +1,5 @@
 import axios, { AxiosInstance } from 'axios';
-import type { QuizResult } from '@/lib/types';
+import type { QuizResult, RagQueryOptions, TableOfContentsResponse } from '@/lib/types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -8,6 +8,7 @@ interface ApiInstance extends AxiosInstance {
   // Documents
   getDocuments: () => Promise<any>;
   getDocument: (id: string) => Promise<any>;
+  getDocumentTableOfContents: (id: string) => Promise<TableOfContentsResponse>;
   getDocumentUploadConfig: () => Promise<any>;
   uploadDocument: (formData: FormData) => Promise<any>;
   deleteDocument: (id: string) => Promise<any>;
@@ -67,7 +68,7 @@ interface ApiInstance extends AxiosInstance {
   getLatestResume: () => Promise<any>;
 
   // RAG / Vector Store
-  ragQuery: (question: string, documentId?: string, nResults?: number, mode?: string) => Promise<any>;
+  ragQuery: (question: string, documentId?: string, nResults?: number, mode?: string, options?: RagQueryOptions) => Promise<any>;
   visionQuery: (
     question: string,
     documentId?: string,
@@ -130,6 +131,11 @@ axiosInstance.getDocuments = async () => {
 
 axiosInstance.getDocument = async (id: string) => {
   const response = await axiosInstance.get(`/api/documents/${id}`);
+  return response.data;
+};
+
+axiosInstance.getDocumentTableOfContents = async (id: string) => {
+  const response = await axiosInstance.get(`/api/documents/${id}/table-of-contents`);
   return response.data;
 };
 
@@ -382,12 +388,20 @@ axiosInstance.getLatestResume = async () => {
 };
 
 // ===== RAG / Vector Store =====
-axiosInstance.ragQuery = async (question: string, documentId?: string, nResults: number = 5, mode: string = 'structured_output') => {
+axiosInstance.ragQuery = async (
+  question: string,
+  documentId?: string,
+  nResults: number = 5,
+  mode: string = 'structured_output',
+  options?: RagQueryOptions
+) => {
   const response = await axiosInstance.post('/api/vectors/query', {
     question,
     document_id: documentId,
     n_results: nResults,
     mode,
+    section_title: options?.sectionTitle,
+    section_pages: options?.sectionPages,
   });
   return response.data;
 };

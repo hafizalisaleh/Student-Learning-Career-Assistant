@@ -403,3 +403,209 @@ Context:
 - DeepSeek-OCR.pdf | chunk=189 | similarity=0.723 | pages=11 | modality=hybrid
 - DeepSeek-OCR.pdf | chunk=224 | similarity=0.791 | pages=11 | modality=hybrid
 
+### Session 2026-03-09T22:10:13+05:00
+
+- Text provider: groq
+- Text model: llama-3.3-70b-versatile
+- Vision provider: groq
+- Vision model: meta-llama/llama-4-scout-17b-16e-instruct
+- Formula enrichment: True
+
+## Query 1
+
+Q: Regarding the selected text from Page 1: "We present DeepSeek-OCR as an initial investigation into the feasibility of compressing long
+contexts via optical 2D mapping. DeepSeek-OCR consists of two components: DeepEncoder
+and DeepSeek3B-MoE-A570M as the decoder. Specifically, DeepEncoder serves as the core
+engine, designed to maintain low activations under high-resolution input while achieving high
+compression ratios to ensure an optimal and manageable number of vision tokens. Experiments
+show that when the number of text tokens is within 10 times that of vision tokens (i.e., a
+compression ratio < 10×), the model can achieve decoding (OCR) precision of 97%. Even at a
+compression ratio of 20×, the OCR accuracy still remains at about 60%. This shows considerable
+promise for research areas such as historical long-context compression and memory forgetting
+mechanisms in LLMs. Beyond this, DeepSeek-OCR also demonstrates high practical value.
+On OmniDocBench, it surpasses GOT-OCR2.0 (256 tokens/page) using only 100 vision tokens,
+and outperforms MinerU2.0 (6000+ tokens per page on average) while utilizing fewer than
+800 vision tokens. In production, DeepSeek-OCR can generate training data for LLMs/VLMs"
+
+Question: Meaning of this
+
+A:
+The text describes DeepSeek-OCR, a model that compresses long contexts via optical 2D mapping. It consists of two components: DeepEncoder and DeepSeek3B-MoE-A570M as the decoder. The model achieves high compression ratios while maintaining low activations under high-resolution input, ensuring an optimal number of vision tokens. Experiments show that the model can achieve decoding precision of 97% when the number of text tokens is within 10 times that of vision tokens, and 60% at a compression ratio of 20x.
+
+[DeepSeek-OCR.pdf p.1], [DeepSeek-OCR.pdf p.3]
+
+Context:
+- Timestamp: 2026-03-09T22:10:48+05:00
+- Text provider: groq
+- Text model: llama-3.3-70b-versatile
+- Vision provider: groq
+- Vision model: meta-llama/llama-4-scout-17b-16e-instruct
+- Vision used: False
+- Sources: DeepSeek-OCR.pdf
+- Linked tables: 0
+- Linked images: 10
+- Retrieved chunks:
+- DeepSeek-OCR.pdf | chunk=674 | similarity=0.967 | pages=1 | modality=ocr_page
+- DeepSeek-OCR.pdf | chunk=2 | similarity=0.899 | pages=1 | modality=hybrid
+- DeepSeek-OCR.pdf | chunk=3 | similarity=0.934 | pages=1 | modality=hybrid
+- DeepSeek-OCR.pdf | chunk=676 | similarity=0.883 | pages=3 | modality=ocr_page
+- DeepSeek-OCR.pdf | chunk=4 | similarity=0.844 | pages=1 | modality=hybrid
+- DeepSeek-OCR.pdf | chunk=6 | similarity=0.898 | pages=1 | modality=hybrid
+
+### Session 2026-03-10T01:27:45+05:00
+
+- Text provider: groq
+- Text model: llama-3.3-70b-versatile
+- Vision provider: groq
+- Vision model: meta-llama/llama-4-scout-17b-16e-instruct
+- Formula enrichment: True
+
+## Query 1
+
+Q: Regarding the selected text from Page 1: "mapping. DeepSeek-OCR consists of two components: DeepEncoder
+and DeepSeek3B-MoE-A570M as the decoder. Specifically, DeepEncoder serves as the core
+engine, designed to maintain low activations under high-resolution input while achieving high
+compression ratios to ensure an optimal and manageable number of vision tokens. Experiments
+show that when the number of text tokens is within 10 times that of vision tokens (i.e., a
+compression ratio < 10×), the model can achieve decoding (OCR) precision of 97%. Even at a
+compression ratio of 20×, the OCR accuracy still remains at about 60%. This shows considerable
+promise for research areas such as historical long-context compression and memory forgetting
+mechanisms in LLMs. Beyond this, DeepSeek-OCR also demonstrates high practical value.
+On OmniDocBench, it surpasses GOT-OCR2.0 (256 tokens/page) using only 100 vision tokens,
+and outperforms MinerU2.0 (6000+ tokens per page on average) while utilizing fewer than
+800 vision tokens. In production, DeepSeek-OCR can generate training data for LLMs/VLMs
+at a scale of 200k+ pages per day (a single A100-40G). Codes and model weights are publicly
+accessible at http://github.com/deepseek-ai/DeepSeek-OCR.600700
+700800
+800900
+9001000
+10001100
+11001200
+12001300
+Text Tokens in Per Page (Groundtruth)
+0%
+10%
+20%
+30%
+40%
+50%
+60%
+70%
+80%
+90%
+100%
+Precision (%)
+96.5%
+93.8%
+83.8% 85.8%
+79.3%
+76.3%
+59.1%
+98.5% 97.3% 96.8% 96.8%
+91.5% 89.8%
+87.1%
+64 vis toks(left) 100 vis toks(left) 64 vis toks(right) 100 vis toks(right)
+0x
+5x
+10x
+15x
+20x
+Compression (×)
+10.5
+6.7
+11.8
+7.5
+13.2
+8.5
+15.1
+9.7
+16.5
+10.6
+17.7
+11.3
+19.7
+12.6
+(a) Compression on Fox benchmark7000
+6000
+5000
+4000
+3000
+2000
+1500
+0.1
+0.2
+0.3
+0.4
+0.5
+Overall Performance (Edit Distance)
+InternVL2-76B
+Qwen2.5-VL-7B
+OLMOCR
+OCRFlux-3B
+InternVL3-78B
+Qwen2.5-VL-72B
+MinerU2.0
+DeepSeek-OCR
+(Gundam-M 200dpi)
+dots.ocr
+dots.ocr (200dpi)
+Vison Tokens > 1500
+Average per image ( More)
+Encoder Series
+DeepEncoder Series
+QwenEncoder Series
+InternVLEncoder Series
+Other Encoders
+1000
+800
+600
+500
+400
+300
+250
+200
+150
+100
+SmolDocling
+GOT-OCR2.0
+DeepSeek-OCR (Tiny)
+DeepSeek-OCR (Small)
+DeepSeek-OCR (Base)
+DeepSeek-OCR (Large)
+DeepSeek-OCR (Gundam)
+Vision Tokens < 1000
+Average per image ( Fewer)
+High Accuracy
+ED < 0.25 ( better)
+Average Vision Tokens per Image (b) Performance on Omnidocbench
+Figure 1 | Figure (a) shows the compression ratio (number of text tokens in ground truth/number
+of vision tokens model used) testing on Fox [21] benchmark; Figure (b) shows performance
+comparisons on OmniDocBench [27]. DeepSeek-OCR can achieve state-of-the-art performance
+among end-to-end models enjoying the fewest vision tokens.
+arXiv:2510.18234v1 [cs.CV] 21 Oct 2025"
+
+Question: Tell me about this
+
+A:
+DeepSeek-OCR is a model that uses optical 2D mapping to compress long contexts, consisting of two components: DeepEncoder and DeepSeek3B-MoE-A570M as the decoder. It achieves high compression ratios while maintaining low activations under high-resolution input, ensuring an optimal number of vision tokens. The model can achieve decoding (OCR) precision of 97% when the number of text tokens is within 10 times that of vision tokens, and 60% at a compression ratio of 20x. 
+
+[DeepSeek-OCR.pdf p.1], [Source: DeepSeek-OCR.pdf | chunk=674 | similarity=0.934 | pages=1 | modality=ocr_page]
+
+Context:
+- Timestamp: 2026-03-10T01:28:18+05:00
+- Text provider: groq
+- Text model: llama-3.3-70b-versatile
+- Vision provider: groq
+- Vision model: meta-llama/llama-4-scout-17b-16e-instruct
+- Vision used: True
+- Sources: DeepSeek-OCR.pdf
+- Linked tables: 0
+- Linked images: 10
+- Retrieved chunks:
+- DeepSeek-OCR.pdf | chunk=674 | similarity=0.934 | pages=1 | modality=ocr_page
+- DeepSeek-OCR.pdf | chunk=3 | similarity=0.924 | pages=1 | modality=hybrid
+- DeepSeek-OCR.pdf | chunk=2 | similarity=0.844 | pages=1 | modality=hybrid
+- DeepSeek-OCR.pdf | chunk=4 | similarity=0.861 | pages=1 | modality=hybrid
+- DeepSeek-OCR.pdf | chunk=6 | similarity=0.899 | pages=1 | modality=hybrid
+- DeepSeek-OCR.pdf | chunk=676 | similarity=0.867 | pages=3 | modality=ocr_page
+

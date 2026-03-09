@@ -23,6 +23,8 @@ class QueryRequest(BaseModel):
     document_id: Optional[str] = None
     n_results: int = 5
     mode: str = "structured_output"  # structured_output | file_search | nli_verification
+    section_title: Optional[str] = None
+    section_pages: Optional[List[int]] = None
 
 
 class SearchRequest(BaseModel):
@@ -159,6 +161,8 @@ def query_documents(
             n_results=request.n_results,
             mode=request.mode,
             user_id=str(current_user.id),
+            section_title=request.section_title,
+            section_pages=request.section_pages,
         )
 
         return QueryResponse(
@@ -596,6 +600,7 @@ def get_knowledge_graph(
 
         documents_data = []
         for doc in docs:
+            metadata = doc.doc_metadata or {}
             documents_data.append({
                 "id": str(doc.id),
                 "title": doc.title,
@@ -603,6 +608,7 @@ def get_knowledge_graph(
                 "topics": doc.topics or [],
                 "keywords": doc.keywords or [],
                 "domains": doc.domains or [],
+                "table_of_contents": metadata.get("table_of_contents") or [],
             })
 
         # Get all notes

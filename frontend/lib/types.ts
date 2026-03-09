@@ -51,6 +51,34 @@ export interface Document {
   created_at: string;
 }
 
+export interface TableOfContentsItem {
+  id: string;
+  number?: string | null;
+  title: string;
+  label: string;
+  level: number;
+  page_start: number;
+  page_end: number;
+  pages: number[];
+  path: string[];
+  children: TableOfContentsItem[];
+}
+
+export interface TableOfContentsResponse {
+  document_id: string;
+  title: string;
+  items: TableOfContentsItem[];
+  count: number;
+  total_pages: number;
+  source: 'contents' | 'headings' | 'pages';
+  fallback: boolean;
+}
+
+export interface RagQueryOptions {
+  sectionTitle?: string;
+  sectionPages?: number[];
+}
+
 // Note types
 export interface Note {
   id: string;

@@ -305,6 +305,8 @@ class RAGPipeline:
         n_results: int = 5,
         mode: str = "structured_output",
         user_id: Optional[str] = None,
+        section_title: Optional[str] = None,
+        section_pages: Optional[List[int]] = None,
     ) -> Dict[str, Any]:
         """Query documents using RAG."""
         return self.vector_store.rag_query(
@@ -313,6 +315,8 @@ class RAGPipeline:
             document_id=document_id,
             mode=mode,
             user_id=user_id,
+            section_title=section_title,
+            section_pages=section_pages,
         )
 
     def search_similar(

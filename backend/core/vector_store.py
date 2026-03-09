@@ -39,6 +39,65 @@ def _coerce_answer_text(value: Any) -> str:
     return str(value)
 
 
+def _scope_query_text(query_text: str, section_title: Optional[str] = None) -> str:
+    if not section_title:
+        return query_text
+    return f"Section: {section_title}\nQuestion: {query_text}"
+
+
+def _normalize_section_pages(section_pages: Optional[List[int]]) -> List[int]:
+    if not section_pages:
+        return []
+    normalized = []
+    for page in section_pages:
+        try:
+            page_number = int(page)
+        except (TypeError, ValueError):
+            continue
+        if page_number > 0 and page_number not in normalized:
+            normalized.append(page_number)
+    return normalized
+
+
+def _extract_chunk_pages(metadata: Dict[str, Any]) -> List[int]:
+    pages: List[int] = []
+    for page in metadata.get("page_numbers") or []:
+        try:
+            page_number = int(page)
+        except (TypeError, ValueError):
+            continue
+        if page_number > 0 and page_number not in pages:
+            pages.append(page_number)
+
+    page_number = metadata.get("page_number")
+    try:
+        single_page = int(page_number)
+    except (TypeError, ValueError):
+        single_page = None
+    if single_page and single_page not in pages:
+        pages.append(single_page)
+
+    return pages
+
+
+def _result_matches_section_pages(result: Dict[str, Any], section_pages: List[int]) -> bool:
+    if not section_pages:
+        return True
+    result_pages = _extract_chunk_pages(result.get("metadata") or {})
+    return any(page in section_pages for page in result_pages)
+
+
+def _build_section_scope_label(section_title: Optional[str], section_pages: Optional[List[int]]) -> Optional[str]:
+    pages = _normalize_section_pages(section_pages)
+    if not section_title and not pages:
+        return None
+    if section_title and pages:
+        return f'"{section_title}" (pages {", ".join(str(page) for page in pages)})'
+    if section_title:
+        return f'"{section_title}"'
+    return f'pages {", ".join(str(page) for page in pages)}'
+
+
 class VectorStore:
     """Manage vector storage and retrieval with PGVector and local HuggingFace embeddings"""
 
@@ -163,13 +222,18 @@ class VectorStore:
         n_results: int = 5,
         document_id: Optional[str] = None,
         user_id: Optional[str] = None,
+        section_title: Optional[str] = None,
+        section_pages: Optional[List[int]] = None,
     ) -> Dict[str, Any]:
         """
         Query PGVector for similar chunks using cosine similarity.
         """
         try:
-            query_embedding = self._generate_query_embedding(query_text)
+            scoped_query_text = _scope_query_text(query_text, section_title)
+            normalized_section_pages = _normalize_section_pages(section_pages)
+            query_embedding = self._generate_query_embedding(scoped_query_text)
             embedding_str = '[' + ','.join(map(str, query_embedding)) + ']'
+            fetch_count = n_results if not normalized_section_pages else max(n_results * 8, 40)
 
             db = self._get_db()
             try:
@@ -194,7 +258,7 @@ class VectorStore:
                     LIMIT :match_count
                 """), {
                     "query_embedding": embedding_str,
-                    "match_count": n_results,
+                    "match_count": fetch_count,
                     "filter_doc_id": document_id,
                     "filter_user_id": user_id,
                 })
@@ -216,6 +280,15 @@ class VectorStore:
                         "similarity": row.similarity
                     })
 
+                if normalized_section_pages:
+                    formatted_results = [
+                        result_item
+                        for result_item in formatted_results
+                        if _result_matches_section_pages(result_item, normalized_section_pages)
+                    ]
+
+                formatted_results = formatted_results[:n_results]
+
                 logger.info(f"Query returned {len(formatted_results)} results")
                 return {
                     "success": True,
@@ -236,9 +309,18 @@ class VectorStore:
         n_results: int = 5,
         document_id: Optional[str] = None,
         user_id: Optional[str] = None,
+        section_title: Optional[str] = None,
+        section_pages: Optional[List[int]] = None,
     ) -> Dict[str, Any]:
         """Query and return combined context string for RAG."""
-        results = self.query(query_text, n_results, document_id, user_id)
+        results = self.query(
+            query_text,
+            n_results,
+            document_id,
+            user_id,
+            section_title,
+            section_pages,
+        )
 
         if not results.get("success") or not results.get("results"):
             return {"context": "", "results": []}
@@ -263,6 +345,8 @@ class VectorStore:
         document_id: Optional[str] = None,
         mode: RAGMode = "structured_output",
         user_id: Optional[str] = None,
+        section_title: Optional[str] = None,
+        section_pages: Optional[List[int]] = None,
     ) -> Dict[str, Any]:
         """
         Full RAG query: retrieves context from PGVector, generates answer with Groq.
@@ -270,11 +354,11 @@ class VectorStore:
         logger.info(f"RAG query mode={mode}, question={question[:80]}")
 
         if mode == "file_search":
-            return self._rag_file_search(question, document_id, user_id)
+            return self._rag_file_search(question, document_id, user_id, section_title, section_pages)
         elif mode == "nli_verification":
-            return self._rag_nli_verified(question, n_results, document_id, user_id)
+            return self._rag_nli_verified(question, n_results, document_id, user_id, section_title, section_pages)
         else:
-            return self._rag_structured_output(question, n_results, document_id, user_id)
+            return self._rag_structured_output(question, n_results, document_id, user_id, section_title, section_pages)
 
     def _rag_structured_output(
         self,
@@ -282,12 +366,22 @@ class VectorStore:
         n_results: int = 5,
         document_id: Optional[str] = None,
         user_id: Optional[str] = None,
+        section_title: Optional[str] = None,
+        section_pages: Optional[List[int]] = None,
     ) -> Dict[str, Any]:
         """Structured output mode with provider-aware answer generation."""
         try:
-            retrieval = self.query_with_context(question, n_results, document_id, user_id)
+            retrieval = self.query_with_context(
+                question,
+                n_results,
+                document_id,
+                user_id,
+                section_title,
+                section_pages,
+            )
             context = retrieval.get("context", "")
             sources = retrieval.get("results", [])
+            scope_label = _build_section_scope_label(section_title, section_pages)
 
             if not context:
                 return {
@@ -320,6 +414,7 @@ class VectorStore:
                 "required": ["answer", "citations"]
             }
 
+            scope_line = f"\nSection scope: {scope_label}\n" if scope_label else "\n"
             prompt = f"""You are a helpful study assistant. Using ONLY the provided context, answer the user's question accurately.
 
 CITATION RULES (MANDATORY):
@@ -330,7 +425,7 @@ CITATION RULES (MANDATORY):
 - Use Markdown formatting for your answer (bold, headers, lists).
 - If the answer is not in the context, clearly state that.
 - In the citations array, list every citation you used with the exact source quote that supports it.
-
+{scope_line}
 Context:
 {context}
 
@@ -372,7 +467,7 @@ CITATION RULES (MANDATORY):
 - Use Markdown formatting for your answer (bold, headers, lists).
 - If the answer is not in the context, clearly state that.
 - Return only the final answer in Markdown, not JSON.
-
+{scope_line}
 Context:
 {context}
 
@@ -413,9 +508,11 @@ Question: {question}"""
         question: str,
         document_id: Optional[str] = None,
         user_id: Optional[str] = None,
+        section_title: Optional[str] = None,
+        section_pages: Optional[List[int]] = None,
     ) -> Dict[str, Any]:
         """File Search mode placeholder - uses standard retrieval."""
-        return self._rag_structured_output(question, 5, document_id, user_id)
+        return self._rag_structured_output(question, 5, document_id, user_id, section_title, section_pages)
 
     def _rag_nli_verified(
         self,
@@ -423,10 +520,19 @@ Question: {question}"""
         n_results: int = 5,
         document_id: Optional[str] = None,
         user_id: Optional[str] = None,
+        section_title: Optional[str] = None,
+        section_pages: Optional[List[int]] = None,
     ) -> Dict[str, Any]:
         """NLI Verification mode: structured output + second verification pass."""
         try:
-            structured_result = self._rag_structured_output(question, n_results, document_id, user_id)
+            structured_result = self._rag_structured_output(
+                question,
+                n_results,
+                document_id,
+                user_id,
+                section_title,
+                section_pages,
+            )
 
             if not structured_result.get("success"):
                 return {**structured_result, "mode": "nli_verification"}

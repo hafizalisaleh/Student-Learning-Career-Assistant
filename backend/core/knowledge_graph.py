@@ -37,6 +37,42 @@ def build_knowledge_graph(
         })
         node_ids.add(doc_id)
 
+    # --- 1b. Section nodes (from document TOC metadata) ---
+    def add_section_nodes(doc_id: str, section_items: List[Dict[str, Any]], parent_id: str) -> None:
+        for section in section_items or []:
+            section_key = section.get("id") or _truncate(section.get("label", "section"), 48)
+            section_id = f"section-{doc_id.replace('doc-', '')}-{section_key}"
+
+            if section_id not in node_ids:
+                nodes.append({
+                    "id": section_id,
+                    "label": _truncate(section.get("label") or section.get("title", "Section"), 42),
+                    "type": "section",
+                    "group": "section",
+                    "size": 7,
+                    "metadata": {
+                        "document_id": doc_id.replace("doc-", ""),
+                        "pages": section.get("pages", []),
+                        "page_start": section.get("page_start"),
+                        "page_end": section.get("page_end"),
+                        "path": section.get("path", []),
+                        "title": section.get("title"),
+                    },
+                })
+                node_ids.add(section_id)
+
+            links.append({
+                "source": parent_id,
+                "target": section_id,
+                "type": "has_section",
+                "strength": 0.7,
+            })
+            add_section_nodes(doc_id, section.get("children") or [], section_id)
+
+    for doc in documents:
+        doc_id = f"doc-{doc['id']}"
+        add_section_nodes(doc_id, doc.get("table_of_contents") or [], doc_id)
+
     # --- 2. Topic nodes (from document metadata) ---
     topic_to_docs: Dict[str, List[str]] = {}
     for doc in documents:
@@ -154,6 +190,7 @@ def build_knowledge_graph(
         "links": unique_links,
         "stats": {
             "documents": sum(1 for n in nodes if n["type"] == "document"),
+            "sections": sum(1 for n in nodes if n["type"] == "section"),
             "topics": sum(1 for n in nodes if n["type"] == "topic"),
             "keywords": sum(1 for n in nodes if n["type"] == "keyword"),
             "notes": sum(1 for n in nodes if n["type"] == "note"),

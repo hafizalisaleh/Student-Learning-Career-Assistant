@@ -16,6 +16,7 @@ from documents.schemas import (
 )
 from documents.validators import DocumentValidator
 from documents.upload_handler import upload_handler
+from documents.table_of_contents import build_table_of_contents_from_path
 from users.auth import get_current_user
 from users.models import User
 from core.rag_pipeline import rag_pipeline
@@ -65,6 +66,23 @@ def _cleanup_document_quizzes(db: Session, document_id: str, user_id: str) -> Di
         "deleted_quizzes": deleted_quizzes,
         "updated_quizzes": updated_quizzes,
     }
+
+
+def _build_and_store_document_toc(db: Session, document: Document) -> Dict[str, Any]:
+    metadata = document.doc_metadata or {}
+    toc = build_table_of_contents_from_path(
+        markdown_path=metadata.get("docling_markdown_path"),
+        document_id=str(document.id),
+        db=db,
+    )
+    document.doc_metadata = _merge_doc_metadata(
+        metadata,
+        table_of_contents=toc.get("items", []),
+        table_of_contents_count=toc.get("count", 0),
+        table_of_contents_total_pages=toc.get("total_pages", 0),
+        table_of_contents_source=toc.get("source", "pages"),
+    )
+    return toc
 
 def process_document_background(document_id: str):
     """
@@ -219,6 +237,7 @@ def process_document_background(document_id: str):
         doc.subject_area = topic_data.get('subject_area', 'General')
         doc.difficulty_level = topic_data.get('difficulty_level', 'intermediate')
         doc.processing_status = ProcessingStatus.COMPLETED
+        toc = _build_and_store_document_toc(db, doc)
         doc.doc_metadata = _merge_doc_metadata(
             doc.doc_metadata,
             indexed=bool(result.get("embeddings_stored")),
@@ -233,6 +252,10 @@ def process_document_background(document_id: str):
             programming_languages=topic_data.get('programming_languages', []),
             extraction_confidence=topic_data.get('extraction_confidence', 'medium'),
             extraction_method=topic_data.get('extraction_method', 'ai'),
+            table_of_contents=toc.get("items", []),
+            table_of_contents_count=toc.get("count", 0),
+            table_of_contents_total_pages=toc.get("total_pages", 0),
+            table_of_contents_source=toc.get("source", "pages"),
             ready_for_generation=True,
             extracted_text_available=True,
             generation_ready_at=datetime.now(timezone.utc).isoformat(),
@@ -543,8 +566,49 @@ def get_document(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Document not found"
         )
-    
+
     return DocumentResponse.from_orm(doc)
+
+
+@router.get("/{document_id}/table-of-contents")
+def get_document_table_of_contents(
+    document_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    doc = db.query(Document).filter(
+        Document.id == document_id,
+        Document.user_id == current_user.id,
+    ).first()
+
+    if not doc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found",
+        )
+
+    metadata = doc.doc_metadata or {}
+    toc_items = metadata.get("table_of_contents")
+    if not isinstance(toc_items, list):
+        toc = _build_and_store_document_toc(db, doc)
+        db.commit()
+    else:
+        toc = {
+            "items": toc_items,
+            "count": metadata.get("table_of_contents_count", len(toc_items)),
+            "total_pages": metadata.get("table_of_contents_total_pages", 0),
+            "source": metadata.get("table_of_contents_source", "contents"),
+        }
+
+    return {
+        "document_id": str(doc.id),
+        "title": doc.title,
+        "items": toc.get("items", []),
+        "count": toc.get("count", 0),
+        "total_pages": toc.get("total_pages", 0),
+        "source": toc.get("source", "contents"),
+        "fallback": toc.get("source", "contents") != "contents",
+    }
 
 @router.delete("/{document_id}")
 def delete_document(

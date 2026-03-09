@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { api } from '@/lib/api';
@@ -41,7 +41,7 @@ import {
   Calendar,
   Target,
 } from 'lucide-react';
-import type { Document, Note, Quiz, QuizResult, Summary } from '@/lib/types';
+import type { Document, Note, Quiz, QuizResult, Summary, TableOfContentsItem, TableOfContentsResponse } from '@/lib/types';
 import { formatDate, formatFileSize, getDifficultyBadgeClass } from '@/lib/utils';
 import {
   getDocumentStatusDescription,
@@ -173,6 +173,30 @@ function resolveDocumentArtifactUrl(documentId: string, filePath: string | undef
   return `${API_URL}/api/documents/${documentId}/artifacts/${encodedRelativePath}`;
 }
 
+function slugifyHeading(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/-{2,}/g, '-')
+    .replace(/^-|-$/g, '') || 'section';
+}
+
+function extractTextValue(node: ReactNode): string {
+  if (typeof node === 'string' || typeof node === 'number') {
+    return String(node);
+  }
+  if (Array.isArray(node)) {
+    return node.map(extractTextValue).join('');
+  }
+  if (!node || typeof node !== 'object') {
+    return '';
+  }
+  if ('props' in node) {
+    return extractTextValue((node as { props?: { children?: ReactNode } }).props?.children);
+  }
+  return '';
+}
+
 const DIAGRAM_TYPES: { type: DiagramType; label: string; icon: any; description: string }[] = [
   { type: 'flowchart', label: 'Flowchart', icon: Workflow, description: 'Process & workflow visualization' },
   { type: 'sequence', label: 'Sequence', icon: GitBranch, description: 'Interaction & communication flow' },
@@ -187,6 +211,9 @@ export default function DocumentDetailPage() {
   const documentId = params.id as string;
 
   const [document, setDocument] = useState<Document | null>(null);
+  const [tableOfContents, setTableOfContents] = useState<TableOfContentsResponse | null>(null);
+  const [isLoadingToc, setIsLoadingToc] = useState(false);
+  const [selectedTocId, setSelectedTocId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabType>('content');
 
@@ -233,6 +260,7 @@ export default function DocumentDetailPage() {
     if (documentId) {
       fetchDocument();
       fetchArtifacts();
+      fetchTableOfContents();
     }
   }, [documentId]);
 
@@ -241,6 +269,7 @@ export default function DocumentDetailPage() {
     const refreshDetailState = () => {
       fetchDocument(false);
       fetchArtifacts();
+      fetchTableOfContents(false);
     };
 
     const handleVisibilityChange = () => {
@@ -291,6 +320,23 @@ export default function DocumentDetailPage() {
     } finally {
       if (showLoader) {
         setIsLoading(false);
+      }
+    }
+  }
+
+  async function fetchTableOfContents(showLoader: boolean = true) {
+    try {
+      if (showLoader) {
+        setIsLoadingToc(true);
+      }
+      const data = await api.getDocumentTableOfContents(documentId);
+      setTableOfContents(data);
+    } catch (error) {
+      console.error('Failed to load document TOC:', error);
+      setTableOfContents(null);
+    } finally {
+      if (showLoader) {
+        setIsLoadingToc(false);
       }
     }
   }
@@ -989,6 +1035,61 @@ export default function DocumentDetailPage() {
     { id: 'diagrams', label: 'Diagrams', icon: Workflow },
   ];
 
+  const formatSectionPages = (item: TableOfContentsItem) => {
+    if (!item.pages?.length) return 'No page info';
+    if (item.page_start === item.page_end) return `Page ${item.page_start}`;
+    return `Pages ${item.page_start}-${item.page_end}`;
+  };
+
+  const askAboutSection = (item: TableOfContentsItem) => {
+    const params = new URLSearchParams({
+      document: documentId,
+      question: `Explain the section "${item.label}" from ${document?.title || 'this document'}.`,
+      sectionTitle: item.label,
+      sectionPages: item.pages.join(','),
+    });
+    router.push(`/dashboard/ask?${params.toString()}`);
+  };
+
+  const scrollToSection = (item: TableOfContentsItem) => {
+    setSelectedTocId(item.id);
+    if (tableOfContents?.source === 'pages') {
+      return;
+    }
+    const anchor = window.document.getElementById(`section-${slugifyHeading(item.label)}`);
+    anchor?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const renderTocItems = (items: TableOfContentsItem[], depth: number = 0): ReactNode =>
+    items.map((item) => (
+      <div key={item.id} className="space-y-2">
+        <button
+          type="button"
+          onClick={() => scrollToSection(item)}
+          className={cn(
+            'w-full rounded-[1rem] border px-3 py-3 text-left transition-all',
+            selectedTocId === item.id
+              ? 'border-[var(--primary)] bg-[var(--primary-light)]'
+              : 'border-[var(--card-border)] bg-[var(--card-bg-solid)] hover:border-[var(--card-border-hover)]'
+          )}
+          style={{ marginLeft: depth * 12 }}
+        >
+          <p className="text-sm font-medium text-[var(--text-primary)]">{item.label}</p>
+          <p className="mt-1 text-xs text-[var(--text-secondary)]">{formatSectionPages(item)}</p>
+        </button>
+        <div className="flex items-center justify-between gap-2 px-1" style={{ marginLeft: depth * 12 }}>
+          <span className="text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--text-tertiary)]">
+            {formatSectionPages(item)}
+          </span>
+          <Button variant="ghost" size="sm" onClick={() => askAboutSection(item)}>
+            <MessageSquare className="h-4 w-4 mr-2" />
+            Ask
+          </Button>
+        </div>
+        {item.children?.length ? renderTocItems(item.children, depth + 1) : null}
+      </div>
+    ));
+
   return (
     <div className="space-y-6">
       <Breadcrumb
@@ -1144,51 +1245,112 @@ export default function DocumentDetailPage() {
       {/* Tab Content */}
       <div className="min-h-[400px]">
         {activeTab === 'content' && (
-          <div className="p-6 rounded-2xl bg-[var(--card-bg)] border border-[var(--card-border)] animate-in fade-in slide-in-from-bottom-2 duration-300">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-lg font-semibold text-[var(--text-primary)]">Extracted Content</h3>
-              <div className="flex gap-2">
-                <Button variant="ghost" size="sm" onClick={() => {
-                  navigator.clipboard.writeText(document.extracted_text || '');
-                  toast.success('Content copied to clipboard');
-                }}>
-                  <Copy className="h-4 w-4 mr-2" />
-                  Copy Text
-                </Button>
-              </div>
-            </div>
-
-            <div className="prose prose-sm max-w-none text-[var(--text-primary)] leading-relaxed">
-              {document.extracted_text ? (
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm]}
-                  components={{
-                    img: ({ src, alt }) => {
-                      const resolvedSrc = resolveDocumentArtifactUrl(documentId, document.file_path, typeof src === 'string' ? src : '');
-                      return <AuthenticatedArtifactImage src={resolvedSrc} alt={alt || 'Document artifact'} />;
-                    },
-                    a: ({ href, children, ...props }) => {
-                      const resolvedHref = resolveDocumentArtifactUrl(documentId, document.file_path, typeof href === 'string' ? href : '');
-                      return (
-                        <a
-                          {...props}
-                          href={resolvedHref}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          {children}
-                        </a>
-                      );
-                    },
-                  }}
-                >
-                  {document.extracted_text}
-                </ReactMarkdown>
-              ) : (
-                <div className="text-center py-12">
-                  <p className="text-[var(--text-secondary)]">No content has been extracted from this document yet.</p>
+          <div className="grid gap-6 xl:grid-cols-[300px_minmax(0,1fr)] animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <aside className="rounded-2xl border border-[var(--card-border)] bg-[var(--card-bg)] p-5 xl:sticky xl:top-28 xl:max-h-[calc(100vh-180px)] xl:overflow-y-auto">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-semibold text-[var(--text-primary)]">Table of Contents</h3>
+                  <p className="mt-1 text-sm text-[var(--text-secondary)]">
+                    {!tableOfContents
+                      ? 'Outline will appear once extraction finishes.'
+                      : tableOfContents.source === 'contents'
+                      ? 'Read from the document outline.'
+                      : tableOfContents.source === 'headings'
+                        ? 'Built from detected headings.'
+                        : 'Built from page ranges because no headings were found.'}
+                  </p>
                 </div>
-              )}
+                {tableOfContents?.count ? (
+                  <span className="signal-pill">{tableOfContents.count}</span>
+                ) : null}
+              </div>
+
+              <div className="mt-5 space-y-4">
+                {isLoadingToc ? (
+                  <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
+                    <LoadingSpinner size="sm" />
+                    Loading outline...
+                  </div>
+                ) : tableOfContents?.items?.length ? (
+                  renderTocItems(tableOfContents.items)
+                ) : (
+                  <p className="text-sm leading-6 text-[var(--text-secondary)]">
+                    No outline is available yet. If extraction just finished, refresh once processing settles.
+                  </p>
+                )}
+              </div>
+            </aside>
+
+            <div className="rounded-2xl bg-[var(--card-bg)] border border-[var(--card-border)] p-6 min-w-0">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-lg font-semibold text-[var(--text-primary)]">Extracted Content</h3>
+                <div className="flex gap-2">
+                  <Button variant="ghost" size="sm" onClick={() => {
+                    navigator.clipboard.writeText(document.extracted_text || '');
+                    toast.success('Content copied to clipboard');
+                  }}>
+                    <Copy className="h-4 w-4 mr-2" />
+                    Copy Text
+                  </Button>
+                </div>
+              </div>
+
+              <div className="prose prose-sm max-w-none text-[var(--text-primary)] leading-relaxed min-w-0">
+                {document.extracted_text ? (
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    components={{
+                      h1: ({ children, ...props }) => {
+                        const label = extractTextValue(children);
+                        return <h1 id={`section-${slugifyHeading(label)}`} {...props}>{children}</h1>;
+                      },
+                      h2: ({ children, ...props }) => {
+                        const label = extractTextValue(children);
+                        return <h2 id={`section-${slugifyHeading(label)}`} {...props}>{children}</h2>;
+                      },
+                      h3: ({ children, ...props }) => {
+                        const label = extractTextValue(children);
+                        return <h3 id={`section-${slugifyHeading(label)}`} {...props}>{children}</h3>;
+                      },
+                      h4: ({ children, ...props }) => {
+                        const label = extractTextValue(children);
+                        return <h4 id={`section-${slugifyHeading(label)}`} {...props}>{children}</h4>;
+                      },
+                      h5: ({ children, ...props }) => {
+                        const label = extractTextValue(children);
+                        return <h5 id={`section-${slugifyHeading(label)}`} {...props}>{children}</h5>;
+                      },
+                      h6: ({ children, ...props }) => {
+                        const label = extractTextValue(children);
+                        return <h6 id={`section-${slugifyHeading(label)}`} {...props}>{children}</h6>;
+                      },
+                      img: ({ src, alt }) => {
+                        const resolvedSrc = resolveDocumentArtifactUrl(documentId, document.file_path, typeof src === 'string' ? src : '');
+                        return <AuthenticatedArtifactImage src={resolvedSrc} alt={alt || 'Document artifact'} />;
+                      },
+                      a: ({ href, children, ...props }) => {
+                        const resolvedHref = resolveDocumentArtifactUrl(documentId, document.file_path, typeof href === 'string' ? href : '');
+                        return (
+                          <a
+                            {...props}
+                            href={resolvedHref}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            {children}
+                          </a>
+                        );
+                      },
+                    }}
+                  >
+                    {document.extracted_text}
+                  </ReactMarkdown>
+                ) : (
+                  <div className="text-center py-12">
+                    <p className="text-[var(--text-secondary)]">No content has been extracted from this document yet.</p>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}

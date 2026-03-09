@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { Suspense, useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
@@ -75,6 +76,12 @@ interface VerificationSummary {
   score: number;
 }
 
+interface SectionScope {
+  documentId?: string;
+  title?: string;
+  pages: number[];
+}
+
 const MODE_CONFIG = {
   structured_output: {
     label: 'Structured Output',
@@ -96,7 +103,8 @@ const MODE_CONFIG = {
   },
 } as const;
 
-export default function AskDocumentsPage() {
+function AskDocumentsPageContent() {
+  const searchParams = useSearchParams();
   const [documents, setDocuments] = useState<Document[]>([]);
   const [selectedDocId, setSelectedDocId] = useState<string>('');
   const [question, setQuestion] = useState('');
@@ -110,6 +118,8 @@ export default function AskDocumentsPage() {
   const [fileSearchIndexing, setFileSearchIndexing] = useState(false);
   const [fileSearchStatus, setFileSearchStatus] = useState<Record<string, boolean>>({});
   const [expandedVerifications, setExpandedVerifications] = useState<Set<string>>(new Set());
+  const [sectionScope, setSectionScope] = useState<SectionScope | null>(null);
+  const [hasAppliedInitialParams, setHasAppliedInitialParams] = useState(false);
 
   useEffect(() => {
     fetchDocuments();
@@ -124,6 +134,38 @@ export default function AskDocumentsPage() {
       checkFileSearchStatus(selectedDocId);
     }
   }, [selectedDocId, ragMode]);
+
+  useEffect(() => {
+    if (isLoadingDocs || hasAppliedInitialParams) {
+      return;
+    }
+
+    const documentIdParam = searchParams.get('document') || '';
+    const questionParam = searchParams.get('question') || '';
+    const sectionTitleParam = searchParams.get('sectionTitle') || '';
+    const sectionPagesParam = (searchParams.get('sectionPages') || '')
+      .split(',')
+      .map((value) => Number.parseInt(value.trim(), 10))
+      .filter((value) => Number.isFinite(value) && value > 0);
+
+    if (documentIdParam && documents.some((doc) => doc.id === documentIdParam)) {
+      setSelectedDocId(documentIdParam);
+    }
+
+    if (questionParam) {
+      setQuestion(questionParam);
+    }
+
+    if (sectionTitleParam || sectionPagesParam.length > 0) {
+      setSectionScope({
+        documentId: documentIdParam || undefined,
+        title: sectionTitleParam || undefined,
+        pages: sectionPagesParam,
+      });
+    }
+
+    setHasAppliedInitialParams(true);
+  }, [documents, hasAppliedInitialParams, isLoadingDocs, searchParams]);
 
   const fetchDocuments = async () => {
     try {
@@ -235,7 +277,13 @@ export default function AskDocumentsPage() {
         question,
         selectedDocId || undefined,
         5,
-        ragMode
+        ragMode,
+        sectionScope
+          ? {
+              sectionTitle: sectionScope.title,
+              sectionPages: sectionScope.pages,
+            }
+          : undefined
       );
 
       const assistantMessage: Message = {
@@ -309,6 +357,24 @@ export default function AskDocumentsPage() {
   const copyMessage = (content: string) => {
     navigator.clipboard.writeText(content);
     toast.success('Copied to clipboard');
+  };
+
+  const clearSectionScope = () => {
+    setSectionScope(null);
+  };
+
+  const formatSectionScope = () => {
+    if (!sectionScope) return null;
+    if (sectionScope.title && sectionScope.pages.length > 0) {
+      return `${sectionScope.title} • pages ${sectionScope.pages.join(', ')}`;
+    }
+    if (sectionScope.title) {
+      return sectionScope.title;
+    }
+    if (sectionScope.pages.length > 0) {
+      return `Pages ${sectionScope.pages.join(', ')}`;
+    }
+    return null;
   };
 
   const exportChatAsMarkdown = () => {
@@ -464,7 +530,16 @@ export default function AskDocumentsPage() {
             ) : (
               <select
                 value={selectedDocId}
-                onChange={(e) => setSelectedDocId(e.target.value)}
+                onChange={(e) => {
+                  const nextDocId = e.target.value;
+                  setSelectedDocId(nextDocId);
+                  if (sectionScope && sectionScope.documentId && sectionScope.documentId !== nextDocId) {
+                    setSectionScope(null);
+                  }
+                  if (!nextDocId) {
+                    setSectionScope(null);
+                  }
+                }}
                 className="w-full"
               >
                 <option value="">All Documents</option>
@@ -481,6 +556,27 @@ export default function AskDocumentsPage() {
                 : 'Searching across every document that is ready for generation.'}
             </p>
           </div>
+
+          {sectionScope && (
+            <div className="rounded-[1.35rem] border border-[var(--card-border)] bg-[color:color-mix(in_srgb,var(--bg-elevated)_78%,transparent)] p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[var(--text-tertiary)]">
+                    Section scope
+                  </label>
+                  <p className="text-sm font-medium text-[var(--text-primary)]">
+                    {formatSectionScope()}
+                  </p>
+                  <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
+                    Retrieval is narrowed to this section before answer generation.
+                  </p>
+                </div>
+                <Button variant="ghost" size="sm" onClick={clearSectionScope} className="shrink-0">
+                  Clear
+                </Button>
+              </div>
+            </div>
+          )}
 
           {activeMode === 'text' && (
             <div className="rounded-[1.35rem] border border-[var(--card-border)] bg-[color:color-mix(in_srgb,var(--bg-elevated)_78%,transparent)] p-4">
@@ -604,6 +700,11 @@ export default function AskDocumentsPage() {
                   ? 'Speak naturally and keep the response grounded in your sources.'
                   : MODE_CONFIG[ragMode].description}
               </p>
+              {activeMode === 'text' && sectionScope && formatSectionScope() && (
+                <p className="mt-2 text-xs font-medium uppercase tracking-[0.12em] text-[var(--primary)]">
+                  Section: {formatSectionScope()}
+                </p>
+              )}
             </div>
 
             {activeMode === 'text' && (
@@ -931,5 +1032,19 @@ export default function AskDocumentsPage() {
         </div>
       </section>
     </div>
+  );
+}
+
+export default function AskDocumentsPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="dashboard-panel flex min-h-[320px] items-center justify-center">
+          <LoadingSpinner />
+        </div>
+      }
+    >
+      <AskDocumentsPageContent />
+    </Suspense>
   );
 }
