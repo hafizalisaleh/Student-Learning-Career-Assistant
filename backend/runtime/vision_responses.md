@@ -609,3 +609,37 @@ Context:
 - DeepSeek-OCR.pdf | chunk=6 | similarity=0.899 | pages=1 | modality=hybrid
 - DeepSeek-OCR.pdf | chunk=676 | similarity=0.867 | pages=3 | modality=ocr_page
 
+### Session 2026-03-10T17:28:12+05:00
+
+- Text provider: groq
+- Text model: llama-3.3-70b-versatile
+- Vision provider: groq
+- Vision model: meta-llama/llama-4-scout-17b-16e-instruct
+- Formula enrichment: True
+
+## Query 1
+
+Q: Question: Hello
+
+A:
+The retrieved document does not directly answer this question. 
+The closest relevant evidence is from [MBR Lab (Week 3).pdf], which contains various chunks with dot notation and linked images, but none of these provide a clear response to a greeting.
+
+Context:
+- Timestamp: 2026-03-10T17:28:44+05:00
+- Text provider: groq
+- Text model: llama-3.3-70b-versatile
+- Vision provider: groq
+- Vision model: meta-llama/llama-4-scout-17b-16e-instruct
+- Vision used: False
+- Sources: MBR Lab (Week 3).pdf
+- Linked tables: 0
+- Linked images: 6
+- Retrieved chunks:
+- MBR Lab (Week 3).pdf | chunk=338 | similarity=0.633 | pages=14 | modality=hybrid
+- MBR Lab (Week 3).pdf | chunk=331 | similarity=0.612 | pages=14 | modality=hybrid
+- MBR Lab (Week 3).pdf | chunk=327 | similarity=0.610 | pages=13 | modality=hybrid
+- MBR Lab (Week 3).pdf | chunk=282 | similarity=0.609 | pages=13 | modality=hybrid
+- MBR Lab (Week 3).pdf | chunk=326 | similarity=0.608 | pages=13 | modality=hybrid
+- MBR Lab (Week 3).pdf | chunk=350 | similarity=0.607 | pages=14 | modality=hybrid
+

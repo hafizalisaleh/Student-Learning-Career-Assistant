@@ -275,14 +275,65 @@ Source excerpt:
         focus_context: str | None = None,
         evidence_chunks: Optional[Sequence[Dict[str, Any]]] = None,
     ) -> List[Dict[str, Any]]:
-        return self._generate_questions(
-            content,
-            num_questions,
-            difficulty,
-            ["mcq", "short", "true_false", "fill_blank"],
-            focus_context,
-            evidence_chunks=evidence_chunks,
-        )
+        generation_plan = self._build_mixed_question_plan(num_questions)
+        generated_by_type: Dict[str, List[Dict[str, Any]]] = {}
+
+        for question_type in ("mcq", "short", "true_false", "fill_blank"):
+            required_count = generation_plan.count(question_type)
+            if required_count <= 0:
+                continue
+            generated_by_type[question_type] = self._generate_questions(
+                content,
+                required_count,
+                difficulty,
+                [question_type],
+                focus_context,
+                evidence_chunks=evidence_chunks,
+            )
+
+        merged: List[Dict[str, Any]] = []
+        seen_questions = set()
+        cursors = {question_type: 0 for question_type in generated_by_type}
+
+        for question_type in generation_plan:
+            bucket = generated_by_type.get(question_type, [])
+            cursor = cursors.get(question_type, 0)
+            if cursor >= len(bucket):
+                continue
+            question = bucket[cursor]
+            cursors[question_type] = cursor + 1
+            normalized_key = _normalize_support_text(question.get("question_text", ""))
+            if not normalized_key or normalized_key in seen_questions:
+                continue
+            seen_questions.add(normalized_key)
+            merged.append(question)
+
+        if len(merged) < num_questions:
+            for question_type in ("mcq", "short", "true_false", "fill_blank"):
+                bucket = generated_by_type.get(question_type, [])
+                cursor = cursors.get(question_type, 0)
+                for question in bucket[cursor:]:
+                    normalized_key = _normalize_support_text(question.get("question_text", ""))
+                    if not normalized_key or normalized_key in seen_questions:
+                        continue
+                    seen_questions.add(normalized_key)
+                    merged.append(question)
+                    if len(merged) >= num_questions:
+                        break
+                if len(merged) >= num_questions:
+                    break
+
+        return merged[:num_questions]
+
+    def _build_mixed_question_plan(self, num_questions: int) -> List[str]:
+        cycle = ["mcq", "short", "true_false", "fill_blank"]
+        plan: List[str] = []
+        while len(plan) < num_questions:
+            for question_type in cycle:
+                if len(plan) >= num_questions:
+                    break
+                plan.append(question_type)
+        return plan
 
     def _generate_questions(
         self,
@@ -391,20 +442,24 @@ SOURCE MATERIAL:
 Return valid JSON with the schema provided.
 """.strip()
 
-        raw = self.client.generate_json(
-            prompt=prompt,
-            system_prompt=system_prompt,
-            temperature=0.25,
-            max_tokens=3200,
-            schema=schema,
-        )
-        parsed = safe_load_json(raw)
-        generated_questions = parsed.get("questions", []) if isinstance(parsed, dict) else []
-        sanitized = self._sanitize_questions(
-            generated_questions,
-            allowed_types,
-            max_source_index=max(1, len(evidence_chunks or [])),
-        )
+        sanitized: List[Dict[str, Any]] = []
+        try:
+            raw = self.client.generate_json(
+                prompt=prompt,
+                system_prompt=system_prompt,
+                temperature=0.25,
+                max_tokens=3200,
+                schema=schema,
+            )
+            parsed = safe_load_json(raw)
+            generated_questions = parsed.get("questions", []) if isinstance(parsed, dict) else []
+            sanitized = self._sanitize_questions(
+                generated_questions,
+                allowed_types,
+                max_source_index=max(1, len(evidence_chunks or [])),
+            )
+        except Exception as exc:
+            logger.warning("QuizGenerator primary structured generation failed; retrying with simplified JSON prompt: %s", exc)
 
         if not sanitized:
             logger.warning("QuizGenerator could not sanitize any generated questions; retrying with a simpler prompt")
@@ -438,19 +493,40 @@ SOURCE BLOCKS:
 SOURCE MATERIAL:
 {excerpt}
 """.strip()
-            retry_raw = self.client.generate_json(
-                prompt=retry_prompt,
-                system_prompt="Return only valid JSON. Do not rename keys. Do not add prose.",
-                temperature=0.1,
-                max_tokens=3200,
-            )
-            retry_parsed = safe_load_json(retry_raw)
-            retry_questions = retry_parsed.get("questions", []) if isinstance(retry_parsed, dict) else []
-            sanitized = self._sanitize_questions(
-                retry_questions,
-                allowed_types,
-                max_source_index=max(1, len(evidence_chunks or [])),
-            )
+            try:
+                retry_raw = self.client.generate_json(
+                    prompt=retry_prompt,
+                    system_prompt="Return only valid JSON. Do not rename keys. Do not add prose.",
+                    temperature=0.1,
+                    max_tokens=3200,
+                )
+                retry_parsed = safe_load_json(retry_raw)
+                retry_questions = retry_parsed.get("questions", []) if isinstance(retry_parsed, dict) else []
+                sanitized = self._sanitize_questions(
+                    retry_questions,
+                    allowed_types,
+                    max_source_index=max(1, len(evidence_chunks or [])),
+                )
+            except Exception as exc:
+                logger.warning("QuizGenerator simplified JSON retry failed; falling back to plain text JSON prompt: %s", exc)
+
+        if not sanitized:
+            try:
+                text_retry_raw = self.client.generate_text(
+                    prompt=retry_prompt,
+                    system_prompt="Return only valid JSON. Do not rename keys. Do not add prose.",
+                    temperature=0.0,
+                    max_tokens=3200,
+                )
+                text_retry_parsed = safe_load_json(text_retry_raw)
+                text_retry_questions = text_retry_parsed.get("questions", []) if isinstance(text_retry_parsed, dict) else []
+                sanitized = self._sanitize_questions(
+                    text_retry_questions,
+                    allowed_types,
+                    max_source_index=max(1, len(evidence_chunks or [])),
+                )
+            except Exception as exc:
+                logger.warning("QuizGenerator plain-text JSON fallback failed: %s", exc)
 
         if not sanitized:
             raise RuntimeError("Model returned no usable questions")

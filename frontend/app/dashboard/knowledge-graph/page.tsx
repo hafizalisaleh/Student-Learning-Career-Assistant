@@ -63,6 +63,13 @@ interface ChatMessage {
   sources?: Array<{ text: string; metadata: Record<string, any>; similarity?: number }>;
   nodeLabel?: string;
   nodeType?: string;
+  quizScope?: {
+    documentId?: string;
+    selectedTopics?: string[];
+    selectedSubtopics?: string[];
+    selectedSections?: Array<{ title: string; pages?: number[] }>;
+    focusContext?: string;
+  };
 }
 
 interface ChatScope {
@@ -71,6 +78,56 @@ interface ChatScope {
   nodeType?: string;
   sectionTitle?: string;
   sectionPages?: number[];
+}
+
+function buildQuizScope(
+  nodeType?: string,
+  label?: string,
+  documentId?: string,
+  sectionTitle?: string,
+  sectionPages?: number[]
+) {
+  const cleanLabel = (label || '').trim();
+  const cleanSectionTitle = (sectionTitle || cleanLabel).trim();
+  const pages = Array.isArray(sectionPages)
+    ? sectionPages.filter((page) => Number.isFinite(page) && page > 0)
+    : [];
+
+  if (!documentId && !cleanLabel && !cleanSectionTitle) {
+    return undefined;
+  }
+
+  if (nodeType === 'section' && cleanSectionTitle) {
+    return {
+      documentId,
+      selectedSubtopics: [cleanSectionTitle],
+      selectedSections: [
+        {
+          title: cleanSectionTitle,
+          pages,
+        },
+      ],
+      focusContext: `Generate the quiz strictly from the selected section "${cleanSectionTitle}"${pages.length ? ` on page${pages.length === 1 ? '' : 's'} ${pages.join(', ')}` : ''}.`,
+    };
+  }
+
+  if (nodeType === 'topic' && cleanLabel) {
+    return {
+      documentId,
+      selectedTopics: [cleanLabel],
+      focusContext: `Generate the quiz around the knowledge graph topic "${cleanLabel}" and keep it grounded in the cited source material.`,
+    };
+  }
+
+  if (nodeType === 'keyword' && cleanLabel) {
+    return {
+      documentId,
+      selectedSubtopics: [cleanLabel],
+      focusContext: `Generate the quiz around the selected knowledge graph concept "${cleanLabel}" and avoid drifting to unrelated parts of the document.`,
+    };
+  }
+
+  return documentId ? { documentId } : undefined;
 }
 
 // ─── Transform graph data → MindElixir tree ─────────────────────────
@@ -228,6 +285,13 @@ export default function KnowledgeGraphPage() {
         role: 'assistant',
         content: response.answer || 'No answer available.',
         sources: response.sources || [],
+        quizScope: buildQuizScope(
+          chatScope?.nodeType,
+          chatScope?.label,
+          chatScope?.documentId,
+          chatScope?.sectionTitle,
+          chatScope?.sectionPages
+        ),
       };
 
       setChatMessages((prev) => [...prev, assistantMsg]);
@@ -353,6 +417,13 @@ export default function KnowledgeGraphPage() {
         sources: response.sources || [],
         nodeLabel: cleanTopic,
         nodeType,
+        quizScope: buildQuizScope(
+          nodeType,
+          cleanTopic,
+          docId,
+          node?.metadata?.title || cleanTopic,
+          nodeType === 'section' ? sectionPages : undefined
+        ),
       };
 
       setChatMessages((prev) => [...prev, assistantMsg]);
@@ -566,7 +637,9 @@ export default function KnowledgeGraphPage() {
                           <AnswerActions
                             answer={msg.content}
                             sources={msg.sources}
+                            defaultDocumentId={msg.quizScope?.documentId}
                             question={index > 0 && chatMessages[index - 1]?.role === 'user' ? chatMessages[index - 1]?.content : undefined}
+                            quizScope={msg.quizScope}
                           />
                           {msg.sources && msg.sources.length > 0 && (
                             <div className="mt-2 pt-2 border-t border-[var(--card-border)]">

@@ -10,7 +10,6 @@ import {
   buildGeneratedNoteContent,
   buildGeneratedNoteTitle,
   buildGeneratedQuizFocusContext,
-  buildGeneratedQuizTitle,
 } from '@/lib/ai-artifacts';
 
 interface SourceLike {
@@ -18,11 +17,25 @@ interface SourceLike {
   metadata?: Record<string, any>;
 }
 
+interface QuizScopeSection {
+  title: string;
+  pages?: number[];
+}
+
+interface QuizScope {
+  documentId?: string | null;
+  selectedTopics?: string[];
+  selectedSubtopics?: string[];
+  selectedSections?: QuizScopeSection[];
+  focusContext?: string;
+}
+
 interface AnswerActionsProps {
   answer: string;
   sources?: SourceLike[];
   defaultDocumentId?: string | null;
   question?: string;
+  quizScope?: QuizScope;
   className?: string;
 }
 
@@ -46,6 +59,7 @@ export function AnswerActions({
   sources = [],
   defaultDocumentId,
   question,
+  quizScope,
   className = '',
 }: AnswerActionsProps) {
   const router = useRouter();
@@ -93,14 +107,37 @@ export function AnswerActions({
 
     try {
       setIsCreatingQuiz(true);
-      const quiz = await api.generateQuiz({
+      const focusParts = [
+        quizScope?.focusContext?.trim(),
+        buildGeneratedQuizFocusContext(answer, question).trim(),
+      ].filter((value): value is string => Boolean(value));
+
+      const requestData: Record<string, unknown> = {
         document_ids: documentIds,
         question_type: 'mixed',
         difficulty: 'medium',
         num_questions: 5,
-        title: buildGeneratedQuizTitle(question, primaryDocumentTitle),
-        focus_context: buildGeneratedQuizFocusContext(answer, question),
-      });
+        focus_context: focusParts.join('\n\n'),
+      };
+
+      if (quizScope?.selectedTopics?.length) {
+        requestData.selected_topics = [...new Set(quizScope.selectedTopics.map((item) => item.trim()).filter(Boolean))];
+      }
+
+      if (quizScope?.selectedSubtopics?.length) {
+        requestData.selected_subtopics = [...new Set(quizScope.selectedSubtopics.map((item) => item.trim()).filter(Boolean))];
+      }
+
+      if (quizScope?.selectedSections?.length) {
+        requestData.selected_sections = quizScope.selectedSections
+          .map((section) => ({
+            title: section.title?.trim(),
+            pages: Array.isArray(section.pages) ? section.pages.filter((page) => Number.isFinite(page) && page > 0) : [],
+          }))
+          .filter((section) => section.title);
+      }
+
+      const quiz = await api.generateQuiz(requestData);
       toast.success('Quiz generated from answer');
       router.push(`/dashboard/quizzes/${quiz.id}`);
     } catch (error: any) {
