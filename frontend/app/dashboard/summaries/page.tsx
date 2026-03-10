@@ -9,8 +9,8 @@ import { Select } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/ui/empty-state';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
-import { Plus, Search, Brain, Trash2, Calendar, Eye, EyeOff, ChevronDown } from 'lucide-react';
-import type { Summary } from '@/lib/types';
+import { Plus, Search, Brain, Trash2, Calendar, Eye, EyeOff, ChevronDown, FileText, ArrowUpRight } from 'lucide-react';
+import type { Document, Summary } from '@/lib/types';
 import { formatDate } from '@/lib/utils';
 import toast from 'react-hot-toast';
 import Link from 'next/link';
@@ -18,6 +18,7 @@ import ReactMarkdown from 'react-markdown';
 
 export default function SummariesPage() {
   const [summaries, setSummaries] = useState<Summary[]>([]);
+  const [documentsById, setDocumentsById] = useState<Record<string, Document>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'short' | 'medium' | 'detailed'>('all');
@@ -30,12 +31,35 @@ export default function SummariesPage() {
   async function fetchSummaries() {
     try {
       setIsLoading(true);
-      const data = await api.getSummaries();
-      setSummaries(Array.isArray(data) ? data : []);
+      const [summariesData, documentsData] = await Promise.allSettled([
+        api.getSummaries(),
+        api.getDocuments(),
+      ]);
+
+      const nextSummaries = summariesData.status === 'fulfilled' && Array.isArray(summariesData.value)
+        ? summariesData.value
+        : [];
+
+      const docsArray = documentsData.status === 'fulfilled' && Array.isArray(documentsData.value)
+        ? documentsData.value
+        : [];
+
+      const nextDocumentsById = docsArray.reduce<Record<string, Document>>((acc, doc) => {
+        acc[doc.id] = doc;
+        return acc;
+      }, {});
+
+      setSummaries(nextSummaries);
+      setDocumentsById(nextDocumentsById);
+
+      if (documentsData.status === 'rejected') {
+        console.warn('Failed to load document metadata for summaries:', documentsData.reason);
+      }
     } catch (error) {
       console.error('Failed to load summaries:', error);
       toast.error('Failed to load summaries');
       setSummaries([]);
+      setDocumentsById({});
     } finally {
       setIsLoading(false);
     }
@@ -68,7 +92,13 @@ export default function SummariesPage() {
 
   const filteredSummaries = summaries.filter((summary) => {
     const searchText = (summary.summary_text || '').toLowerCase();
-    const matchesSearch = searchText.includes(searchQuery.toLowerCase());
+    const sourceTitle = documentsById[summary.document_id]?.title?.toLowerCase() || '';
+    const sourceFilename = documentsById[summary.document_id]?.original_filename?.toLowerCase() || '';
+    const query = searchQuery.toLowerCase();
+    const matchesSearch =
+      searchText.includes(query) ||
+      sourceTitle.includes(query) ||
+      sourceFilename.includes(query);
     const matchesType = filterType === 'all' || summary.summary_length === filterType;
     return matchesSearch && matchesType;
   });
@@ -105,7 +135,7 @@ export default function SummariesPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold text-[var(--text-primary)]">Summaries</h1>
-          <p className="text-sm text-[var(--text-tertiary)] mt-0.5">AI-generated content summaries</p>
+          <p className="text-sm text-[var(--text-tertiary)] mt-0.5">Review summaries by source, length, and generation time.</p>
         </div>
         <Link href="/dashboard/summaries/new">
           <Button variant="default">
@@ -121,7 +151,7 @@ export default function SummariesPage() {
           <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[var(--text-muted)]" />
           <Input
             type="text"
-            placeholder="Search summaries..."
+            placeholder="Search summaries or sources..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-14"
@@ -131,10 +161,10 @@ export default function SummariesPage() {
           value={filterType}
           onChange={(e) => setFilterType(e.target.value as any)}
         >
-          <option value="all">All Types</option>
-          <option value="short">Bullet Points</option>
-          <option value="medium">Medium</option>
-          <option value="detailed">Detailed</option>
+          <option value="all">All Lengths</option>
+          <option value="short">Concise</option>
+          <option value="medium">Standard</option>
+          <option value="detailed">In-depth</option>
         </Select>
       </div>
 
@@ -161,20 +191,46 @@ export default function SummariesPage() {
             const isExpanded = expandedSummaries.has(summary.id);
             const previewText = summary.summary_text?.substring(0, 200) || '';
             const hasMore = (summary.summary_text?.length || 0) > 200;
+            const sourceDocument = documentsById[summary.document_id];
+            const sourceTitle = sourceDocument?.title || sourceDocument?.original_filename || 'Unknown source';
+            const sourceLabel = sourceDocument?.original_filename && sourceDocument.original_filename !== sourceTitle
+              ? sourceDocument.original_filename
+              : null;
 
             return (
               <Card key={summary.id} className="hover:shadow-lg transition-shadow">
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
+                      <div className="flex items-center gap-2 mb-3">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--summaries-bg)] text-[var(--summaries)]">
+                          <FileText className="h-4 w-4" />
+                        </div>
+                        <div className="min-w-0">
+                          <CardTitle className="text-base truncate">{sourceTitle}</CardTitle>
+                          <CardDescription className="truncate">
+                            {sourceLabel ? sourceLabel : 'Summary source'}
+                          </CardDescription>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
                         <Badge variant={getSummaryTypeBadgeVariant(summary.summary_length)}>
                           {getSummaryTypeLabel(summary.summary_length)}
                         </Badge>
+                        <Badge variant="default">Source</Badge>
                         <span className="flex items-center gap-1 text-xs text-[var(--text-tertiary)]">
                           <Calendar className="h-3 w-3" />
                           {formatDate(summary.generated_at)}
                         </span>
+                        {sourceDocument && (
+                          <Link
+                            href={`/dashboard/documents/${summary.document_id}`}
+                            className="inline-flex items-center gap-1 text-xs font-medium text-[var(--accent-blue)] hover:underline"
+                          >
+                            Open source
+                            <ArrowUpRight className="h-3 w-3" />
+                          </Link>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center gap-2">

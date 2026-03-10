@@ -2,7 +2,7 @@
 Summary schemas for request/response validation
 """
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 from enum import Enum
 import uuid
@@ -12,10 +12,17 @@ class SummaryLengthEnum(str, Enum):
     MEDIUM = "medium"
     DETAILED = "detailed"
 
+class SummarySectionScope(BaseModel):
+    title: str
+    pages: List[int] = []
+
 class SummaryCreate(BaseModel):
     """Schema for summary creation"""
     document_id: uuid.UUID
     summary_length: SummaryLengthEnum = SummaryLengthEnum.MEDIUM
+    selected_topics: List[str] = []
+    selected_subtopics: List[str] = []
+    selected_sections: List[SummarySectionScope] = []
 
 class SummaryResponse(BaseModel):
     """Schema for summary response"""
