@@ -19,6 +19,12 @@ class DifficultyLevelEnum(str, Enum):
     MEDIUM = "medium"
     HARD = "hard"
 
+
+class QuizSectionScope(BaseModel):
+    """Section/page scope for focused quiz generation."""
+    title: str
+    pages: List[int] = []
+
 class QuizCreate(BaseModel):
     """Schema for quiz creation"""
     document_ids: List[uuid.UUID]
@@ -28,6 +34,9 @@ class QuizCreate(BaseModel):
     title: Optional[str] = None
     follow_up_from_quiz_id: Optional[uuid.UUID] = None
     focus_context: Optional[str] = None
+    selected_topics: List[str] = []
+    selected_subtopics: List[str] = []
+    selected_sections: List[QuizSectionScope] = []
 
 class QuestionResponse(BaseModel):
     """Schema for quiz question response"""

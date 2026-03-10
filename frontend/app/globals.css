@@ -368,6 +368,21 @@ p {
   line-height: 1.6;
 }
 
+.chat-user-bubble {
+  color: var(--primary-foreground);
+}
+
+.chat-user-bubble p,
+.chat-user-bubble span,
+.chat-user-bubble strong,
+.chat-user-bubble svg {
+  color: inherit;
+}
+
+.chat-user-bubble-subtle {
+  color: color-mix(in srgb, var(--primary-foreground) 68%, transparent);
+}
+
 a {
   color: var(--primary);
   text-decoration: none;

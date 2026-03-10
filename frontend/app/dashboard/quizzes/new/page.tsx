@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, Suspense, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -25,7 +25,7 @@ import {
 import toast from 'react-hot-toast';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
-import type { Document } from '@/lib/types';
+import type { Document, TableOfContentsItem } from '@/lib/types';
 import { isDocumentReadyForGeneration } from '@/lib/document-status';
 
 const questionTypes = [
@@ -58,6 +58,39 @@ const difficulties = [
   { id: 'hard', label: 'Hard', icon: Flame, color: '#ef4444', rgb: '239, 68, 68' },
 ];
 
+type FlattenedSubtopic = TableOfContentsItem & { depth: number; clientId: string };
+
+function flattenSubtopics(
+  items: TableOfContentsItem[],
+  depth: number = 0,
+  seenIds: Map<string, number> = new Map(),
+  parentPath: string[] = []
+): FlattenedSubtopic[] {
+  return items.flatMap((item, index) => {
+    const path = item.path?.length ? item.path : [...parentPath, item.label || item.title || `Section ${index + 1}`];
+    const baseClientId = [
+      item.id || 'section',
+      path.join('--'),
+      item.page_start ?? 'na',
+      item.page_end ?? 'na',
+    ].join('::');
+    const occurrence = (seenIds.get(baseClientId) ?? 0) + 1;
+    seenIds.set(baseClientId, occurrence);
+    const clientId = occurrence === 1 ? baseClientId : `${baseClientId}::${occurrence}`;
+
+    return [
+      { ...item, path, depth, clientId },
+      ...flattenSubtopics(item.children || [], depth + 1, seenIds, path),
+    ];
+  });
+}
+
+function formatPageRange(item: TableOfContentsItem) {
+  if (!item.pages?.length) return 'No page info';
+  if (item.page_start === item.page_end) return `Page ${item.page_start}`;
+  return `Pages ${item.page_start}-${item.page_end}`;
+}
+
 export default function NewQuizPage() {
   return (
     <Suspense fallback={<div className="flex items-center justify-center min-h-[60vh]"><LoadingSpinner size="lg" /></div>}>
@@ -88,9 +121,10 @@ function NewQuizContent() {
   );
   const [isDocDropdownOpen, setIsDocDropdownOpen] = useState(false);
   const [selectedDoc, setSelectedDoc] = useState<Document | null>(null);
+  const [selectedTopics, setSelectedTopics] = useState<string[]>([]);
+  const [selectedSubtopicIds, setSelectedSubtopicIds] = useState<string[]>([]);
 
   const {
-    register,
     handleSubmit,
     formState: { errors },
     setValue,
@@ -135,6 +169,8 @@ function NewQuizContent() {
           if (doc) {
             setSelectedDoc(doc);
             setValue('document_id', doc.id);
+            setSelectedTopics([]);
+            setSelectedSubtopicIds([]);
           }
         }
       } catch (error) {
@@ -160,6 +196,41 @@ function NewQuizContent() {
     setSelectedDoc(doc);
     setValue('document_id', doc.id);
     setIsDocDropdownOpen(false);
+    setSelectedTopics([]);
+    setSelectedSubtopicIds([]);
+  };
+
+  const availableTopics = useMemo(
+    () => (selectedDoc?.topics || []).filter((topic): topic is string => Boolean(topic?.trim())),
+    [selectedDoc]
+  );
+
+  const availableSubtopics = useMemo(() => {
+    const tocItems = (selectedDoc?.doc_metadata?.table_of_contents as TableOfContentsItem[] | undefined) || [];
+    return flattenSubtopics(tocItems).filter((item) => {
+      const label = item.label?.trim().toLowerCase();
+      if (!label) return false;
+      return !['abstract', 'references'].includes(label);
+    });
+  }, [selectedDoc]);
+
+  const selectedSubtopics = useMemo(
+    () => availableSubtopics.filter((item) => selectedSubtopicIds.includes(item.clientId)),
+    [availableSubtopics, selectedSubtopicIds]
+  );
+
+  const toggleTopic = (topic: string) => {
+    setSelectedTopics((prev) =>
+      prev.includes(topic) ? prev.filter((item) => item !== topic) : [...prev, topic]
+    );
+  };
+
+  const toggleSubtopic = (subtopicId: string) => {
+    setSelectedSubtopicIds((prev) =>
+      prev.includes(subtopicId)
+        ? prev.filter((item) => item !== subtopicId)
+        : [...prev, subtopicId]
+    );
   };
 
   const adjustQuestions = (delta: number) => {
@@ -168,7 +239,7 @@ function NewQuizContent() {
     setValue('num_questions', newValue);
   };
 
-  const onSubmit = async (data: GenerateQuizFormData) => {
+  const onSubmit = async (_data: GenerateQuizFormData) => {
     if (!selectedDoc) {
       toast.error('Please select a document');
       return;
@@ -181,12 +252,13 @@ function NewQuizContent() {
         num_questions: numQuestions,
         difficulty: selectedDifficulty,
         question_type: selectedTypes.length === 1 ? selectedTypes[0] : 'mixed',
-        title:
-          data.topic ||
-          (modeFromQuery === 'followup'
-            ? `${selectedDoc.title} · Follow-up Quiz`
-            : undefined),
         follow_up_from_quiz_id: sourceQuizFromQuery || undefined,
+        selected_topics: selectedTopics,
+        selected_subtopics: selectedSubtopics.map((item) => item.label),
+        selected_sections: selectedSubtopics.map((item) => ({
+          title: item.label,
+          pages: item.pages,
+        })),
       };
 
       const quiz = await api.generateQuiz(requestData);
@@ -389,6 +461,143 @@ function NewQuizContent() {
             )}
           </div>
 
+          {selectedDoc && (
+            <div className="quiz-glass-card p-8">
+              <div className="mb-5 flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-sm font-medium text-[var(--text-secondary)]">
+                    Focus Scope
+                  </h2>
+                  <p className="text-xs text-[var(--text-muted)]">
+                    Pick one or more topics and subtopics to keep the quiz tight. Leave everything unchecked for a full-document quiz.
+                  </p>
+                </div>
+                {(selectedTopics.length > 0 || selectedSubtopics.length > 0) && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setSelectedTopics([]);
+                      setSelectedSubtopicIds([]);
+                    }}
+                  >
+                    Clear focus
+                  </Button>
+                )}
+              </div>
+
+              <div className="space-y-6">
+                <div>
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-semibold text-[var(--text-primary)]">Topics</h3>
+                      <p className="text-xs text-[var(--text-tertiary)]">
+                        High-level focus areas extracted from the document
+                      </p>
+                    </div>
+                    {availableTopics.length > 0 && (
+                      <span className="text-xs text-[var(--text-tertiary)]">{availableTopics.length} available</span>
+                    )}
+                  </div>
+
+                  {availableTopics.length > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                      {availableTopics.map((topic) => {
+                        const isSelected = selectedTopics.includes(topic);
+                        return (
+                          <button
+                            key={topic}
+                            type="button"
+                            onClick={() => toggleTopic(topic)}
+                            className={cn(
+                              'rounded-full border px-3 py-2 text-sm transition-all',
+                              isSelected
+                                ? 'border-[var(--primary)] bg-[var(--primary-light)] text-[var(--primary)]'
+                                : 'border-[var(--card-border)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:border-[var(--card-border-hover)] hover:text-[var(--text-primary)]'
+                            )}
+                          >
+                            {topic}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="rounded-2xl border border-[var(--card-border)] bg-[var(--bg-elevated)] px-4 py-3 text-sm text-[var(--text-tertiary)]">
+                      No high-level topics were extracted for this document yet.
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-semibold text-[var(--text-primary)]">Subtopics</h3>
+                      <p className="text-xs text-[var(--text-tertiary)]">
+                        Section-level focus pulled from the document outline
+                      </p>
+                    </div>
+                    {availableSubtopics.length > 0 && (
+                      <span className="text-xs text-[var(--text-tertiary)]">{availableSubtopics.length} available</span>
+                    )}
+                  </div>
+
+                  {availableSubtopics.length > 0 ? (
+                    <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+                      {availableSubtopics.map((item) => {
+                        const isSelected = selectedSubtopicIds.includes(item.clientId);
+                        return (
+                          <button
+                            key={item.clientId}
+                            type="button"
+                            onClick={() => toggleSubtopic(item.clientId)}
+                            className={cn(
+                              'w-full rounded-2xl border px-4 py-3 text-left transition-all',
+                              isSelected
+                                ? 'border-[var(--primary)] bg-[var(--primary-light)]'
+                                : 'border-[var(--card-border)] bg-[var(--bg-elevated)] hover:border-[var(--card-border-hover)]'
+                            )}
+                            style={{ marginLeft: item.depth * 10 }}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium text-[var(--text-primary)]">{item.label}</p>
+                                <p className="mt-1 text-xs text-[var(--text-tertiary)]">{formatPageRange(item)}</p>
+                              </div>
+                              <span
+                                className={cn(
+                                  'mt-0.5 rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em]',
+                                  isSelected
+                                    ? 'border-[var(--primary)] bg-[var(--primary)] text-[var(--primary-foreground)]'
+                                    : 'border-[var(--card-border)] text-[var(--text-tertiary)]'
+                                )}
+                              >
+                                {isSelected ? 'Selected' : 'Scope'}
+                              </span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="rounded-2xl border border-[var(--card-border)] bg-[var(--bg-elevated)] px-4 py-3 text-sm text-[var(--text-tertiary)]">
+                      No subtopics are available. The quiz will use the full document unless you focus it with topics only.
+                    </p>
+                  )}
+                </div>
+
+                <div className="rounded-2xl border border-[var(--card-border)] bg-[color:color-mix(in_srgb,var(--bg-elevated)_78%,transparent)] px-4 py-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--text-tertiary)]">
+                    Title behavior
+                  </p>
+                  <p className="mt-2 text-sm text-[var(--text-secondary)]">
+                    The quiz title will be generated automatically from the selected document, focus scope, and difficulty.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Question Types */}
           <div className="quiz-glass-card p-8">
             <div className="mb-4">
@@ -546,20 +755,6 @@ function NewQuizContent() {
                 })}
               </div>
             </div>
-          </div>
-
-          {/* Topic (Optional) */}
-          <div className="quiz-glass-card p-8">
-            <label className="block text-sm font-medium text-[var(--text-secondary)] mb-3">
-              Quiz Title
-              <span className="text-[var(--text-tertiary)] font-normal ml-2">(optional)</span>
-            </label>
-            <input
-              type="text"
-              placeholder="e.g., Machine Learning Fundamentals"
-              className="w-full px-5 py-4 rounded-xl bg-[var(--bg-elevated)] border border-[var(--card-border)] focus:border-[var(--accent-blue)] focus:ring-2 focus:ring-[var(--accent-blue)]/20 text-[var(--text-primary)] placeholder-[var(--text-tertiary)] transition-all"
-              {...register('topic')}
-            />
           </div>
 
           {/* Submit */}

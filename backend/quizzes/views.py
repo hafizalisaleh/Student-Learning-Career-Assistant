@@ -2,6 +2,7 @@
 Quiz API endpoints
 """
 from datetime import datetime, timezone
+import re
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -29,9 +30,13 @@ from quizzes.evidence import (
 from quizzes.evaluator import quiz_evaluator
 from core.generation_thresholds import MIN_GENERATION_CONTENT_CHARS
 from core.rag_retriever import rag_retriever
+from core.vector_store import vector_store
+from documents.table_of_contents import sanitize_heading
 from utils.logger import logger
 
 router = APIRouter(prefix="/api/quizzes", tags=["quizzes"])
+
+SCOPE_TEXT_RE = re.compile(r"[^a-z0-9]+")
 
 
 def _build_fallback_quiz_chunk(document: Document, content: str) -> Dict[str, Any]:
@@ -143,6 +148,178 @@ def _build_follow_up_focus_context(
 
     return None
 
+
+def _build_selection_focus_context(quiz_data: QuizCreate) -> Optional[str]:
+    blocks: List[str] = []
+
+    if quiz_data.selected_topics:
+        blocks.append(
+            "FOCUS TOPICS:\n- " + "\n- ".join(topic.strip() for topic in quiz_data.selected_topics if topic.strip())
+        )
+
+    if quiz_data.selected_subtopics:
+        blocks.append(
+            "FOCUS SUBTOPICS:\n- " + "\n- ".join(subtopic.strip() for subtopic in quiz_data.selected_subtopics if subtopic.strip())
+        )
+
+    if quiz_data.selected_sections:
+        section_lines: List[str] = []
+        for section in quiz_data.selected_sections:
+            title = (section.title or "").strip()
+            if not title:
+                continue
+            if section.pages:
+                page_label = ", ".join(str(page) for page in section.pages)
+                section_lines.append(f"- {title} (pages {page_label})")
+            else:
+                section_lines.append(f"- {title}")
+        if section_lines:
+            blocks.append("FOCUS SECTIONS:\n" + "\n".join(section_lines))
+
+    if not blocks:
+        return None
+
+    return (
+        "If subtopics or sections are selected, keep the quiz inside that scope. "
+        "Only expand to broader document coverage when the selected focus does not provide enough evidence.\n\n"
+        + "\n\n".join(blocks)
+    )
+
+
+def _normalize_scope_text(value: str) -> str:
+    cleaned = sanitize_heading(value or "").lower()
+    cleaned = SCOPE_TEXT_RE.sub(" ", cleaned)
+    return " ".join(cleaned.split())
+
+
+def _dedupe_scope_titles(values: List[str]) -> List[str]:
+    seen = set()
+    deduped: List[str] = []
+    for value in values:
+        normalized = _normalize_scope_text(value)
+        if normalized and normalized not in seen:
+            seen.add(normalized)
+            deduped.append(normalized)
+    return deduped
+
+
+def _selected_section_titles(quiz_data: QuizCreate) -> List[str]:
+    explicit_titles = [
+        section.title.strip()
+        for section in quiz_data.selected_sections
+        if (section.title or "").strip()
+    ]
+    if explicit_titles:
+        return _dedupe_scope_titles(explicit_titles)
+
+    subtopic_titles = [
+        subtopic.strip()
+        for subtopic in quiz_data.selected_subtopics
+        if subtopic.strip()
+    ]
+    return _dedupe_scope_titles(subtopic_titles)
+
+
+def _chunk_matches_selected_sections(chunk: Dict[str, Any], section_titles: List[str]) -> bool:
+    if not section_titles:
+        return True
+
+    text = (chunk.get("text") or "").strip()
+    if not text:
+        return False
+
+    heading_window = " ".join(
+        line.strip()
+        for line in text.splitlines()[:2]
+        if line.strip()
+    )[:280]
+    normalized_heading = _normalize_scope_text(heading_window)
+    if not normalized_heading:
+        return False
+
+    return any(
+        normalized_heading.startswith(section_title)
+        for section_title in section_titles
+    )
+
+
+def _retrieve_scoped_quiz_chunks(
+    *,
+    document: Document,
+    current_user: User,
+    quiz_data: QuizCreate,
+) -> Optional[Dict[str, Any]]:
+    strict_section_titles = _selected_section_titles(quiz_data)
+    focus_terms = [
+        *(subtopic.strip() for subtopic in quiz_data.selected_subtopics if subtopic.strip()),
+        *(topic.strip() for topic in quiz_data.selected_topics if topic.strip()),
+    ]
+    section_titles = [
+        section.title.strip()
+        for section in quiz_data.selected_sections
+        if (section.title or "").strip()
+    ]
+    section_page_values = set()
+    for section in quiz_data.selected_sections:
+        for raw_page in section.pages:
+            try:
+                page = int(raw_page)
+            except (TypeError, ValueError):
+                continue
+            if page > 0:
+                section_page_values.add(page)
+    section_pages = sorted(section_page_values)
+
+    if not focus_terms and not section_titles and not section_pages:
+        return None
+
+    query_text = (
+        "Generate a quiz focused strictly on "
+        + ", ".join((focus_terms or section_titles or [document.title])[:8])
+    )
+
+    scoped = vector_store.query(
+        query_text=query_text,
+        n_results=max(12, min(24, quiz_data.num_questions * 3)),
+        document_id=str(document.id),
+        user_id=str(current_user.id),
+        section_title=" / ".join(section_titles[:3]) if section_titles else None,
+        section_pages=section_pages or None,
+    )
+
+    if not scoped.get("success") or not scoped.get("results"):
+        return None
+
+    chunks = scoped.get("results", [])
+    if strict_section_titles:
+        strictly_scoped_chunks = [
+            chunk for chunk in chunks
+            if _chunk_matches_selected_sections(chunk, strict_section_titles)
+        ]
+        if strictly_scoped_chunks:
+            logger.info(
+                "Strict section filter kept %s/%s quiz chunks for %s",
+                len(strictly_scoped_chunks),
+                len(chunks),
+                ", ".join(strict_section_titles),
+            )
+            chunks = strictly_scoped_chunks
+
+    content = "\n\n".join(
+        chunk.get("text", "").strip()
+        for chunk in chunks
+        if chunk.get("text")
+    ).strip()
+
+    if len(content) < 120:
+        return None
+
+    return {
+        "content": content,
+        "evidence_chunks": chunks,
+        "source": "focused_scope",
+    }
+
 @router.post("/generate", response_model=QuizResponse, status_code=status.HTTP_201_CREATED)
 def generate_quiz(
     quiz_data: QuizCreate,
@@ -185,6 +362,23 @@ def generate_quiz(
     evidence_chunks: List[Dict[str, Any]] = []
     for doc in documents:
         try:
+            scoped_retrieval = _retrieve_scoped_quiz_chunks(
+                document=doc,
+                current_user=current_user,
+                quiz_data=quiz_data,
+            )
+            if scoped_retrieval:
+                extracted_contents.append(scoped_retrieval["content"])
+                evidence_chunks.extend(scoped_retrieval["evidence_chunks"])
+                logger.info(
+                    "Document %s: Retrieved %s chars via %s (chunks=%s)",
+                    doc.id,
+                    len(scoped_retrieval["content"]),
+                    scoped_retrieval["source"],
+                    len(scoped_retrieval["evidence_chunks"]),
+                )
+                continue
+
             # Use RAG retriever (uses embeddings if available, else full text)
             retrieval_result = rag_retriever.get_content_for_generation(
                 document=doc,
@@ -241,11 +435,18 @@ def generate_quiz(
             )
         )
     
-    focus_context = quiz_data.focus_context or _build_follow_up_focus_context(
+    selection_focus_context = _build_selection_focus_context(quiz_data)
+    follow_up_focus_context = _build_follow_up_focus_context(
         db=db,
         current_user=current_user,
         source_quiz_id=str(quiz_data.follow_up_from_quiz_id) if quiz_data.follow_up_from_quiz_id else None,
     )
+    focus_context_parts = [
+        part.strip()
+        for part in [quiz_data.focus_context, selection_focus_context, follow_up_focus_context]
+        if part and part.strip()
+    ]
+    focus_context = "\n\n".join(focus_context_parts) if focus_context_parts else None
 
     # Generate questions based on type
     try:
@@ -300,11 +501,30 @@ def generate_quiz(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to generate questions. Please try again."
         )
+
+    generated_questions = quiz_generator.validate_grounded_questions(
+        generated_questions,
+        evidence_chunks,
+    )
+
+    title_question_types = (
+        ["mcq", "short", "true_false", "fill_blank"]
+        if quiz_data.question_type.value == "mixed"
+        else [quiz_data.question_type.value]
+    )
+    generated_title = quiz_generator.generate_quiz_title(
+        content=combined_content,
+        difficulty=quiz_data.difficulty.value,
+        allowed_types=title_question_types,
+        selected_topics=quiz_data.selected_topics,
+        selected_subtopics=quiz_data.selected_subtopics,
+        focus_context=focus_context,
+    )
     
     # Create quiz
     new_quiz = Quiz(
         user_id=current_user.id,
-        title=quiz_data.title or f"Quiz - {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+        title=quiz_data.title or generated_title,
         difficulty_level=DifficultyLevel(quiz_data.difficulty.value),
         question_type=quiz_data.question_type.value,
         document_references=[str(doc_id) for doc_id in quiz_data.document_ids]

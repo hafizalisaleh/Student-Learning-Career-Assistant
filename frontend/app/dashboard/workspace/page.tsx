@@ -501,7 +501,7 @@ function WorkspaceContent() {
                                                         className={cn(
                                                             "rounded-2xl px-4 py-3 relative",
                                                             msg.role === 'user'
-                                                                ? "bg-[var(--primary)] text-white"
+                                                                ? "chat-user-bubble bg-[linear-gradient(135deg,var(--primary),var(--highlight))] shadow-[var(--shadow-glow-blue)]"
                                                                 : "bg-[var(--card-bg)] border border-[var(--card-border)]"
                                                         )}
                                                     >
@@ -519,7 +519,7 @@ function WorkspaceContent() {
                                                                 }}
                                                             />
                                                         ) : (
-                                                            <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+                                                            <p className="text-sm leading-relaxed whitespace-pre-wrap text-[inherit]">{msg.content}</p>
                                                         )}
 
                                                         {msg.role === 'assistant' && (
@@ -536,7 +536,7 @@ function WorkspaceContent() {
                                                             onClick={() => copyMessage(msg.content)}
                                                             className={cn(
                                                                 'absolute top-2 right-2 p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity',
-                                                                msg.role === 'user' ? 'hover:bg-white/20 text-white/60' : 'hover:bg-[var(--bg-elevated)] text-[var(--text-muted)]'
+                                                                msg.role === 'user' ? 'hover:bg-white/20 chat-user-bubble-subtle' : 'hover:bg-[var(--bg-elevated)] text-[var(--text-muted)]'
                                                             )}
                                                         >
                                                             <Copy className="h-3 w-3" />

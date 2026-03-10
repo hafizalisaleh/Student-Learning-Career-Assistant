@@ -62,6 +62,12 @@ def _coerce_option(option: Any) -> str:
     return _normalize_whitespace(str(option))
 
 
+def _normalize_support_text(text: str) -> str:
+    cleaned = _normalize_whitespace(text).lower().replace("×", "x")
+    cleaned = re.sub(r"[^a-z0-9%<>=+]+", " ", cleaned)
+    return " ".join(cleaned.split())
+
+
 def _build_evidence_blocks(evidence_chunks: Sequence[Dict[str, Any]], max_chars: int = 1600) -> str:
     blocks: List[str] = []
 
@@ -81,6 +87,23 @@ def _build_evidence_blocks(evidence_chunks: Sequence[Dict[str, Any]], max_chars:
         )
 
     return "\n\n".join(blocks).strip()
+
+
+def _fallback_quiz_title(
+    selected_topics: Optional[Sequence[str]] = None,
+    selected_subtopics: Optional[Sequence[str]] = None,
+) -> str:
+    focus_terms = [
+        *(item.strip() for item in (selected_subtopics or []) if item and item.strip()),
+        *(item.strip() for item in (selected_topics or []) if item and item.strip()),
+    ]
+    if not focus_terms:
+        return "Focused Study Quiz"
+
+    joined = " + ".join(focus_terms[:2])
+    if len(joined) > 48:
+        joined = joined[:45].rstrip(" ,;:-") + "..."
+    return f"{joined} Quiz"
 
 
 class QuizGenerator:
@@ -109,6 +132,72 @@ class QuizGenerator:
 
     def __init__(self):
         self.client = RAGLLMClient()
+
+    def generate_quiz_title(
+        self,
+        content: str,
+        difficulty: str,
+        allowed_types: Sequence[str],
+        selected_topics: Optional[Sequence[str]] = None,
+        selected_subtopics: Optional[Sequence[str]] = None,
+        focus_context: Optional[str] = None,
+    ) -> str:
+        fallback = _fallback_quiz_title(selected_topics, selected_subtopics)
+        focus_lines = []
+        if selected_topics:
+            focus_lines.append("Topics: " + ", ".join(selected_topics[:6]))
+        if selected_subtopics:
+            focus_lines.append("Subtopics: " + ", ".join(selected_subtopics[:6]))
+        focus_block = "\n".join(focus_lines) or "No explicit focus provided."
+
+        prompt = f"""
+Create a concise, human-readable title for a study quiz.
+
+Rules:
+- 2 to 8 words.
+- No quotation marks.
+- No colon unless truly necessary.
+- Make it sound like a quiz title a student would understand instantly.
+- Reflect the selected focus when provided.
+- Do not mention page numbers.
+- Do not include the word "generated".
+
+Difficulty: {difficulty}
+Question types: {", ".join(allowed_types)}
+Focus:
+{focus_block}
+
+Additional focus context:
+{focus_context or "None"}
+
+Source excerpt:
+{_build_source_excerpt(content, max_chars=1800)}
+""".strip()
+
+        schema = {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string"},
+            },
+            "required": ["title"],
+        }
+
+        try:
+            raw = self.client.generate_json(
+                prompt=prompt,
+                system_prompt="Return only valid JSON with a single concise quiz title.",
+                temperature=0.2,
+                max_tokens=120,
+                schema=schema,
+            )
+            parsed = safe_load_json(raw)
+            title = _normalize_whitespace(parsed.get("title", "")) if isinstance(parsed, dict) else ""
+            if title:
+                return title[:80]
+        except Exception as exc:
+            logger.warning("QuizGenerator title generation fell back to deterministic title: %s", exc)
+
+        return fallback
 
     def generate_mcq_questions(
         self,
@@ -217,9 +306,9 @@ class QuizGenerator:
             f"- {qtype}: {self.QUESTION_TYPE_LABELS[qtype]}" for qtype in allowed_types
         )
         focus_block = (
-            f"\nFOLLOW-UP PRIORITY:\n{focus_context}\n"
+            f"\nFOCUS PRIORITY:\n{focus_context}\n"
             if focus_context
-            else "\nFOLLOW-UP PRIORITY:\nNo special weak-area focus. Cover the most important and testable parts of the source.\n"
+            else "\nFOCUS PRIORITY:\nNo special weak-area focus. Cover the most important and testable parts of the source.\n"
         )
 
         schema = {
@@ -320,9 +409,15 @@ Return valid JSON with the schema provided.
         if not sanitized:
             logger.warning("QuizGenerator could not sanitize any generated questions; retrying with a simpler prompt")
             retry_prompt = f"""
-Generate {num_questions} quiz questions as strict JSON.
+Generate {num_questions} quiz questions as strict JSON using ONLY the source material below.
 
 Use exactly one question type value: {allowed_types[0] if len(allowed_types) == 1 else ", ".join(allowed_types)}.
+{focus_block}
+Rules:
+- Keep the quiz inside the selected focus when one is provided.
+- Every question must be answerable from the source blocks.
+- Every explanation must match the chosen correct answer.
+- Set source_index to the most relevant SOURCE block.
 Return:
 {{
   "questions": [
@@ -340,7 +435,7 @@ Return:
 SOURCE BLOCKS:
 {source_blocks or "[SOURCE 1] General source excerpt"}
 
-SOURCE:
+SOURCE MATERIAL:
 {excerpt}
 """.strip()
             retry_raw = self.client.generate_json(
@@ -360,7 +455,199 @@ SOURCE:
         if not sanitized:
             raise RuntimeError("Model returned no usable questions")
 
-        return sanitized[:num_questions]
+        validated = self._validate_grounded_questions(
+            sanitized,
+            evidence_chunks or [],
+        )
+        return validated[:num_questions]
+
+    def _validate_grounded_questions(
+        self,
+        questions: Sequence[Dict[str, Any]],
+        evidence_chunks: Sequence[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        if not questions:
+            return []
+
+        validated = [dict(question) for question in questions]
+        unresolved_items: List[Dict[str, Any]] = []
+
+        for index, question in enumerate(validated):
+            if question.get("question_type") != "mcq":
+                continue
+
+            options = question.get("options") or []
+            if not options:
+                continue
+
+            try:
+                source_index = int(question.get("source_index", 1)) - 1
+            except (TypeError, ValueError):
+                source_index = 0
+
+            source_text = ""
+            if 0 <= source_index < len(evidence_chunks):
+                source_text = str(evidence_chunks[source_index].get("text", ""))
+
+            supported_answer = self._resolve_supported_mcq_answer(question, source_text)
+            if supported_answer and supported_answer != question.get("correct_answer"):
+                logger.info(
+                    "QuizGenerator corrected MCQ answer via evidence match: '%s' -> '%s'",
+                    question.get("correct_answer"),
+                    supported_answer,
+                )
+                question["correct_answer"] = supported_answer
+                continue
+
+            if supported_answer is None:
+                unresolved_items.append(
+                    {
+                        "question_index": index,
+                        "question": question,
+                        "source_text": source_text,
+                    }
+                )
+
+        if unresolved_items:
+            corrections = self._verify_mcq_answers_with_llm(unresolved_items)
+            for item in unresolved_items:
+                corrected_answer = corrections.get(item["question_index"])
+                options = item["question"].get("options") or []
+                if corrected_answer in options and corrected_answer != item["question"].get("correct_answer"):
+                    logger.info(
+                        "QuizGenerator corrected MCQ answer via verifier: '%s' -> '%s'",
+                        item["question"].get("correct_answer"),
+                        corrected_answer,
+                    )
+                    validated[item["question_index"]]["correct_answer"] = corrected_answer
+
+        return validated
+
+    def validate_grounded_questions(
+        self,
+        questions: Sequence[Dict[str, Any]],
+        evidence_chunks: Sequence[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        """
+        Public defensive validation hook for callers that want to re-check
+        persisted question payloads against their evidence before saving.
+        """
+        return self._validate_grounded_questions(questions, evidence_chunks)
+
+    def _resolve_supported_mcq_answer(
+        self,
+        question: Dict[str, Any],
+        source_text: str,
+    ) -> Optional[str]:
+        options = question.get("options") or []
+        if not options:
+            return None
+
+        support_haystack = _normalize_support_text(
+            "\n".join([
+                source_text or "",
+                str(question.get("explanation", "")),
+            ])
+        )
+        if not support_haystack:
+            return None
+
+        supported_options: List[str] = []
+        haystack = f" {support_haystack} "
+        for option in options:
+            normalized_option = _normalize_support_text(option)
+            if not normalized_option:
+                continue
+            needle = f" {normalized_option} "
+            if (
+                needle in haystack
+                or haystack.startswith(f" {normalized_option}")
+                or haystack.endswith(f"{normalized_option} ")
+            ):
+                supported_options.append(option)
+
+        if not supported_options:
+            return None
+
+        if question.get("correct_answer") in supported_options:
+            return question.get("correct_answer")
+
+        if len(supported_options) == 1:
+            return supported_options[0]
+
+        return None
+
+    def _verify_mcq_answers_with_llm(
+        self,
+        unresolved_items: Sequence[Dict[str, Any]],
+    ) -> Dict[int, str]:
+        if not unresolved_items:
+            return {}
+
+        schema = {
+            "type": "object",
+            "properties": {
+                "corrections": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "question_index": {"type": "integer"},
+                            "correct_answer": {"type": "string"},
+                        },
+                        "required": ["question_index", "correct_answer"],
+                    },
+                }
+            },
+            "required": ["corrections"],
+        }
+
+        prompt_items: List[str] = []
+        for item in unresolved_items:
+            question = item["question"]
+            options = question.get("options") or []
+            option_lines = "\n".join(f"- {option}" for option in options)
+            prompt_items.append(
+                f"""Question index: {item['question_index']}
+Question: {question.get('question_text', '')}
+Current correct answer: {question.get('correct_answer', '')}
+Options:
+{option_lines}
+Explanation draft: {question.get('explanation', '')}
+Source excerpt:
+{_normalize_whitespace(item.get('source_text', ''))[:1400]}"""
+            )
+
+        prompt = (
+            "Validate the correct answer for each multiple-choice question using ONLY the provided source excerpt.\n"
+            "Choose exactly one of the provided options for each item.\n"
+            "If the current correct answer is already supported, keep it.\n\n"
+            + "\n\n".join(prompt_items)
+        )
+
+        try:
+            raw = self.client.generate_json(
+                prompt=prompt,
+                system_prompt=(
+                    "Return only valid JSON. For each item, choose the option best supported by the source excerpt. "
+                    "Never invent an option."
+                ),
+                temperature=0.0,
+                max_tokens=800,
+                schema=schema,
+            )
+            parsed = safe_load_json(raw)
+            corrections = parsed.get("corrections", []) if isinstance(parsed, dict) else []
+            return {
+                int(item["question_index"]): _normalize_whitespace(str(item["correct_answer"]))
+                for item in corrections
+                if isinstance(item, dict)
+                and str(item.get("question_index", "")).isdigit()
+                and item.get("correct_answer")
+            }
+        except Exception as exc:
+            logger.warning("QuizGenerator MCQ verifier fallback skipped: %s", exc)
+            return {}
 
     def _sanitize_questions(
         self,

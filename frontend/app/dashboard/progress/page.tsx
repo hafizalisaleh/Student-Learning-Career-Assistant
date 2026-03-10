@@ -179,10 +179,10 @@ export default function ProgressPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold text-[var(--text-primary)]">
-            Learning Progress
+            Progress
           </h1>
           <p className="text-sm text-[var(--text-tertiary)] mt-0.5">
-            Track your achievements and growth
+            Streaks, scores, and pace
           </p>
         </div>
         <Button
@@ -203,7 +203,7 @@ export default function ProgressPage() {
           <div className="flex items-center justify-between">
             <div>
               <p className="stat-value">{analytics.study_streak}</p>
-              <p className="stat-label">Day Streak</p>
+              <p className="stat-label">Streak</p>
             </div>
             <div className="icon-wrapper icon-quizzes">
               <Flame className="w-4 h-4" />
@@ -216,7 +216,7 @@ export default function ProgressPage() {
           <div className="flex items-center justify-between">
             <div>
               <p className="stat-value">{analytics.average_quiz_score.toFixed(0)}%</p>
-              <p className="stat-label">Avg Score</p>
+              <p className="stat-label">Avg score</p>
             </div>
             <div className="icon-wrapper icon-notes">
               <Award className="w-4 h-4" />
@@ -229,7 +229,7 @@ export default function ProgressPage() {
           <div className="flex items-center justify-between">
             <div>
               <p className="stat-value">{analytics.total_notes + analytics.total_summaries}</p>
-              <p className="stat-label">Notes & Summaries</p>
+              <p className="stat-label">Outputs</p>
             </div>
             <div className="icon-wrapper icon-documents">
               <BookOpen className="w-4 h-4" />
@@ -242,7 +242,7 @@ export default function ProgressPage() {
           <div className="flex items-center justify-between">
             <div>
               <p className="stat-value">{Math.round(analytics.total_study_time / 60)}h</p>
-              <p className="stat-label">Study Time</p>
+              <p className="stat-label">Hours</p>
             </div>
             <div className="icon-wrapper icon-summaries">
               <Clock className="w-4 h-4" />
@@ -257,7 +257,7 @@ export default function ProgressPage() {
           <FileText className="w-4 h-4 text-[var(--documents)]" />
           <div>
             <p className="text-lg font-semibold text-[var(--text-primary)]">{analytics.total_documents}</p>
-            <p className="text-xs text-[var(--text-muted)]">Documents</p>
+            <p className="text-xs text-[var(--text-muted)]">Docs</p>
           </div>
         </div>
 
@@ -265,7 +265,7 @@ export default function ProgressPage() {
           <Brain className="w-4 h-4 text-[var(--notes)]" />
           <div>
             <p className="text-lg font-semibold text-[var(--text-primary)]">{analytics.total_quiz_attempts}</p>
-            <p className="text-xs text-[var(--text-muted)]">Quiz Attempts</p>
+            <p className="text-xs text-[var(--text-muted)]">Attempts</p>
           </div>
         </div>
 
@@ -281,7 +281,7 @@ export default function ProgressPage() {
           <Activity className="w-4 h-4 text-[var(--career)]" />
           <div>
             <p className="text-lg font-semibold text-[var(--text-primary)]">{analytics.learning_velocity.toFixed(1)}</p>
-            <p className="text-xs text-[var(--text-muted)]">Items/Week</p>
+            <p className="text-xs text-[var(--text-muted)]">Items/wk</p>
           </div>
         </div>
       </div>
@@ -289,7 +289,7 @@ export default function ProgressPage() {
       {/* AI Insights */}
       {insights.length > 0 && (
         <div className="card p-4">
-          <h3 className="text-sm font-medium text-[var(--text-secondary)] mb-3">AI Insights</h3>
+          <h3 className="text-sm font-medium text-[var(--text-secondary)] mb-3">Insights</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {insights.map((insight, index) => (
               <div
@@ -299,7 +299,7 @@ export default function ProgressPage() {
                 <h4 className="text-sm font-medium text-[var(--text-primary)] mb-1">{insight.category}</h4>
                 <p className="text-xs text-[var(--text-secondary)] mb-2">{insight.message}</p>
                 <p className="text-xs text-[var(--text-tertiary)]">
-                  <span className="font-medium">Tip:</span> {insight.recommendation}
+                  <span className="font-medium">Next:</span> {insight.recommendation}
                 </p>
               </div>
             ))}
@@ -311,7 +311,7 @@ export default function ProgressPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Activity Chart */}
         <div className="card p-4">
-          <h3 className="text-sm font-medium text-[var(--text-secondary)] mb-3">Recent Activity</h3>
+          <h3 className="text-sm font-medium text-[var(--text-secondary)] mb-3">Activity</h3>
           <ResponsiveContainer width="100%" height={220}>
             <AreaChart data={activityData}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--card-border)" />
@@ -336,7 +336,7 @@ export default function ProgressPage() {
         {/* Document Types */}
         {documentTypeData.length > 0 && (
           <div className="card p-4">
-            <h3 className="text-sm font-medium text-[var(--text-secondary)] mb-3">Documents by Type</h3>
+            <h3 className="text-sm font-medium text-[var(--text-secondary)] mb-3">Doc Types</h3>
             <ResponsiveContainer width="100%" height={220}>
               <PieChart>
                 <Pie
@@ -371,7 +371,7 @@ export default function ProgressPage() {
         <div className="card p-4">
           <div className="flex items-center gap-2 mb-3">
             <Trophy className="w-4 h-4 text-[var(--quizzes)]" />
-            <h3 className="text-sm font-medium text-[var(--text-secondary)]">Performance by Topic</h3>
+            <h3 className="text-sm font-medium text-[var(--text-secondary)]">Topic Scores</h3>
           </div>
           <div className="space-y-3">
             {analytics.quiz_performance_by_topic.slice(0, 8).map((topic, index) => (
@@ -413,7 +413,7 @@ export default function ProgressPage() {
                 <Trophy className="w-4 h-4" />
               </div>
               <div>
-                <p className="text-xs text-[var(--text-muted)]">Personal Best</p>
+                <p className="text-xs text-[var(--text-muted)]">Best score</p>
                 <p className="text-2xl font-bold text-[var(--text-primary)]">{analytics.best_score.toFixed(0)}%</p>
               </div>
             </div>

@@ -2,14 +2,7 @@
 
 import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
-import {
-  BookOpen,
-  CheckCircle2,
-  ClipboardCheck,
-  FileText,
-  Sparkles,
-  Target,
-} from 'lucide-react';
+import { CheckCircle2 } from 'lucide-react';
 import {
   type StudyLoopCounts,
   getStudyLoopCompletion,
@@ -25,14 +18,6 @@ interface StudyLoopStripProps {
   className?: string;
   actionSlot?: ReactNode;
 }
-
-const STEP_ICONS = {
-  source: FileText,
-  summary: Sparkles,
-  notes: BookOpen,
-  quiz: ClipboardCheck,
-  verify: Target,
-} as const;
 
 export function StudyLoopStrip({
   readyForGeneration,
@@ -50,7 +35,7 @@ export function StudyLoopStrip({
     <div
       className={cn(
         'rounded-[1.4rem] border border-[var(--card-border)] bg-[color:color-mix(in_srgb,var(--bg-elevated)_76%,transparent)]',
-        compact ? 'p-3.5' : 'p-5',
+        compact ? 'p-3.5' : 'p-4',
         className
       )}
     >
@@ -60,17 +45,19 @@ export function StudyLoopStrip({
             {title}
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
-            <p className={cn('font-medium text-[var(--text-primary)]', compact ? 'text-sm' : 'text-base')}>
-              {nextStep.label}
-            </p>
             <span className="inline-flex items-center gap-1 rounded-full bg-[var(--accent-blue-subtle)] px-2.5 py-1 text-[11px] font-semibold text-[var(--accent-blue)]">
               <CheckCircle2 className="h-3.5 w-3.5" />
-              {completion}% complete
+              {completion}% done
+            </span>
+            <span className="inline-flex items-center rounded-full border border-[var(--card-border)] bg-[var(--bg-secondary)] px-2.5 py-1 text-[11px] font-semibold text-[var(--text-primary)]">
+              Next: {nextStep.label}
             </span>
           </div>
-          <p className={cn('mt-2 text-[var(--text-secondary)]', compact ? 'text-xs leading-5' : 'text-sm leading-6')}>
-            {nextStep.description}
-          </p>
+          {!compact && (
+            <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
+              {nextStep.description}
+            </p>
+          )}
         </div>
 
         {!compact && (
@@ -83,48 +70,34 @@ export function StudyLoopStrip({
         )}
       </div>
 
-      <div className={cn('mt-4 grid gap-2', compact ? 'grid-cols-2 xl:grid-cols-5' : 'grid-cols-1 md:grid-cols-5')}>
-        {steps.map((step) => {
-          const Icon = STEP_ICONS[step.key as keyof typeof STEP_ICONS];
-          return (
-            <div
-              key={step.key}
-              className={cn(
-                'rounded-[1rem] border px-3 py-3 transition-colors',
-                step.done
-                  ? 'border-[var(--success-border)] bg-[var(--success-bg)]'
-                  : step.active
-                    ? 'border-[var(--accent-blue)] bg-[var(--accent-blue-subtle)]'
-                    : 'border-[var(--card-border)] bg-[var(--bg-secondary)]'
-              )}
-            >
-              <div className="flex items-center gap-2">
-                <div
-                  className={cn(
-                    'flex h-8 w-8 items-center justify-center rounded-full',
-                    step.done
-                      ? 'bg-[color:color-mix(in_srgb,var(--success)_16%,transparent)] text-[var(--success)]'
-                      : step.active
-                        ? 'bg-[color:color-mix(in_srgb,var(--accent-blue)_18%,transparent)] text-[var(--accent-blue)]'
-                        : 'bg-[var(--accent)] text-[var(--text-tertiary)]'
-                  )}
-                >
-                  <Icon className="h-4 w-4" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--text-primary)]">
-                    {step.label}
-                  </p>
-                </div>
+      <div className="mt-4 overflow-x-auto">
+        <div className={cn('relative grid min-w-[420px] grid-cols-5 gap-0', !compact && 'min-w-0')}>
+          <div className="absolute left-[10%] right-[10%] top-5 h-px bg-[var(--card-border)]" />
+          {steps.map((step, index) => (
+            <div key={step.key} className="relative z-10 flex flex-col items-center px-1 text-center">
+              <div
+                className={cn(
+                  'flex h-10 w-10 items-center justify-center rounded-full border text-sm font-semibold transition-colors',
+                  step.done
+                    ? 'border-transparent bg-[var(--text-primary)] text-[var(--bg-primary)]'
+                    : step.active
+                      ? 'border-[var(--primary)] bg-[var(--primary)] text-[var(--primary-foreground)]'
+                      : 'border-[var(--card-border)] bg-[var(--bg-secondary)] text-[var(--text-tertiary)]'
+                )}
+              >
+                {index + 1}
               </div>
+              <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-primary)]">
+                {step.label}
+              </p>
               {!compact && (
-                <p className="mt-2 text-xs leading-5 text-[var(--text-secondary)]">
+                <p className="mt-1 max-w-[8rem] text-[11px] leading-4 text-[var(--text-secondary)]">
                   {step.description}
                 </p>
               )}
             </div>
-          );
-        })}
+          ))}
+        </div>
       </div>
 
       {!compact && actionSlot ? (

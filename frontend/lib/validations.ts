@@ -51,7 +51,6 @@ export const quizSchema = z.object({
   num_questions: z.number().min(1).max(50),
   difficulty: z.enum(['easy', 'medium', 'hard']),
   question_types: z.array(z.enum(['mcq', 'true_false', 'short'])).min(1, 'Select at least one question type'),
-  topic: z.string().optional(),
 });
 
 export type QuizFormData = z.infer<typeof quizSchema>;

@@ -35,55 +35,55 @@ const navigation = [
     name: 'Dashboard',
     href: '/dashboard',
     icon: LayoutDashboard,
-    description: 'Overview, momentum, and next-study actions.',
+    description: 'Overview and next steps.',
   },
   {
     name: 'Documents',
     href: '/dashboard/documents',
     icon: FileText,
-    description: 'Your source library, extraction status, and study workspaces.',
+    description: 'Library and study sources.',
   },
   {
     name: 'Notes',
     href: '/dashboard/notes',
     icon: BookOpen,
-    description: 'Captured insights and revision material.',
+    description: 'Saved takeaways.',
   },
   {
     name: 'Summaries',
     href: '/dashboard/summaries',
     icon: Sparkles,
-    description: 'Condensed document outputs and revision snapshots.',
+    description: 'Quick refreshers.',
   },
   {
     name: 'Quizzes',
     href: '/dashboard/quizzes',
     icon: ClipboardCheck,
-    description: 'Knowledge checks, attempts, and revision loops.',
+    description: 'Checks and attempts.',
   },
   {
     name: 'AI Assistant',
     href: '/dashboard/ask',
     icon: Mic,
-    description: 'Question answering, voice mode, and grounded retrieval.',
+    description: 'Grounded Q&A.',
   },
   {
     name: 'Knowledge Graph',
     href: '/dashboard/knowledge-graph',
     icon: Network,
-    description: 'Connected concepts across your learning material.',
+    description: 'Concept map.',
   },
   {
     name: 'Progress',
     href: '/dashboard/progress',
     icon: TrendingUp,
-    description: 'Streaks, quiz performance, and learning momentum.',
+    description: 'Streaks and scores.',
   },
   {
     name: 'Career',
     href: '/dashboard/career',
     icon: Briefcase,
-    description: 'Career recommendations and job-prep workflows.',
+    description: 'Resume and job prep.',
   },
 ];
 
@@ -99,7 +99,7 @@ const workspaceNav = {
   name: 'Study Workspace',
   href: '/dashboard/documents',
   icon: FileText,
-  description: 'Read the source, inspect pages, and ask grounded questions in context.',
+  description: 'Read pages and ask in context.',
 };
 
 function isNavPathActive(itemHref: string, pathname: string | null) {
@@ -265,10 +265,10 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               <div className="mt-4 rounded-[22px] border border-white/8 bg-white/6 p-4">
                 <p className="editorial-kicker text-[var(--sidebar-text-muted)]">
                   <span className="inline-block h-2 w-2 rounded-full bg-[var(--highlight)]" />
-                  Research Workstation
+                  Study hub
                 </p>
                 <p className="mt-3 text-sm leading-6 text-[var(--sidebar-text)]">
-                  Read, extract, generate, quiz, and ask grounded questions from one place.
+                  Read, quiz, and revise from one place.
                 </p>
               </div>
             )}
@@ -277,7 +277,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           <div className="px-1">
             {!isSidebarCollapsed && (
               <p className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--sidebar-text-muted)]">
-                Workbench
+                Tools
               </p>
             )}
             <nav className="space-y-1.5">
@@ -297,7 +297,6 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                     {!isSidebarCollapsed && (
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium">{item.name}</p>
-                        <p className="truncate text-xs text-[var(--sidebar-text-muted)]">{item.description}</p>
                       </div>
                     )}
                   </Link>
@@ -306,7 +305,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             </nav>
             {!isSidebarCollapsed && (
               <p className="px-3 pt-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--sidebar-text-muted)] lg:hidden">
-                Scroll for account controls
+                Account below
               </p>
             )}
           </div>

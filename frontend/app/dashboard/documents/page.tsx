@@ -40,7 +40,6 @@ import type { Note, Quiz, QuizResult, Summary } from '@/lib/types';
 import { StudyLoopStrip } from '@/components/documents/study-loop-strip';
 import {
   createEmptyStudyLoopCounts,
-  getStudyLoopNextStep,
   type StudyLoopCounts,
 } from '@/lib/study-loop';
 
@@ -690,14 +689,13 @@ export default function DocumentsPage() {
             const canOpenWorkspace = supportsStudyWorkspace(doc.content_type);
             const readyForGeneration = isDocumentReadyForGeneration(doc);
             const studyLoopCounts = studyLoopByDocument[doc.id] || createEmptyStudyLoopCounts();
-            const nextStep = getStudyLoopNextStep(readyForGeneration, studyLoopCounts);
 
             return (
               <div key={doc.id} className="dashboard-panel group overflow-hidden">
                 <div className="panel-content flex h-full flex-col">
                   <div className={cn(
                     'relative overflow-hidden border-b border-[var(--card-border)] bg-[linear-gradient(135deg,color-mix(in_srgb,var(--documents-bg)_84%,transparent),color-mix(in_srgb,var(--accent)_60%,transparent))]',
-                    isSingleDocumentCard ? 'min-h-[240px]' : 'min-h-[168px] p-5 flex items-end'
+                    isSingleDocumentCard ? 'min-h-[208px]' : 'min-h-[148px] p-4 flex items-end'
                   )}>
                     {doc.thumbnail_path ? (
                       <img
@@ -719,7 +717,7 @@ export default function DocumentsPage() {
                       )}
                     />
                     {isSingleDocumentCard ? (
-                      <div className="absolute inset-x-0 bottom-0 p-5">
+                      <div className="absolute inset-x-0 bottom-0 p-4">
                         <div className="flex items-end justify-between gap-3">
                           <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-[rgba(10,16,24,0.42)] px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-white/80 backdrop-blur-md">
                             <span className={cn('flex h-8 w-8 items-center justify-center rounded-2xl border border-white/15 shadow-lg', getTypeColor(doc.content_type))}>
@@ -734,44 +732,44 @@ export default function DocumentsPage() {
                       </div>
                     ) : (
                       <div className="relative flex items-center gap-3 rounded-[1.4rem] bg-[rgba(10,16,24,0.32)] px-3 py-3 backdrop-blur-md">
-                        <div className={cn('flex h-12 w-12 items-center justify-center rounded-2xl border border-white/20 shadow-lg backdrop-blur-sm', getTypeColor(doc.content_type))}>
+                        <div className={cn('flex h-10 w-10 items-center justify-center rounded-2xl border border-white/20 shadow-lg backdrop-blur-sm', getTypeColor(doc.content_type))}>
                           {getTypeIcon(doc.content_type)}
                         </div>
                         <div className="min-w-0">
-                          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/75">
+                          <div className="text-xs font-semibold uppercase tracking-[0.16em] text-white/75">
                             {doc.content_type}
-                          </p>
-                          <p className="truncate text-lg font-medium text-white">
+                          </div>
+                          <div className="truncate text-base font-medium text-white">
                             {doc.title}
-                          </p>
+                          </div>
                         </div>
                       </div>
                     )}
                   </div>
 
-                  <div className="flex flex-1 flex-col p-5">
+                  <div className="flex flex-1 flex-col p-4">
                     {isSingleDocumentCard ? (
-                      <div className="mb-4 flex items-start gap-3">
-                        <div className={cn('mt-1 flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-[var(--card-border)] shadow-sm', getTypeColor(doc.content_type))}>
+                      <div className="mb-3 flex items-start gap-3">
+                        <div className={cn('mt-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-[var(--card-border)] shadow-sm', getTypeColor(doc.content_type))}>
                           {getTypeIcon(doc.content_type)}
                         </div>
                         <div className="min-w-0">
                           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
                             {doc.content_type} source
                           </p>
-                          <h3 className="mt-1 text-2xl font-semibold tracking-[-0.03em] text-[var(--text-primary)]">
+                          <h3 className="mt-1 text-[1.4rem] font-semibold tracking-[-0.03em] text-[var(--text-primary)]">
                             {doc.title}
                           </h3>
                           {doc.original_filename && doc.original_filename !== doc.title ? (
-                            <p className="mt-1 text-sm text-[var(--text-secondary)]">
+                            <p className="mt-1 truncate text-sm text-[var(--text-secondary)]">
                               {doc.original_filename}
                             </p>
                           ) : null}
                         </div>
                       </div>
-                    ) : null}
+                      ) : null}
 
-                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center justify-between gap-3">
                       <p className="text-sm text-[var(--text-secondary)]">{formatDate(doc.created_at)}</p>
                       {!isSingleDocumentCard ? (
                         <span className={cn('rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]', getStatusBadge(doc.processing_status))}>
@@ -780,42 +778,29 @@ export default function DocumentsPage() {
                       ) : null}
                     </div>
 
-                    <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                      <div className="rounded-[1.15rem] border border-[var(--card-border)] bg-[color:color-mix(in_srgb,var(--bg-elevated)_72%,transparent)] p-3.5">
-                        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-tertiary)]">Type</p>
-                        <p className="mt-2 text-sm font-medium text-[var(--text-primary)] uppercase">{doc.content_type}</p>
-                      </div>
-                      <div className="rounded-[1.15rem] border border-[var(--card-border)] bg-[color:color-mix(in_srgb,var(--bg-elevated)_72%,transparent)] p-3.5">
-                        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-tertiary)]">Size</p>
-                        <p className="mt-2 text-sm font-medium text-[var(--text-primary)]">
-                          {doc.file_size ? formatFileSize(doc.file_size) : 'Unknown'}
-                        </p>
-                      </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <span className="rounded-full border border-[var(--card-border)] bg-[var(--bg-secondary)] px-3 py-1 text-[11px] font-medium uppercase tracking-[0.14em] text-[var(--text-primary)]">
+                        {doc.content_type}
+                      </span>
+                      <span className="rounded-full border border-[var(--card-border)] bg-[var(--bg-secondary)] px-3 py-1 text-[11px] font-medium text-[var(--text-primary)]">
+                        {doc.file_size ? formatFileSize(doc.file_size) : 'Unknown'}
+                      </span>
                     </div>
 
-                    <p className="mt-4 text-sm leading-6 text-[var(--text-secondary)]">
+                    <p className="mt-3 text-sm leading-5 text-[var(--text-secondary)]">
                       {getDocumentStatusDescription(doc)}
                     </p>
 
-                    <div className="mt-4">
+                    <div className="mt-3">
                       <StudyLoopStrip
                         compact
-                        title="Document study loop"
+                        title="Study loop"
                         readyForGeneration={readyForGeneration}
                         counts={studyLoopCounts}
                       />
                     </div>
 
-                    <div className="mt-3 rounded-[1.15rem] border border-[var(--card-border)] bg-[color:color-mix(in_srgb,var(--bg-elevated)_74%,transparent)] px-3.5 py-3">
-                      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-tertiary)]">
-                        Next step
-                      </p>
-                      <p className="mt-2 text-sm font-medium text-[var(--text-primary)]">
-                        {nextStep.label}
-                      </p>
-                    </div>
-
-                    <div className="mt-5 flex flex-wrap gap-2 border-t border-[var(--card-border)] pt-4">
+                    <div className="mt-4 flex flex-wrap gap-2 border-t border-[var(--card-border)] pt-4">
                       {canOpenWorkspace && readyForGeneration ? (
                         <Link href={`/dashboard/workspace?id=${doc.id}`} className="flex-1">
                           <Button variant="default" size="sm" className="w-full">

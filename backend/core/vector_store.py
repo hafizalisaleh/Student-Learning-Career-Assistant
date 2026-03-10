@@ -3,6 +3,7 @@ Vector store operations using PGVector for PostgreSQL-native vector search.
 Replaces ChromaDB with pgvector for embedding storage and similarity search.
 """
 import json
+import re
 import uuid
 from typing import List, Dict, Any, Optional, Literal
 from sqlalchemy import text
@@ -13,6 +14,7 @@ from utils.logger import logger
 from utils.rag_llm_client import RAGLLMClient, safe_load_json
 
 RAGMode = Literal["structured_output", "file_search", "nli_verification"]
+SECTION_SCOPE_SPLIT_RE = re.compile(r"\s+/\s+")
 
 
 def _coerce_answer_text(value: Any) -> str:
@@ -43,6 +45,28 @@ def _scope_query_text(query_text: str, section_title: Optional[str] = None) -> s
     if not section_title:
         return query_text
     return f"Section: {section_title}\nQuestion: {query_text}"
+
+
+def _normalize_section_scope_text(value: str) -> str:
+    cleaned = (value or "").lower().replace("×", "x")
+    cleaned = re.sub(r"[^a-z0-9]+", " ", cleaned)
+    return " ".join(cleaned.split())
+
+
+def _expand_section_scope_titles(section_title: Optional[str]) -> List[str]:
+    if not section_title:
+        return []
+
+    raw_titles = SECTION_SCOPE_SPLIT_RE.split(section_title)
+    if not raw_titles:
+        raw_titles = [section_title]
+
+    normalized_titles: List[str] = []
+    for raw_title in raw_titles:
+        normalized_title = _normalize_section_scope_text(raw_title)
+        if normalized_title and normalized_title not in normalized_titles:
+            normalized_titles.append(normalized_title)
+    return normalized_titles
 
 
 def _normalize_section_pages(section_pages: Optional[List[int]]) -> List[int]:
@@ -85,6 +109,36 @@ def _result_matches_section_pages(result: Dict[str, Any], section_pages: List[in
         return True
     result_pages = _extract_chunk_pages(result.get("metadata") or {})
     return any(page in section_pages for page in result_pages)
+
+
+def _extract_result_scope_prefix(result: Dict[str, Any], max_chars: int = 320) -> str:
+    text = str(result.get("text", "") or "").strip()
+    if not text:
+        return ""
+
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    prefix = " ".join(lines[:2]) if lines else text
+    return _normalize_section_scope_text(prefix[:max_chars])
+
+
+def _result_matches_section_title(
+    result: Dict[str, Any],
+    normalized_section_titles: List[str],
+) -> bool:
+    if not normalized_section_titles:
+        return True
+
+    prefix = _extract_result_scope_prefix(result)
+    if not prefix:
+        return False
+
+    padded_prefix = f" {prefix} "
+    for normalized_title in normalized_section_titles:
+        title_needle = f" {normalized_title} "
+        if prefix.startswith(normalized_title) or title_needle in padded_prefix:
+            return True
+
+    return False
 
 
 def _build_section_scope_label(section_title: Optional[str], section_pages: Optional[List[int]]) -> Optional[str]:
@@ -230,10 +284,15 @@ class VectorStore:
         """
         try:
             scoped_query_text = _scope_query_text(query_text, section_title)
+            normalized_section_titles = _expand_section_scope_titles(section_title)
             normalized_section_pages = _normalize_section_pages(section_pages)
             query_embedding = self._generate_query_embedding(scoped_query_text)
             embedding_str = '[' + ','.join(map(str, query_embedding)) + ']'
-            fetch_count = n_results if not normalized_section_pages else max(n_results * 8, 40)
+            fetch_count = (
+                n_results
+                if not normalized_section_pages and not normalized_section_titles
+                else max(n_results * 8, 40)
+            )
 
             db = self._get_db()
             try:
@@ -286,6 +345,21 @@ class VectorStore:
                         for result_item in formatted_results
                         if _result_matches_section_pages(result_item, normalized_section_pages)
                     ]
+
+                if normalized_section_titles:
+                    title_matched_results = [
+                        result_item
+                        for result_item in formatted_results
+                        if _result_matches_section_title(result_item, normalized_section_titles)
+                    ]
+                    if title_matched_results:
+                        formatted_results = title_matched_results
+                    else:
+                        logger.info(
+                            "Query found no exact section-title chunk matches for scope '%s'; keeping %s broader results",
+                            section_title,
+                            len(formatted_results),
+                        )
 
                 formatted_results = formatted_results[:n_results]
 

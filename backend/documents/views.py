@@ -16,7 +16,11 @@ from documents.schemas import (
 )
 from documents.validators import DocumentValidator
 from documents.upload_handler import upload_handler
-from documents.table_of_contents import build_table_of_contents_from_path
+from documents.table_of_contents import (
+    build_table_of_contents_from_path,
+    count_table_of_contents_items,
+    normalize_table_of_contents_items,
+)
 from users.auth import get_current_user
 from users.models import User
 from core.rag_pipeline import rag_pipeline
@@ -83,6 +87,27 @@ def _build_and_store_document_toc(db: Session, document: Document) -> Dict[str, 
         table_of_contents_source=toc.get("source", "pages"),
     )
     return toc
+
+
+def _normalize_document_toc_metadata(document: Document) -> bool:
+    metadata = document.doc_metadata or {}
+    toc_items = metadata.get("table_of_contents")
+    if not isinstance(toc_items, list):
+        return False
+
+    normalized_items, toc_changed = normalize_table_of_contents_items(toc_items)
+    normalized_count = count_table_of_contents_items(normalized_items)
+    count_changed = metadata.get("table_of_contents_count") != normalized_count
+
+    if not toc_changed and not count_changed:
+        return False
+
+    document.doc_metadata = _merge_doc_metadata(
+        metadata,
+        table_of_contents=normalized_items,
+        table_of_contents_count=normalized_count,
+    )
+    return True
 
 def process_document_background(document_id: str):
     """
@@ -531,6 +556,12 @@ def get_documents(
     total = query.count()
     
     documents = query.offset((page - 1) * page_size).limit(page_size).all()
+    metadata_changed = False
+    for doc in documents:
+        metadata_changed = _normalize_document_toc_metadata(doc) or metadata_changed
+
+    if metadata_changed:
+        db.commit()
     
     return DocumentListResponse(
         documents=[DocumentResponse.from_orm(doc) for doc in documents],
@@ -567,6 +598,9 @@ def get_document(
             detail="Document not found"
         )
 
+    if _normalize_document_toc_metadata(doc):
+        db.commit()
+
     return DocumentResponse.from_orm(doc)
 
 
@@ -593,9 +627,13 @@ def get_document_table_of_contents(
         toc = _build_and_store_document_toc(db, doc)
         db.commit()
     else:
+        if _normalize_document_toc_metadata(doc):
+            db.commit()
+            metadata = doc.doc_metadata or {}
+            toc_items = metadata.get("table_of_contents") or []
         toc = {
             "items": toc_items,
-            "count": metadata.get("table_of_contents_count", len(toc_items)),
+            "count": metadata.get("table_of_contents_count", count_table_of_contents_items(toc_items)),
             "total_pages": metadata.get("table_of_contents_total_pages", 0),
             "source": metadata.get("table_of_contents_source", "contents"),
         }

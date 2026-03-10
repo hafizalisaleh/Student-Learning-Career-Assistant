@@ -775,7 +775,7 @@ function AskDocumentsPageContent() {
                           className={cn(
                             'group relative max-w-[86%] rounded-[1.5rem] px-4 py-4 shadow-sm',
                             message.type === 'user'
-                              ? 'bg-[linear-gradient(135deg,var(--primary),var(--highlight))] text-[var(--primary-foreground)] shadow-[var(--shadow-glow-blue)]'
+                              ? 'chat-user-bubble bg-[linear-gradient(135deg,var(--primary),var(--highlight))] shadow-[var(--shadow-glow-blue)]'
                               : 'border border-[var(--card-border)] bg-[color:color-mix(in_srgb,var(--bg-elevated)_82%,transparent)]'
                           )}
                         >
@@ -816,7 +816,7 @@ function AskDocumentsPageContent() {
                               }}
                             />
                           ) : (
-                            <p className="whitespace-pre-wrap text-sm leading-7">{message.content}</p>
+                            <p className="whitespace-pre-wrap text-sm leading-7 text-[inherit]">{message.content}</p>
                           )}
 
                           {message.type === 'assistant' && (
@@ -833,7 +833,7 @@ function AskDocumentsPageContent() {
                             className={cn(
                               'absolute right-2 top-2 rounded-xl p-1.5 opacity-0 transition-opacity group-hover:opacity-100',
                               message.type === 'user'
-                                ? 'text-white/70 hover:bg-white/20'
+                                ? 'chat-user-bubble-subtle hover:bg-white/20'
                                 : 'text-[var(--text-tertiary)] hover:bg-[var(--accent)]'
                             )}
                             title="Copy message"
@@ -942,7 +942,7 @@ function AskDocumentsPageContent() {
                             </div>
                           )}
 
-                          <p className={cn('mt-3 text-[10px]', message.type === 'user' ? 'text-white/65' : 'text-[var(--text-muted)]')}>
+                          <p className={cn('mt-3 text-[10px]', message.type === 'user' ? 'chat-user-bubble-subtle' : 'text-[var(--text-muted)]')}>
                             {message.timestamp.toLocaleTimeString()}
                           </p>
                         </div>

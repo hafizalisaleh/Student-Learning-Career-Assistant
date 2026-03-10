@@ -588,6 +588,7 @@ def get_knowledge_graph(
     """
     from config.database import SessionLocal
     from documents.models import Document, ProcessingStatus
+    from documents.table_of_contents import normalize_table_of_contents_items
     from core.knowledge_graph import build_knowledge_graph
 
     db = SessionLocal()
@@ -601,6 +602,7 @@ def get_knowledge_graph(
         documents_data = []
         for doc in docs:
             metadata = doc.doc_metadata or {}
+            normalized_toc, _ = normalize_table_of_contents_items(metadata.get("table_of_contents") or [])
             documents_data.append({
                 "id": str(doc.id),
                 "title": doc.title,
@@ -608,7 +610,7 @@ def get_knowledge_graph(
                 "topics": doc.topics or [],
                 "keywords": doc.keywords or [],
                 "domains": doc.domains or [],
-                "table_of_contents": metadata.get("table_of_contents") or [],
+                "table_of_contents": normalized_toc,
             })
 
         # Get all notes

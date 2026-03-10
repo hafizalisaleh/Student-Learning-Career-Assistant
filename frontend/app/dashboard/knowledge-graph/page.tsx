@@ -538,7 +538,7 @@ export default function KnowledgeGraphPage() {
                       className={cn(
                         'max-w-[95%] rounded-xl px-3 py-2',
                         msg.role === 'user'
-                          ? 'bg-[var(--primary)] text-white rounded-br-sm'
+                          ? 'chat-user-bubble bg-[linear-gradient(135deg,var(--primary),var(--highlight))] rounded-br-sm shadow-[var(--shadow-glow-blue)]'
                           : 'bg-[var(--bg-secondary)] border border-[var(--card-border)] rounded-bl-sm'
                       )}
                     >
@@ -547,10 +547,10 @@ export default function KnowledgeGraphPage() {
                           {msg.nodeLabel && (
                             <div className="flex items-center gap-1.5 mb-1 opacity-80">
                               <Sparkles className="h-3 w-3" />
-                              <span className="text-[10px] font-medium">{msg.nodeLabel}</span>
+                              <span className="text-[10px] font-medium text-[inherit]">{msg.nodeLabel}</span>
                             </div>
                           )}
-                          <p className="text-xs leading-relaxed">{msg.content}</p>
+                          <p className="text-xs leading-relaxed text-[inherit]">{msg.content}</p>
                         </div>
                       ) : (
                         <div>

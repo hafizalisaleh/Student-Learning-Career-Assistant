@@ -248,10 +248,90 @@ def _assign_page_ranges(entries: List[Dict[str, Any]], total_pages: int) -> List
     return entries
 
 
+def _make_unique_section_id(base_id: str, seen_ids: Dict[str, int]) -> str:
+    count = seen_ids.get(base_id, 0) + 1
+    seen_ids[base_id] = count
+    if count == 1:
+        return base_id
+    return f"{base_id}-{count}"
+
+
+def _normalize_section_path(raw_path: Any, parent_path: List[str], label: str) -> List[str]:
+    if isinstance(raw_path, list):
+        sanitized_path = [sanitize_heading(str(part)) for part in raw_path]
+        sanitized_path = [part for part in sanitized_path if part]
+        if sanitized_path and sanitized_path[-1] == label:
+            return sanitized_path
+    return [*parent_path, label]
+
+
+def _normalize_table_of_contents_nodes(
+    items: List[Dict[str, Any]],
+    parent_path: List[str],
+    seen_ids: Dict[str, int],
+) -> Tuple[List[Dict[str, Any]], bool]:
+    normalized_items: List[Dict[str, Any]] = []
+    changed = False
+
+    for index, item in enumerate(items or []):
+        label = sanitize_heading(str(item.get("label") or item.get("title") or f"Section {index + 1}"))
+        title = sanitize_heading(str(item.get("title") or label)) or label
+        path = _normalize_section_path(item.get("path"), parent_path, label)
+        base_id = slugify("--".join(path))
+        node_id = _make_unique_section_id(base_id, seen_ids)
+        children, child_changed = _normalize_table_of_contents_nodes(
+            item.get("children") or [],
+            path,
+            seen_ids,
+        )
+
+        normalized_item = dict(item)
+        normalized_item.update(
+            {
+                "id": node_id,
+                "title": title,
+                "label": label,
+                "path": path,
+                "children": children,
+            }
+        )
+        normalized_items.append(normalized_item)
+
+        if (
+            child_changed
+            or item.get("id") != node_id
+            or item.get("title") != title
+            or item.get("label") != label
+            or item.get("path") != path
+        ):
+            changed = True
+
+    return normalized_items, changed
+
+
+def normalize_table_of_contents_items(items: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], bool]:
+    return _normalize_table_of_contents_nodes(items or [], parent_path=[], seen_ids={})
+
+
+def flatten_table_of_contents_items(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    flat: List[Dict[str, Any]] = []
+
+    def walk(nodes: List[Dict[str, Any]]) -> None:
+        for node in nodes or []:
+            flat.append(node)
+            walk(node.get("children") or [])
+
+    walk(items or [])
+    return flat
+
+
+def count_table_of_contents_items(items: List[Dict[str, Any]]) -> int:
+    return len(flatten_table_of_contents_items(items))
+
+
 def _build_tree(entries: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     tree: List[Dict[str, Any]] = []
     stack: List[Dict[str, Any]] = []
-    flat: List[Dict[str, Any]] = []
 
     for entry in entries:
         node = {
@@ -277,11 +357,10 @@ def _build_tree(entries: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], Li
             tree.append(node)
             node["path"] = [node["label"]]
 
-        node["id"] = slugify("--".join(node["path"]))
         stack.append(node)
-        flat.append(node)
 
-    return tree, flat
+    normalized_tree, _ = normalize_table_of_contents_items(tree)
+    return normalized_tree, flatten_table_of_contents_items(normalized_tree)
 
 
 def _build_page_fallback_entries(total_pages: int) -> List[Dict[str, Any]]:
