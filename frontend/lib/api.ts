@@ -1,5 +1,17 @@
 import axios, { AxiosInstance } from 'axios';
-import type { QuizResult, RagQueryOptions, TableOfContentsResponse } from '@/lib/types';
+import type {
+  LearningPathChatRequest,
+  LearningPathChatResponse,
+  LearningLessonCompletionRequest,
+  LearningLessonCompletionResponse,
+  LearningLessonDetail,
+  LearningPath,
+  LearningPathCard,
+  LearningPathGenerateRequest,
+  QuizResult,
+  RagQueryOptions,
+  TableOfContentsResponse,
+} from '@/lib/types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -16,6 +28,15 @@ interface ApiInstance extends AxiosInstance {
   getDocumentThumbnailUrl: (id: string) => string;
   getDocumentMindmap: (id: string, style?: string) => Promise<any>;
   getDocumentDiagram: (id: string, diagramType?: string) => Promise<any>;
+
+  // Learning Paths
+  getLearningPaths: () => Promise<LearningPathCard[]>;
+  generateLearningPath: (data: LearningPathGenerateRequest) => Promise<LearningPath>;
+  getLearningPath: (id: string) => Promise<LearningPath>;
+  chatLearningPath: (pathId: string, data: LearningPathChatRequest) => Promise<LearningPathChatResponse>;
+  getLearningLesson: (pathId: string, lessonId: string) => Promise<LearningLessonDetail>;
+  generateLearningLesson: (pathId: string, lessonId: string, regenerate?: boolean) => Promise<LearningLessonDetail>;
+  completeLearningLesson: (pathId: string, lessonId: string, data: LearningLessonCompletionRequest) => Promise<LearningLessonCompletionResponse>;
 
   // Notes
   getNotes: () => Promise<any>;
@@ -175,6 +196,43 @@ axiosInstance.processUrl = async (url: string) => {
   const isYouTube = url.includes('youtube.com') || url.includes('youtu.be');
   const endpoint = isYouTube ? '/api/documents/upload/youtube' : '/api/documents/upload/web';
   const response = await axiosInstance.post(endpoint, { url });
+  return response.data;
+};
+
+// ===== Learning Paths =====
+axiosInstance.getLearningPaths = async () => {
+  const response = await axiosInstance.get('/api/learning-paths/');
+  return response.data;
+};
+
+axiosInstance.generateLearningPath = async (data: LearningPathGenerateRequest) => {
+  const response = await axiosInstance.post('/api/learning-paths/generate', data);
+  return response.data;
+};
+
+axiosInstance.getLearningPath = async (id: string) => {
+  const response = await axiosInstance.get(`/api/learning-paths/${id}`);
+  return response.data;
+};
+
+axiosInstance.chatLearningPath = async (pathId: string, data: LearningPathChatRequest) => {
+  const response = await axiosInstance.post(`/api/learning-paths/${pathId}/chat`, data);
+  return response.data;
+};
+
+axiosInstance.getLearningLesson = async (pathId: string, lessonId: string) => {
+  const response = await axiosInstance.get(`/api/learning-paths/${pathId}/lessons/${lessonId}`);
+  return response.data;
+};
+
+axiosInstance.generateLearningLesson = async (pathId: string, lessonId: string, regenerate: boolean = false) => {
+  const params = regenerate ? '?regenerate=true' : '';
+  const response = await axiosInstance.post(`/api/learning-paths/${pathId}/lessons/${lessonId}/generate${params}`);
+  return response.data;
+};
+
+axiosInstance.completeLearningLesson = async (pathId: string, lessonId: string, data: LearningLessonCompletionRequest) => {
+  const response = await axiosInstance.post(`/api/learning-paths/${pathId}/lessons/${lessonId}/complete`, data);
   return response.data;
 };
 

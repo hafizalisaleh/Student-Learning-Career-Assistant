@@ -62,6 +62,13 @@ const MessageContent = ({
   className,
   ...props
 }: MessageContentProps) => {
+  const markdownText =
+    typeof children === "string"
+      ? children
+      : Array.isArray(children)
+        ? children.filter((child): child is string => typeof child === "string").join("")
+        : ""
+
   const classNames = cn(
     "prose prose-neutral max-w-none break-words whitespace-normal rounded-[1.4rem] border border-[var(--card-border)] bg-[color:color-mix(in_srgb,var(--bg-elevated)_82%,transparent)] px-4 py-3 text-[var(--text-primary)] shadow-[var(--card-shadow)] dark:prose-invert",
     className
@@ -69,7 +76,7 @@ const MessageContent = ({
 
   return markdown ? (
     <Markdown className={classNames} {...props}>
-      {children as string}
+      {markdownText}
     </Markdown>
   ) : (
     <div className={classNames} {...props}>

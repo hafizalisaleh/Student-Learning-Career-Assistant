@@ -43,6 +43,7 @@ def init_db():
     from quizzes.models import Quiz, QuizQuestion, QuizAttempt
     from progress.models import UserProgress, ActivityLog
     from career.models import Resume, ResumeAnalysis, CareerRecommendation
+    from learning_paths.models import LearningPath, PathUnit, PathLesson, LessonProgress
     from knowledge_timeline.models import (
         Concept, DocumentConceptLink, ConceptSnapshot,
         ConceptRelationship, UserConceptState

@@ -9,11 +9,11 @@ import {
   Briefcase,
   ChevronDown,
   ClipboardCheck,
+  Compass,
   FileText,
   LayoutDashboard,
   LogOut,
   Menu,
-  Mic,
   Network,
   PanelLeftClose,
   PanelLeftOpen,
@@ -62,10 +62,10 @@ const navigation = [
     description: 'Checks and attempts.',
   },
   {
-    name: 'AI Assistant',
-    href: '/dashboard/ask',
-    icon: Mic,
-    description: 'Grounded Q&A.',
+    name: 'Learn',
+    href: '/dashboard/learn',
+    icon: Compass,
+    description: 'Personalized learning paths.',
   },
   {
     name: 'Knowledge Graph',
@@ -90,7 +90,7 @@ const navigation = [
 const bottomNavItems = [
   { name: 'Home', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Docs', href: '/dashboard/documents', icon: FileText },
-  { name: 'AI', href: '/dashboard/ask', icon: Mic, highlight: true },
+  { name: 'Learn', href: '/dashboard/learn', icon: Compass, highlight: true },
   { name: 'Graph', href: '/dashboard/knowledge-graph', icon: Network },
   { name: 'Career', href: '/dashboard/career', icon: Briefcase },
 ];
@@ -428,9 +428,9 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                           <FileText className="h-4 w-4" />
                           Open document library
                         </Link>
-                        <Link href="/dashboard/ask" className="flex items-center gap-3 rounded-2xl px-3 py-3 text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--text-primary)]" onClick={() => setProfileOpen(false)}>
-                          <Mic className="h-4 w-4" />
-                          Ask the AI assistant
+                        <Link href="/dashboard/learn" className="flex items-center gap-3 rounded-2xl px-3 py-3 text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--text-primary)]" onClick={() => setProfileOpen(false)}>
+                          <Compass className="h-4 w-4" />
+                          Open learning paths
                         </Link>
                         <button
                           onClick={handleLogout}

@@ -79,6 +79,218 @@ export interface RagQueryOptions {
   sectionPages?: number[];
 }
 
+// Learning path types
+export type GoalDepth = 'basics' | 'deep' | 'practical';
+export type LearningSourceMode = 'web' | 'pdf' | 'hybrid';
+export type LessonProgressStatus = 'not_started' | 'completed' | 'review_due';
+
+export interface LearningPathGenerateRequest {
+  topic: string;
+  background: string;
+  goal_depth: GoalDepth;
+  daily_minutes: number;
+  teaching_style: string[];
+  focus_areas: string[];
+  source_mode: LearningSourceMode;
+  document_ids: string[];
+  seed_urls: string[];
+  custom_instructions?: string;
+}
+
+export interface LearningPathSourceReference {
+  label: string;
+  source_type: string;
+  locator: string;
+  excerpt: string;
+}
+
+export interface LearningLessonProgress {
+  status: LessonProgressStatus;
+  attempts: number;
+  mastery_score: number;
+  xp_earned: number;
+  is_completed: boolean;
+  completed_at?: string | null;
+  last_submission: Record<string, unknown>;
+}
+
+export interface LearningLessonSummary {
+  id: string;
+  unit_id: string;
+  title: string;
+  objective: string;
+  duration_minutes: number;
+  difficulty: number;
+  unlock_hint: string;
+  exercise_type: 'multiple_choice' | 'fill_blank' | 'order_steps' | string;
+  key_terms: string[];
+  source_refs: string[];
+  is_available: boolean;
+  is_locked: boolean;
+  is_completed: boolean;
+  progress: LearningLessonProgress;
+}
+
+export interface LearningPathUnit {
+  id: string;
+  path_id: string;
+  order_index: number;
+  title: string;
+  objective: string;
+  sequence_reason: string;
+  lessons: LearningLessonSummary[];
+}
+
+export interface LearningPathCard {
+  id: string;
+  title: string;
+  topic: string;
+  tagline: string;
+  goal_depth: GoalDepth;
+  source_mode: LearningSourceMode;
+  estimated_days: number;
+  total_lessons: number;
+  completed_lessons: number;
+  completion_percentage: number;
+  daily_minutes: number;
+  teaching_style: string[];
+  focus_areas: string[];
+  next_lesson_id?: string | null;
+  next_lesson_title?: string | null;
+  created_at: string;
+  updated_at?: string | null;
+}
+
+export interface LearningPathDocument {
+  id: string;
+  title: string;
+  content_type: string;
+}
+
+export interface LearningPath {
+  id: string;
+  title: string;
+  topic: string;
+  background: string;
+  custom_instructions?: string | null;
+  tagline: string;
+  rationale: string;
+  goal_depth: GoalDepth;
+  source_mode: LearningSourceMode;
+  status: 'ready' | 'failed';
+  daily_minutes: number;
+  estimated_days: number;
+  total_lessons: number;
+  completed_lessons: number;
+  completion_percentage: number;
+  teaching_style: string[];
+  focus_areas: string[];
+  source_documents: LearningPathDocument[];
+  next_lesson_id?: string | null;
+  next_lesson_title?: string | null;
+  units: LearningPathUnit[];
+  created_at: string;
+  updated_at?: string | null;
+}
+
+export interface LearningLessonSection {
+  title: string;
+  content: string;
+}
+
+export interface LearningLessonDiagram {
+  title: string;
+  mermaid: string;
+  caption: string;
+}
+
+export interface LearningLessonExercise {
+  type: 'multiple_choice' | 'fill_blank' | 'order_steps' | string;
+  prompt: string;
+  options: string[];
+  correct_option_index: number;
+  acceptable_answers: string[];
+  correct_sequence: string[];
+  explanation: string;
+}
+
+export interface LearningLessonContent {
+  hook: string;
+  tldr: string;
+  sections: LearningLessonSection[];
+  personalized_analogy: string;
+  diagram: LearningLessonDiagram;
+  exercise: LearningLessonExercise;
+  mastery_check: {
+    prompt: string;
+    success_criteria: string;
+  };
+  source_refs: LearningPathSourceReference[];
+}
+
+export interface LearningLessonDetail {
+  id: string;
+  path_id: string;
+  unit_id: string;
+  title: string;
+  objective: string;
+  duration_minutes: number;
+  difficulty: number;
+  unlock_hint: string;
+  exercise_type: string;
+  key_terms: string[];
+  source_refs: string[];
+  is_available: boolean;
+  is_locked: boolean;
+  is_completed: boolean;
+  progress: LearningLessonProgress;
+  previous_lesson_id?: string | null;
+  next_lesson_id?: string | null;
+  content?: LearningLessonContent | null;
+}
+
+export interface LearningPathChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export interface LearningPathChatSource {
+  label: string;
+  detail: string;
+  url?: string | null;
+}
+
+export interface LearningPathChatRequest {
+  messages: LearningPathChatMessage[];
+  model?: string;
+  lesson_id?: string | null;
+  unit_id?: string | null;
+}
+
+export interface LearningPathChatResponse {
+  answer: string;
+  model: string;
+  call_count: number;
+  remembers_via_history: boolean;
+  used_live_tools: boolean;
+  history_turns_used: number;
+  sources: LearningPathChatSource[];
+}
+
+export interface LearningLessonCompletionRequest {
+  selected_option_index?: number;
+  text_answer?: string;
+  ordered_steps?: string[];
+}
+
+export interface LearningLessonCompletionResponse {
+  correct: boolean;
+  xp_earned: number;
+  status: LessonProgressStatus;
+  feedback: string;
+  progress: LearningLessonProgress;
+}
+
 // Note types
 export interface Note {
   id: string;

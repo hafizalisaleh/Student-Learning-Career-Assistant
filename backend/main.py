@@ -14,6 +14,7 @@ from summarizer.views import router as summarizer_router
 from quizzes.views import router as quizzes_router
 from progress.views import router as progress_router
 from career.views import router as career_router
+from learning_paths.views import router as learning_paths_router
 from core.views import router as vectors_router
 from voice.views import router as voice_router
 from knowledge_timeline.views import router as knowledge_timeline_router
@@ -144,6 +145,7 @@ app.include_router(summarizer_router)
 app.include_router(quizzes_router)
 app.include_router(progress_router)
 app.include_router(career_router)
+app.include_router(learning_paths_router)
 app.include_router(vectors_router)
 app.include_router(voice_router)
 app.include_router(knowledge_timeline_router)

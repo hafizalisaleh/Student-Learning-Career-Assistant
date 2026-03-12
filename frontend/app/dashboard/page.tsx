@@ -112,7 +112,7 @@ export default function DashboardPage() {
                 Welcome back, {user?.first_name || 'Student'}.
               </h2>
               <p className="mt-4 max-w-2xl text-base leading-7 text-[var(--text-secondary)]">
-                Keep your study flow tight: ingest better sources, ask grounded questions, and turn the results into notes, summaries, and quizzes without leaving the workspace.
+                Turn your best sources into guided learning paths. Build short, sequential lessons from documents and live research, then move through them one step at a time.
               </p>
 
               <div className="mt-6 flex flex-wrap items-center gap-3">
@@ -122,10 +122,10 @@ export default function DashboardPage() {
                     Add study material
                   </Button>
                 </Link>
-                <Link href="/dashboard/ask">
+                <Link href="/dashboard/learn">
                   <Button variant="outline" size="lg">
                     <Sparkles className="h-4 w-4" />
-                    Open AI assistant
+                    Create learning path
                   </Button>
                 </Link>
                 <Badge variant="documents" size="lg">
@@ -195,7 +195,7 @@ export default function DashboardPage() {
                     ? 'Upload a strong source document.'
                     : stats[1].value === 0
                       ? 'Turn your best document into notes.'
-                      : 'Open the AI assistant and test understanding.'}
+                      : 'Create a learning path from your strongest source.'}
                 </p>
               </div>
 
@@ -207,8 +207,8 @@ export default function DashboardPage() {
               </div>
 
               <div className="rounded-[1.35rem] border border-[var(--card-border)] bg-[color:color-mix(in_srgb,var(--bg-elevated)_78%,transparent)] p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--text-tertiary)]">Assistant posture</p>
-                <p className="mt-2 text-base font-medium text-[var(--text-primary)]">Best when your library is recent, clean, and connected.</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--text-tertiary)]">Path posture</p>
+                <p className="mt-2 text-base font-medium text-[var(--text-primary)]">Best when your library is recent, clean, and ready to sequence.</p>
               </div>
             </div>
           </div>
