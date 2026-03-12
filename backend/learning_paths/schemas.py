@@ -32,6 +32,30 @@ class LessonProgressStatusEnum(str, Enum):
     REVIEW_DUE = "review_due"
 
 
+class LearningPathOutlinePreviewLessonPayload(BaseModel):
+    title: str = Field(min_length=1, max_length=255)
+    objective: str = Field(min_length=1, max_length=500)
+    duration_minutes: int = Field(ge=1, le=60)
+
+
+class LearningPathOutlinePreviewUnitPayload(BaseModel):
+    title: str = Field(min_length=1, max_length=255)
+    objective: str = Field(min_length=1, max_length=500)
+    sequence_reason: Optional[str] = Field(default=None, max_length=500)
+    lessons: list[LearningPathOutlinePreviewLessonPayload] = Field(default_factory=list)
+
+
+class LearningPathOutlinePreviewPayload(BaseModel):
+    title: str = Field(min_length=1, max_length=255)
+    tagline: Optional[str] = Field(default=None, max_length=500)
+    rationale: Optional[str] = Field(default=None, max_length=2000)
+    estimated_days: Optional[int] = Field(default=None, ge=1, le=365)
+    total_lessons: Optional[int] = Field(default=None, ge=1, le=100)
+    daily_minutes: Optional[int] = Field(default=None, ge=1, le=120)
+    learning_goal: Optional[str] = Field(default=None, max_length=2000)
+    units: list[LearningPathOutlinePreviewUnitPayload] = Field(default_factory=list)
+
+
 class LearningPathGenerateRequest(BaseModel):
     topic: str = Field(min_length=3, max_length=500)
     background: str = Field(min_length=3, max_length=2000)
@@ -45,6 +69,7 @@ class LearningPathGenerateRequest(BaseModel):
     document_ids: list[uuid.UUID] = Field(default_factory=list)
     seed_urls: list[HttpUrl] = Field(default_factory=list)
     custom_instructions: Optional[str] = Field(default=None, max_length=2000)
+    outline_preview: Optional[LearningPathOutlinePreviewPayload] = None
 
 
 class LearningPathUpdateRequest(BaseModel):

@@ -97,6 +97,7 @@ export interface LearningPathGenerateRequest {
   document_ids: string[];
   seed_urls: string[];
   custom_instructions?: string;
+  outline_preview?: LearningPathOutlinePreview | null;
 }
 
 export interface LearningPathUpdateRequest {

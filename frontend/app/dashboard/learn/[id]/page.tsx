@@ -6,6 +6,8 @@ import { useParams } from 'next/navigation';
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels';
 import {
   ArrowLeft,
+  ChevronDown,
+  ChevronRight,
   BookOpen,
   Bot,
   BrainCircuit,
@@ -82,7 +84,7 @@ function createAssistantIntro(path: LearningPath): WorkspaceMessage {
   return {
     id: 'intro',
     role: 'assistant',
-    content: `I’m your course copilot for **${path.title}**.\n\nAsk me to explain a lesson, tighten the curriculum, make it more practical, or help you decide what to study next.`,
+    content: `Copilot for **${path.title}**.\n\nAsk for a summary, a practical rewrite, or what to study next.`,
     model: 'workspace',
     sources: [],
     usedLiveTools: false,
@@ -342,9 +344,10 @@ export default function LearningPathDetailPage() {
       <PanelGroup orientation="horizontal">
         <Panel defaultSize={48} minSize={30} className="border-r border-[var(--card-border)]">
           <div className="flex h-full min-h-0 flex-col bg-[var(--bg-primary)]">
-            <div className="border-b border-[var(--card-border)] bg-[var(--bg-secondary)] px-5 py-4">
+            <div className="border-b border-[var(--card-border)] bg-[var(--bg-secondary)] px-4 py-3">
                 <div className="flex items-start justify-between gap-3">
-                  <div className="space-y-3">
+                  <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
                   <Link
                     href="/dashboard/learn"
                     className="inline-flex items-center gap-2 text-sm font-medium text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
@@ -352,29 +355,36 @@ export default function LearningPathDetailPage() {
                     <ArrowLeft className="h-4 w-4" />
                     Back to paths
                   </Link>
-                  <div>
-                    <div className="mb-2 flex flex-wrap gap-2">
-                      <Badge variant="documents">
+                    <div className="flex flex-wrap gap-2">
+                      <Badge variant="documents" size="sm">
                         <Sparkles className="h-3.5 w-3.5" />
                         {path.source_mode}
                       </Badge>
-                      <Badge variant="default">{path.goal_depth}</Badge>
-                      <Badge variant="default">{path.total_lessons} lessons</Badge>
-                    </div>
-                    <h1 className="text-xl font-semibold text-[var(--text-primary)]">{path.title}</h1>
-                      <p className="mt-1 max-w-2xl text-sm text-[var(--text-secondary)]">{path.tagline}</p>
+                      <Badge variant="default" size="sm">
+                        {path.goal_depth}
+                      </Badge>
+                      <Badge variant="default" size="sm">
+                        {path.total_lessons} lessons
+                      </Badge>
                     </div>
                   </div>
-                  <div className="max-w-xs rounded-[1rem] border border-[var(--card-border)] bg-[var(--card-bg)] px-3 py-2 text-xs leading-5 text-[var(--text-secondary)]">
-                    Click a unit title to talk to AI about that unit. Click a lesson row to open the lesson directly.
+                  <div className="mt-3 flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <h1 className="text-lg font-semibold tracking-[-0.03em] text-[var(--text-primary)] md:text-xl">{path.title}</h1>
+                      <p className="mt-1 line-clamp-2 max-w-xl text-sm text-[var(--text-secondary)]">{path.tagline}</p>
+                    </div>
+                    <div className="hidden shrink-0 rounded-full border border-[var(--card-border)] bg-[var(--card-bg)] px-3 py-1.5 text-[11px] text-[var(--text-secondary)] lg:block">
+                      Select unit • Open lesson
+                    </div>
                   </div>
                 </div>
+                </div>
 
-              <div className="mt-4 rounded-[1.1rem] border border-[var(--card-border)] bg-[var(--card-bg)] px-4 py-3">
+              <div className="mt-3 rounded-[1rem] border border-[var(--card-border)] bg-[var(--card-bg)] px-3 py-2.5">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-tertiary)]">
-                      Generated curriculum
+                      Curriculum
                     </p>
                     <p className="mt-1 text-sm text-[var(--text-secondary)]">
                       {path.completed_lessons}/{path.total_lessons} lessons completed · {path.daily_minutes} min/day · {totalMinutes} min total
@@ -386,9 +396,9 @@ export default function LearningPathDetailPage() {
                     </p>
                   </div>
                 </div>
-                <div className="mt-3 h-2 rounded-full bg-[var(--bg-tertiary)]">
+                <div className="mt-2 h-1.5 rounded-full bg-[var(--bg-tertiary)]">
                   <div
-                    className="h-2 rounded-full bg-[var(--primary)]"
+                    className="h-1.5 rounded-full bg-[var(--primary)]"
                     style={{ width: `${path.completion_percentage}%` }}
                   />
                 </div>
@@ -587,9 +597,9 @@ export default function LearningPathDetailPage() {
                   <div className="mb-3 rounded-xl border border-[var(--card-border)] bg-[var(--card-bg)] px-3 py-2 text-xs text-[var(--text-secondary)]">
                     <span className="font-semibold text-[var(--text-primary)]">{selectedModelMeta.label}</span>
                     {' · '}
-                    {selectedModelMeta.description}
+                    {selectedModel === 'groq/compound-mini' ? 'fresh web context' : 'course guidance'}
                     {' · '}
-                    memory is preserved by replaying earlier turns inside this workspace.
+                    remembers this workspace.
                   </div>
 
                   <div className="mb-3 flex flex-wrap gap-2">
@@ -670,26 +680,34 @@ function UnitRail({
   return (
     <div
       className={cn(
-        'rounded-[1.75rem] border p-4 transition-colors',
+        'rounded-[1.5rem] border p-3.5 transition-colors',
         isSelected ? 'border-[var(--primary)] bg-[var(--documents-bg)]' : 'border-[var(--card-border)] bg-[var(--bg-base)]'
       )}
     >
       <button type="button" onClick={onSelectUnit} className="w-full text-left">
         <div className="flex items-start justify-between gap-3">
-          <div>
+          <div className="min-w-0 flex-1">
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--text-tertiary)]">
               Unit {unit.order_index}
             </p>
             <h3 className="mt-1 text-lg font-semibold text-[var(--text-primary)]">{unit.title}</h3>
-            <p className="mt-1 text-sm text-[var(--text-secondary)]">{unit.objective}</p>
+            <p className="mt-1 line-clamp-2 text-sm text-[var(--text-secondary)]">{unit.objective}</p>
           </div>
-          <Badge variant="default">
-            {completedLessons}/{unit.lessons.length}
-          </Badge>
+          <div className="flex items-center gap-2">
+            <Badge variant="default" size="sm">
+              {completedLessons}/{unit.lessons.length}
+            </Badge>
+            {isSelected ? (
+              <ChevronDown className="h-4 w-4 text-[var(--text-tertiary)]" />
+            ) : (
+              <ChevronRight className="h-4 w-4 text-[var(--text-tertiary)]" />
+            )}
+          </div>
         </div>
       </button>
 
-      <div className="mt-4 space-y-2 border-l border-dashed border-[var(--card-border)] pl-4">
+      {isSelected ? (
+      <div className="mt-3 space-y-2 border-l border-dashed border-[var(--card-border)] pl-4">
         {unit.lessons.map((lesson) => {
           const isLocked = lesson.is_locked;
           const isCompleted = lesson.is_completed;
@@ -727,7 +745,7 @@ function UnitRail({
           );
 
           const className = cn(
-            'flex w-full items-start gap-3 rounded-[1.25rem] border px-3 py-3 text-left transition-colors',
+            'flex w-full items-start gap-3 rounded-[1.15rem] border px-3 py-2.5 text-left transition-colors',
             isLocked
               ? 'cursor-not-allowed border-[var(--card-border)] bg-transparent opacity-60'
               : 'border-[var(--card-border)] bg-transparent hover:border-[var(--card-border-hover)] hover:bg-[var(--bg-elevated)]'
@@ -748,6 +766,11 @@ function UnitRail({
           );
         })}
       </div>
+      ) : (
+        <div className="mt-3 text-xs text-[var(--text-tertiary)]">
+          {unit.lessons.length} lesson{unit.lessons.length === 1 ? '' : 's'}
+        </div>
+      )}
     </div>
   );
 }

@@ -690,6 +690,48 @@ Rules:
         outline["estimated_days"] = max(1, int(outline.get("estimated_days") or math.ceil(total_lessons * 5 / max(daily_minutes, 5))))
         return outline
 
+    def _outline_from_preview(
+        self,
+        outline_preview: Any,
+        *,
+        topic: str,
+        course_title: Optional[str],
+        goal_depth: str,
+        daily_minutes: int,
+    ) -> Dict[str, Any]:
+        raw_outline: Dict[str, Any]
+        if hasattr(outline_preview, "model_dump"):
+            raw_outline = outline_preview.model_dump(exclude_none=True)
+        elif isinstance(outline_preview, dict):
+            raw_outline = outline_preview
+        else:
+            raw_outline = {}
+
+        outline = self._sanitize_path_outline(
+            raw_outline,
+            topic=topic,
+            goal_depth=goal_depth,
+            daily_minutes=daily_minutes,
+        )
+        units = outline.get("units") or []
+        total_lessons = sum(len(unit.get("lessons") or []) for unit in units)
+        if not units or total_lessons == 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Approved outline preview is empty or invalid",
+            )
+        if _normalize_text(course_title):
+            outline["title"] = _normalize_text(course_title)
+        outline["estimated_days"] = max(
+            1,
+            int(
+                raw_outline.get("estimated_days")
+                or outline.get("estimated_days")
+                or math.ceil(total_lessons * 5 / max(daily_minutes, 5))
+            ),
+        )
+        return outline
+
     def _generate_setup_question(
         self,
         *,
@@ -1434,20 +1476,30 @@ Curriculum snapshot:
         goal_depth = bundle["goal_depth"]
         documents = bundle["documents"]
         evidence = bundle["evidence"]
+        approved_outline = getattr(request, "outline_preview", None)
 
-        outline = self._generate_path_outline(
-            topic=request.topic,
-            background=request.background,
-            course_title=bundle["course_title"],
-            learning_goal=bundle["learning_goal"],
-            goal_depth=goal_depth,
-            daily_minutes=request.daily_minutes,
-            teaching_style=request.teaching_style,
-            focus_areas=request.focus_areas,
-            source_mode=source_mode,
-            custom_instructions=request.custom_instructions,
-            evidence=evidence,
-        )
+        if approved_outline:
+            outline = self._outline_from_preview(
+                approved_outline,
+                topic=request.topic,
+                course_title=bundle["course_title"],
+                goal_depth=goal_depth,
+                daily_minutes=request.daily_minutes,
+            )
+        else:
+            outline = self._generate_path_outline(
+                topic=request.topic,
+                background=request.background,
+                course_title=bundle["course_title"],
+                learning_goal=bundle["learning_goal"],
+                goal_depth=goal_depth,
+                daily_minutes=request.daily_minutes,
+                teaching_style=request.teaching_style,
+                focus_areas=request.focus_areas,
+                source_mode=source_mode,
+                custom_instructions=request.custom_instructions,
+                evidence=evidence,
+            )
 
         path = LearningPath(
             user_id=current_user.id,
@@ -1479,6 +1531,7 @@ Curriculum snapshot:
                     "source_mode": source_mode,
                     "seed_urls": [str(url) for url in request.seed_urls],
                 },
+                "approved_outline": outline,
                 "evidence": evidence,
             },
         )

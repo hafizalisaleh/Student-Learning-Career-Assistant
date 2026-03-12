@@ -151,6 +151,7 @@ function buildGeneratePayload({
   sourceMode,
   selectedDocumentIds,
   customInstructions,
+  outlinePreview,
 }: {
   topic: string;
   background: string;
@@ -163,6 +164,7 @@ function buildGeneratePayload({
   sourceMode: LearningSourceMode;
   selectedDocumentIds: string[];
   customInstructions: string;
+  outlinePreview?: LearningPathOutlinePreview | null;
 }): LearningPathGenerateRequest {
   return {
     topic: normalizeText(topic),
@@ -177,6 +179,7 @@ function buildGeneratePayload({
     document_ids: sourceMode === 'web' ? [] : selectedDocumentIds,
     seed_urls: [],
     custom_instructions: normalizeText(customInstructions) || undefined,
+    outline_preview: outlinePreview ?? undefined,
   };
 }
 
@@ -494,6 +497,7 @@ export default function LearnPage() {
         sourceMode,
         selectedDocumentIds,
         customInstructions,
+        outlinePreview,
       });
       const path = await api.generateLearningPath(payload);
       toast.success('Learning path created');
