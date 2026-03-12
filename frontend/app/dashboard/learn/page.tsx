@@ -9,26 +9,50 @@ import {
   BookOpen,
   BrainCircuit,
   CheckCircle2,
+  ChevronDown,
   Clock3,
   FileText,
   Globe2,
   Loader2,
   MessageSquareQuote,
+  PencilLine,
   RotateCcw,
   Sparkles,
+  Trash2,
   Wand2,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-import { api } from '@/lib/api';
-import type { Document, GoalDepth, LearningPathCard, LearningSourceMode } from '@/lib/types';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { PageLoader } from '@/components/ui/loading-spinner';
 import { PromptInput, PromptInputAction, PromptInputActions, PromptInputTextarea } from '@/components/ui/prompt-input';
+import { api } from '@/lib/api';
+import type {
+  Document,
+  GoalDepth,
+  LearningPathCard,
+  LearningPathGenerateRequest,
+  LearningPathOutlinePreview,
+  LearningPathSetupQuestionResponse,
+  LearningSourceMode,
+} from '@/lib/types';
 import { cn } from '@/lib/utils';
 
-type SetupStage = 'topic' | 'background' | 'preferences' | 'review';
+type SetupStage = 'topic' | 'background' | 'goal' | 'summary' | 'outline';
 
 type BuilderMessage = {
   id: string;
@@ -37,17 +61,10 @@ type BuilderMessage = {
 };
 
 const topicExamples = [
-  'LLMs for software engineers',
+  'GPU parallel processing theory',
   'Data science portfolio and resume',
   'OCR mastery in 15 minutes a day',
-  'Stoic philosophy for modern work',
-];
-
-const backgroundPresets = [
-  'Software engineer moving into AI',
-  'Researcher transitioning to industry',
-  'Product designer learning from scratch',
-  'Student building a project portfolio',
+  'LLMs for software engineers',
 ];
 
 const stylePresets = [
@@ -105,67 +122,62 @@ function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
 }
 
-function titleCase(value: string) {
-  return value
-    .split(/[\s_-]+/)
-    .filter(Boolean)
-    .map((part) => part[0].toUpperCase() + part.slice(1))
-    .join(' ');
-}
-
-function suggestPathTitle(topic: string) {
-  const cleaned = topic.trim();
-  if (!cleaned) return 'Your personalized path';
-  return cleaned.length > 58 ? `${cleaned.slice(0, 57)}…` : cleaned;
+function normalizeText(value: string) {
+  return value.trim().replace(/\s+/g, ' ');
 }
 
 function toggleToken(items: string[], value: string) {
   return items.includes(value) ? items.filter((item) => item !== value) : [...items, value];
 }
 
-function buildPreviewUnits(topic: string, focusAreas: string[]) {
-  const fallback = [
-    { title: 'Foundations', detail: 'Understand the core ideas and vocabulary first.' },
-    { title: 'Application', detail: 'See how the concept works in practical situations.' },
-    { title: 'Mastery', detail: 'Review, practice, and retain what matters.' },
-  ];
-
-  if (!topic.trim()) {
-    return fallback;
-  }
-
-  const topicLabel = suggestPathTitle(topic).replace('Your personalized path', 'This topic');
-  const custom = focusAreas.slice(0, 3).map((focus, index) => ({
-    title:
-      index === 0
-        ? `${titleCase(focus)} foundations`
-        : index === 1
-          ? `${titleCase(focus)} in practice`
-          : `${titleCase(focus)} review`,
-    detail: `A short set of lessons that keeps ${topicLabel.toLowerCase()} grounded in ${focus}.`,
-  }));
-
-  return custom.length > 0 ? custom : fallback;
+function mergeInstructions(current: string, next: string) {
+  const parts = [normalizeText(current), normalizeText(next)].filter(Boolean);
+  return Array.from(new Set(parts)).join('\n');
 }
 
-function buildSummaryMessage({
+function formatQuestionMessage(question: LearningPathSetupQuestionResponse) {
+  return [question.lead, question.question].filter(Boolean).join('\n\n');
+}
+
+function buildGeneratePayload({
   topic,
   background,
+  courseTitle,
+  learningGoal,
   goalDepth,
   dailyMinutes,
-  sourceMode,
   teachingStyle,
+  focusAreas,
+  sourceMode,
+  selectedDocumentIds,
+  customInstructions,
 }: {
   topic: string;
   background: string;
+  courseTitle: string;
+  learningGoal: string;
   goalDepth: GoalDepth;
   dailyMinutes: number;
-  sourceMode: LearningSourceMode;
   teachingStyle: string[];
-}) {
-  const goal = goalOptions.find((option) => option.value === goalDepth)?.label ?? goalDepth;
-  const source = sourceOptions.find((option) => option.value === sourceMode)?.label ?? sourceMode;
-  return `Ready to build **${suggestPathTitle(topic)}**.\n\n- Background: ${background}\n- Goal: ${goal}\n- Pace: ${dailyMinutes} min/day\n- Sources: ${source}\n- Style: ${teachingStyle.length ? teachingStyle.join(', ') : 'Default explanations'}`;
+  focusAreas: string[];
+  sourceMode: LearningSourceMode;
+  selectedDocumentIds: string[];
+  customInstructions: string;
+}): LearningPathGenerateRequest {
+  return {
+    topic: normalizeText(topic),
+    background: normalizeText(background),
+    course_title: normalizeText(courseTitle) || undefined,
+    learning_goal: normalizeText(learningGoal) || undefined,
+    goal_depth: goalDepth,
+    daily_minutes: dailyMinutes,
+    teaching_style: teachingStyle,
+    focus_areas: focusAreas,
+    source_mode: sourceMode,
+    document_ids: sourceMode === 'web' ? [] : selectedDocumentIds,
+    seed_urls: [],
+    custom_instructions: normalizeText(customInstructions) || undefined,
+  };
 }
 
 export default function LearnPage() {
@@ -175,26 +187,37 @@ export default function LearnPage() {
   const [paths, setPaths] = useState<LearningPathCard[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isSetupBusy, setIsSetupBusy] = useState(false);
+  const [isPathActionPending, setIsPathActionPending] = useState(false);
 
   const [messages, setMessages] = useState<BuilderMessage[]>([
     {
       id: 'setup-intro',
       role: 'assistant',
-      content: 'What do you want to learn? Give me the topic in one sentence, or tap one of the suggestions below.',
+      content: 'What do you want to learn? Start with the topic in one sentence, or choose one of the examples below.',
     },
   ]);
   const [stage, setStage] = useState<SetupStage>('topic');
   const [draft, setDraft] = useState('');
+  const [activeActionMenu, setActiveActionMenu] = useState<'source' | 'goal' | 'pace' | null>(null);
+  const [renamingPathId, setRenamingPathId] = useState<string | null>(null);
+  const [renamedTitle, setRenamedTitle] = useState('');
 
   const [topic, setTopic] = useState('');
   const [background, setBackground] = useState('');
+  const [selectedGoals, setSelectedGoals] = useState<string[]>([]);
+  const [courseTitle, setCourseTitle] = useState('');
+  const [learningGoal, setLearningGoal] = useState('');
   const [goalDepth, setGoalDepth] = useState<GoalDepth>('practical');
   const [dailyMinutes, setDailyMinutes] = useState(15);
-  const [sourceMode, setSourceMode] = useState<LearningSourceMode>('hybrid');
+  const [sourceMode, setSourceMode] = useState<LearningSourceMode>('web');
   const [teachingStyle, setTeachingStyle] = useState<string[]>(['visual explanations', 'practical applications']);
   const [focusAreas, setFocusAreas] = useState<string[]>(['foundations', 'real-world examples']);
   const [customInstructions, setCustomInstructions] = useState('');
   const [selectedDocumentIds, setSelectedDocumentIds] = useState<string[]>([]);
+  const [currentQuestion, setCurrentQuestion] = useState<LearningPathSetupQuestionResponse | null>(null);
+  const [outlinePreview, setOutlinePreview] = useState<LearningPathOutlinePreview | null>(null);
+  const [selectedPreviewUnitIndex, setSelectedPreviewUnitIndex] = useState<number | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -204,8 +227,12 @@ export default function LearnPage() {
         const readyDocs = Array.isArray(docs) ? docs.filter((doc) => doc.processing_status === 'completed') : [];
         setDocuments(readyDocs);
         setPaths(Array.isArray(learningPaths) ? learningPaths : []);
+
         if (readyDocs.length > 0) {
           setSelectedDocumentIds([readyDocs[0].id]);
+          setSourceMode('hybrid');
+        } else {
+          setSourceMode('web');
         }
       } catch (error) {
         console.error('Failed to load learning path data', error);
@@ -218,105 +245,260 @@ export default function LearnPage() {
     load();
   }, []);
 
-  const canGenerate = Boolean(topic.trim() && background.trim() && (sourceMode === 'web' || selectedDocumentIds.length > 0));
   const canUseDocs = sourceMode !== 'web';
-  const previewUnits = useMemo(() => buildPreviewUnits(topic, focusAreas), [focusAreas, topic]);
-  const stageIndex = stage === 'topic' ? 0 : stage === 'background' ? 1 : stage === 'preferences' ? 2 : 3;
-  const selectedSourceMeta = sourceOptions.find((option) => option.value === sourceMode) ?? sourceOptions[1];
+  const stageIndex = stage === 'topic' ? 0 : stage === 'background' ? 1 : stage === 'goal' ? 2 : stage === 'summary' ? 3 : 4;
+  const selectedSourceMeta = sourceOptions.find((option) => option.value === sourceMode) ?? sourceOptions[0];
   const SelectedSourceIcon = selectedSourceMeta.icon;
+  const selectedPreviewUnit = selectedPreviewUnitIndex !== null ? outlinePreview?.units[selectedPreviewUnitIndex] ?? null : null;
+  const suggestionButtons = stage === 'topic' ? topicExamples : [];
 
-  const suggestionButtons = useMemo(() => {
-    if (stage === 'topic') return topicExamples;
-    if (stage === 'background') return backgroundPresets;
-    return [];
-  }, [stage]);
+  const progressItems = useMemo(
+    () => [
+      { title: 'Topic', done: Boolean(normalizeText(topic)) },
+      { title: 'Background', done: Boolean(normalizeText(background)) },
+      { title: 'Goals', done: selectedGoals.length > 0 || stageIndex > 2 },
+      { title: 'Outline preview', done: Boolean(outlinePreview) },
+    ],
+    [background, outlinePreview, selectedGoals.length, stageIndex, topic]
+  );
 
-  function pushConversation(userMessage: string, assistantMessage: string, nextStage: SetupStage) {
-    setMessages((current) => [
-      ...current,
-      { id: crypto.randomUUID(), role: 'user', content: userMessage },
-      { id: crypto.randomUUID(), role: 'assistant', content: assistantMessage },
-    ]);
-    setStage(nextStage);
-    setDraft('');
+  function pushMessages(nextMessages: BuilderMessage[]) {
+    setMessages((current) => [...current, ...nextMessages]);
   }
 
-  function handleTopicSubmit(nextTopic: string) {
-    const cleaned = nextTopic.trim();
+  async function handleTopicSubmit(rawValue: string) {
+    const cleaned = normalizeText(rawValue);
     if (!cleaned) return;
-    setTopic(cleaned);
-    pushConversation(
-      cleaned,
-      'Good. What is your background? Pick one below or type your own in one sentence so I can tune the path difficulty.',
-      'background'
-    );
+
+    try {
+      setIsSetupBusy(true);
+      setTopic(cleaned);
+      setOutlinePreview(null);
+      setSelectedPreviewUnitIndex(null);
+      pushMessages([{ id: crypto.randomUUID(), role: 'user', content: cleaned }]);
+
+      const question = await api.getLearningPathBackgroundQuestion({ topic: cleaned });
+      setCurrentQuestion(question);
+      setStage('background');
+      setDraft('');
+      pushMessages([
+        {
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          content: formatQuestionMessage(question),
+        },
+      ]);
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Failed to build the next setup question'));
+    } finally {
+      setIsSetupBusy(false);
+    }
   }
 
-  function handleBackgroundSubmit(nextBackground: string) {
-    const cleaned = nextBackground.trim();
-    if (!cleaned) return;
-    setBackground(cleaned);
-    pushConversation(
-      cleaned,
-      'Now shape the path. Pick your goal, pace, source mode, and teaching style on the left. Add any final instruction below, then continue.',
-      'preferences'
-    );
+  async function handleBackgroundSubmit(rawValue: string) {
+    const cleaned = normalizeText(rawValue);
+    if (!cleaned || !topic) return;
+
+    try {
+      setIsSetupBusy(true);
+      setBackground(cleaned);
+      pushMessages([{ id: crypto.randomUUID(), role: 'user', content: cleaned }]);
+
+      const question = await api.getLearningPathGoalQuestion({
+        topic,
+        background: cleaned,
+      });
+      setCurrentQuestion(question);
+      setStage('goal');
+      setDraft('');
+      pushMessages([
+        {
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          content: formatQuestionMessage(question),
+        },
+      ]);
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Failed to generate the goal question'));
+    } finally {
+      setIsSetupBusy(false);
+    }
   }
 
-  function handlePreferencesContinue() {
-    if (!topic.trim() || !background.trim()) {
-      toast.error('Finish the topic and background first');
+  async function handleGoalContinue() {
+    const customGoal = normalizeText(draft);
+    const goals = customGoal ? [...selectedGoals, customGoal] : selectedGoals;
+    if (!topic || !background || goals.length === 0) {
+      toast.error('Choose at least one learning goal');
       return;
     }
 
-    if (canUseDocs && selectedDocumentIds.length === 0) {
-      toast.error('Pick at least one source document for PDF or hybrid mode');
-      return;
-    }
+    try {
+      setIsSetupBusy(true);
+      setSelectedGoals(goals);
+      pushMessages([
+        {
+          id: crypto.randomUUID(),
+          role: 'user',
+          content: goals.join(' · '),
+        },
+      ]);
 
-    const note = draft.trim();
-    if (note) {
-      setCustomInstructions(note);
-    }
-
-    pushConversation(
-      note || 'Continue with these settings.',
-      buildSummaryMessage({
+      const summary = await api.getLearningPathSetupSummary({
         topic,
         background,
-        goalDepth,
-        dailyMinutes,
-        sourceMode,
-        teachingStyle,
-      }),
-      'review'
-    );
+        selected_goals: goals,
+        goal_depth: goalDepth,
+        daily_minutes: dailyMinutes,
+        source_mode: sourceMode,
+        teaching_style: teachingStyle,
+        focus_areas: focusAreas,
+        custom_instructions: customInstructions || undefined,
+      });
+
+      setCourseTitle(summary.course_title);
+      setLearningGoal(summary.learning_goal);
+      setBackground(summary.background);
+      setCurrentQuestion(null);
+      setStage('summary');
+      setDraft('');
+      pushMessages([
+        {
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          content: summary.assistant_message,
+        },
+      ]);
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Failed to summarize the course setup'));
+    } finally {
+      setIsSetupBusy(false);
+    }
   }
 
-  async function handleGenerate() {
-    if (!canGenerate) {
-      toast.error('Finish the setup first');
+  async function handlePreviewOutline() {
+    const nextInstruction = normalizeText(draft);
+    const mergedInstructions = nextInstruction ? mergeInstructions(customInstructions, nextInstruction) : customInstructions;
+    const payload = buildGeneratePayload({
+      topic,
+      background,
+      courseTitle,
+      learningGoal,
+      goalDepth,
+      dailyMinutes,
+      teachingStyle,
+      focusAreas,
+      sourceMode,
+      selectedDocumentIds,
+      customInstructions: mergedInstructions,
+    });
+
+    if (!payload.topic || !payload.background || !payload.learning_goal) {
+      toast.error('Finish the setup details first');
+      return;
+    }
+    if (payload.source_mode !== 'web' && payload.document_ids.length === 0) {
+      toast.error('Select at least one PDF source');
       return;
     }
 
     try {
       setIsGenerating(true);
-      const path = await api.generateLearningPath({
-        topic: topic.trim(),
-        background: background.trim(),
-        goal_depth: goalDepth,
-        daily_minutes: dailyMinutes,
-        teaching_style: teachingStyle,
-        focus_areas: focusAreas,
-        source_mode: sourceMode,
-        document_ids: canUseDocs ? selectedDocumentIds : [],
-        seed_urls: [],
-        custom_instructions: customInstructions.trim() || undefined,
+      setCustomInstructions(mergedInstructions);
+      if (nextInstruction) {
+        pushMessages([{ id: crypto.randomUUID(), role: 'user', content: nextInstruction }]);
+      }
+
+      const preview = await api.previewLearningPath(payload);
+      setOutlinePreview(preview);
+      setCourseTitle(preview.title);
+      setSelectedPreviewUnitIndex(0);
+      setStage('outline');
+      setDraft('');
+      pushMessages([
+        {
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          content: 'I drafted the course outline. Select any unit on the left if you want the next revision to target a specific part of the path.',
+        },
+      ]);
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Failed to preview the course outline'));
+    } finally {
+      setIsGenerating(false);
+    }
+  }
+
+  async function handleRequestOutlineChanges() {
+    const cleaned = normalizeText(draft);
+    if (!cleaned || !outlinePreview) return;
+
+    const targetedInstruction = selectedPreviewUnit
+      ? `Revise the "${selectedPreviewUnit.title}" unit. ${cleaned}`
+      : cleaned;
+    const mergedInstructions = mergeInstructions(customInstructions, targetedInstruction);
+    const payload = buildGeneratePayload({
+      topic,
+      background,
+      courseTitle,
+      learningGoal,
+      goalDepth,
+      dailyMinutes,
+      teachingStyle,
+      focusAreas,
+      sourceMode,
+      selectedDocumentIds,
+      customInstructions: mergedInstructions,
+    });
+
+    try {
+      setIsGenerating(true);
+      setCustomInstructions(mergedInstructions);
+      pushMessages([{ id: crypto.randomUUID(), role: 'user', content: targetedInstruction }]);
+
+      const preview = await api.previewLearningPath(payload);
+      setOutlinePreview(preview);
+      setCourseTitle(preview.title);
+      setDraft('');
+      pushMessages([
+        {
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          content: 'Updated the outline preview. Keep iterating here, or create the course when the structure looks right.',
+        },
+      ]);
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Failed to revise the course outline'));
+    } finally {
+      setIsGenerating(false);
+    }
+  }
+
+  async function handleCreatePath() {
+    if (!outlinePreview) {
+      toast.error('Preview the outline first');
+      return;
+    }
+
+    try {
+      setIsGenerating(true);
+      const payload = buildGeneratePayload({
+        topic,
+        background,
+        courseTitle,
+        learningGoal,
+        goalDepth,
+        dailyMinutes,
+        teachingStyle,
+        focusAreas,
+        sourceMode,
+        selectedDocumentIds,
+        customInstructions,
       });
+      const path = await api.generateLearningPath(payload);
       toast.success('Learning path created');
       router.push(`/dashboard/learn/${path.id}`);
     } catch (error: unknown) {
-      console.error('Failed to create learning path', error);
       toast.error(getErrorMessage(error, 'Failed to create learning path'));
     } finally {
       setIsGenerating(false);
@@ -325,47 +507,99 @@ export default function LearnPage() {
 
   function handlePromptSubmit() {
     if (stage === 'topic') {
-      handleTopicSubmit(draft);
+      void handleTopicSubmit(draft);
       return;
     }
 
     if (stage === 'background') {
-      handleBackgroundSubmit(draft);
+      void handleBackgroundSubmit(draft);
       return;
     }
 
-    if (stage === 'preferences') {
-      handlePreferencesContinue();
+    if (stage === 'goal') {
+      void handleGoalContinue();
       return;
     }
 
-    if (stage === 'review') {
-      void handleGenerate();
+    if (stage === 'summary') {
+      void handlePreviewOutline();
+      return;
+    }
+
+    if (stage === 'outline') {
+      void handleRequestOutlineChanges();
     }
   }
 
   function handleReset() {
-    setStage('topic');
     setMessages([
       {
         id: 'setup-intro-reset',
         role: 'assistant',
-        content: 'What do you want to learn? Give me the topic in one sentence, or tap one of the suggestions below.',
+        content: 'What do you want to learn? Start with the topic in one sentence, or choose one of the examples below.',
       },
     ]);
+    setStage('topic');
     setDraft('');
+    setCurrentQuestion(null);
     setTopic('');
     setBackground('');
+    setSelectedGoals([]);
+    setCourseTitle('');
+    setLearningGoal('');
     setGoalDepth('practical');
-    setDailyMinutes(15);
-    setSourceMode('hybrid');
+    setDailyMinutes(documents.length > 0 ? 15 : 15);
+    setSourceMode(documents.length > 0 ? 'hybrid' : 'web');
     setTeachingStyle(['visual explanations', 'practical applications']);
     setFocusAreas(['foundations', 'real-world examples']);
     setCustomInstructions('');
-    if (documents.length > 0) {
-      setSelectedDocumentIds([documents[0].id]);
-    } else {
-      setSelectedDocumentIds([]);
+    setOutlinePreview(null);
+    setSelectedPreviewUnitIndex(null);
+    setActiveActionMenu(null);
+    setRenamingPathId(null);
+    setRenamedTitle('');
+    setSelectedDocumentIds(documents.length > 0 ? [documents[0].id] : []);
+  }
+
+  async function handleRenamePath(pathId: string) {
+    const cleaned = normalizeText(renamedTitle);
+    if (!cleaned) {
+      toast.error('Enter a new path name');
+      return;
+    }
+
+    try {
+      setIsPathActionPending(true);
+      const updated = await api.updateLearningPath(pathId, { title: cleaned });
+      setPaths((current) => current.map((path) => (path.id === pathId ? updated : path)));
+      setRenamingPathId(null);
+      setRenamedTitle('');
+      toast.success('Path renamed');
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Failed to rename path'));
+    } finally {
+      setIsPathActionPending(false);
+    }
+  }
+
+  async function handleDeletePath(pathId: string) {
+    if (typeof window !== 'undefined' && !window.confirm('Delete this learning path?')) {
+      return;
+    }
+
+    try {
+      setIsPathActionPending(true);
+      await api.deleteLearningPath(pathId);
+      setPaths((current) => current.filter((path) => path.id !== pathId));
+      if (renamingPathId === pathId) {
+        setRenamingPathId(null);
+        setRenamedTitle('');
+      }
+      toast.success('Path removed');
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Failed to delete path'));
+    } finally {
+      setIsPathActionPending(false);
     }
   }
 
@@ -376,21 +610,21 @@ export default function LearnPage() {
   return (
     <div className="flex h-[calc(100svh-10.5rem)] min-h-[40rem] overflow-hidden rounded-[1.7rem] border border-[var(--card-border)] bg-[var(--bg-primary)] shadow-[var(--card-shadow)] animate-fade-in">
       <PanelGroup orientation="horizontal">
-        <Panel defaultSize={46} minSize={34} className="border-r border-[var(--card-border)]">
-          <div className="flex h-full min-h-0 flex-col bg-[var(--bg-secondary)]/40">
+        <Panel defaultSize={42} minSize={30} className="border-r border-[var(--card-border)]">
+          <div className="flex h-full min-h-0 flex-col bg-[var(--bg-secondary)]/35">
             <div className="border-b border-[var(--card-border)] bg-[var(--bg-primary)] px-5 py-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
-                    Live preview
+                    {outlinePreview ? 'Course outline' : 'Setup workspace'}
                   </p>
                   <h1 className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-[var(--text-primary)]">
-                    {suggestPathTitle(topic)}
+                    {outlinePreview ? outlinePreview.title : 'Learn'}
                   </h1>
                   <p className="mt-2 text-sm text-[var(--text-secondary)]">
-                    {background.trim()
-                      ? background
-                      : 'Your path summary updates as you answer the setup chat.'}
+                    {outlinePreview
+                      ? 'Preview the actual units and lessons before you generate the course.'
+                      : 'Guide the setup in chat, keep the builder focused, and use the left rail for existing paths.'}
                   </p>
                 </div>
 
@@ -398,13 +632,6 @@ export default function LearnPage() {
                   <RotateCcw className="h-4 w-4" />
                   Reset
                 </Button>
-              </div>
-
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                <PreviewStat label="Goal" value={goalOptions.find((option) => option.value === goalDepth)?.label ?? 'Practical'} icon={Wand2} />
-                <PreviewStat label="Pace" value={`${dailyMinutes} min/day`} icon={Clock3} />
-                <PreviewStat label="Sources" value={selectedSourceMeta.label} icon={selectedSourceMeta.icon} />
-                <PreviewStat label="Ready docs" value={`${documents.length}`} icon={FileText} />
               </div>
             </div>
 
@@ -415,13 +642,9 @@ export default function LearnPage() {
                     <Sparkles className="h-4 w-4 text-[var(--primary)]" />
                     <p className="text-sm font-semibold text-[var(--text-primary)]">Setup progress</p>
                   </div>
+
                   <div className="mt-4 space-y-3">
-                    {[
-                      { title: 'Topic', done: Boolean(topic.trim()) },
-                      { title: 'Background', done: Boolean(background.trim()) },
-                      { title: 'Preferences', done: stageIndex >= 2 },
-                      { title: 'Ready to generate', done: stage === 'review' },
-                    ].map((item, index) => (
+                    {progressItems.map((item, index) => (
                       <div key={item.title} className="flex items-center gap-3">
                         <div
                           className={cn(
@@ -441,47 +664,53 @@ export default function LearnPage() {
                   </div>
                 </section>
 
-                <section className="rounded-[1.5rem] border border-[var(--card-border)] bg-[var(--card-bg-solid)] p-5">
-                  <div className="flex items-center gap-2">
-                    <BookOpen className="h-4 w-4 text-[var(--primary)]" />
-                    <p className="text-sm font-semibold text-[var(--text-primary)]">Likely path shape</p>
-                  </div>
-                  <div className="mt-4 space-y-3">
-                    {previewUnits.map((unit, index) => (
-                      <div key={`${unit.title}-${index}`} className="rounded-[1.15rem] border border-[var(--card-border)] bg-[var(--bg-base)] p-4">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--documents-bg)] text-sm font-semibold text-[var(--documents)]">
-                            {index + 1}
-                          </div>
-                          <p className="font-medium text-[var(--text-primary)]">{unit.title}</p>
-                        </div>
-                        <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">{unit.detail}</p>
-                      </div>
-                    ))}
-                  </div>
-                </section>
+                {outlinePreview ? (
+                  <section className="rounded-[1.5rem] border border-[var(--card-border)] bg-[var(--card-bg-solid)] p-5">
+                    <div className="flex items-center gap-2">
+                      <BookOpen className="h-4 w-4 text-[var(--primary)]" />
+                      <p className="text-sm font-semibold text-[var(--text-primary)]">Outline preview</p>
+                    </div>
+                    <p className="mt-3 text-2xl font-semibold tracking-[-0.04em] text-[var(--text-primary)]">{outlinePreview.title}</p>
+                    <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">{outlinePreview.tagline}</p>
 
-                <section className="rounded-[1.5rem] border border-[var(--card-border)] bg-[var(--card-bg-solid)] p-5">
-                  <p className="text-sm font-semibold text-[var(--text-primary)]">Selected documents</p>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {canUseDocs ? (
-                      selectedDocumentIds.length > 0 ? (
-                        selectedDocumentIds.map((documentId) => {
-                          const document = documents.find((item) => item.id === documentId);
-                          return (
-                            <Badge key={documentId} variant="documents">
-                              {document?.title || document?.original_filename || 'Study source'}
-                            </Badge>
-                          );
-                        })
-                      ) : (
-                        <p className="text-sm text-[var(--text-tertiary)]">Pick at least one document for PDF or hybrid mode.</p>
-                      )
-                    ) : (
-                      <p className="text-sm text-[var(--text-tertiary)]">Web mode ignores local documents.</p>
-                    )}
-                  </div>
-                </section>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <Badge variant="info">{outlinePreview.units.length} sections</Badge>
+                      <Badge variant="info">{outlinePreview.total_lessons} lessons</Badge>
+                      <Badge variant="info">~{outlinePreview.estimated_days} days</Badge>
+                    </div>
+
+                    <div className="mt-5 space-y-3">
+                      {outlinePreview.units.map((unit, index) => (
+                        <button
+                          key={`${unit.title}-${index}`}
+                          type="button"
+                          onClick={() => setSelectedPreviewUnitIndex(index)}
+                          className={cn(
+                            'w-full rounded-[1.3rem] border p-4 text-left transition-colors',
+                            selectedPreviewUnitIndex === index
+                              ? 'border-[var(--accent-blue)] bg-[var(--documents-bg)]'
+                              : 'border-[var(--card-border)] bg-[var(--bg-base)] hover:border-[var(--card-border-hover)]'
+                          )}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="font-semibold text-[var(--text-primary)]">{index + 1}. {unit.title}</p>
+                              <p className="mt-1 text-sm text-[var(--text-secondary)]">{unit.lessons.length} lessons</p>
+                            </div>
+                            {selectedPreviewUnitIndex === index ? <Badge variant="default">Selected</Badge> : null}
+                          </div>
+                          <div className="mt-3 space-y-2">
+                            {unit.lessons.map((lesson, lessonIndex) => (
+                              <div key={`${unit.title}-${lesson.title}-${lessonIndex}`} className="rounded-[1rem] border border-[var(--card-border)] bg-[var(--card-bg-solid)] px-3 py-2 text-sm text-[var(--text-primary)]">
+                                {index + 1}.{lessonIndex + 1} {lesson.title}
+                              </div>
+                            ))}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+                ) : null}
 
                 <section className="rounded-[1.5rem] border border-[var(--card-border)] bg-[var(--card-bg-solid)] p-5">
                   <div className="flex items-center gap-2">
@@ -492,20 +721,69 @@ export default function LearnPage() {
                     {paths.length === 0 ? (
                       <p className="text-sm text-[var(--text-tertiary)]">No learning paths yet.</p>
                     ) : (
-                      paths.slice(0, 3).map((path) => (
-                        <Link
+                      paths.slice(0, 5).map((path) => (
+                        <div
                           key={path.id}
-                          href={`/dashboard/learn/${path.id}`}
-                          className="block rounded-[1.15rem] border border-[var(--card-border)] bg-[var(--bg-base)] p-4 transition-colors hover:border-[var(--card-border-hover)]"
+                          className="rounded-[1.15rem] border border-[var(--card-border)] bg-[var(--bg-base)] p-4"
                         >
-                          <div className="flex items-center justify-between gap-3">
-                            <div>
-                              <p className="font-medium text-[var(--text-primary)]">{path.title}</p>
+                          <div className="flex items-start justify-between gap-3">
+                            <Link href={`/dashboard/learn/${path.id}`} className="min-w-0 flex-1">
+                              <p className="truncate font-medium text-[var(--text-primary)]">{path.title}</p>
                               <p className="mt-1 text-sm text-[var(--text-secondary)]">{path.total_lessons} lessons</p>
-                            </div>
+                            </Link>
                             <Badge variant="default">{path.completion_percentage}%</Badge>
                           </div>
-                        </Link>
+
+                          {renamingPathId === path.id ? (
+                            <div className="mt-3 flex items-center gap-2">
+                              <input
+                                value={renamedTitle}
+                                onChange={(event) => setRenamedTitle(event.target.value)}
+                                className="h-10 flex-1 rounded-xl border border-[var(--card-border)] bg-[var(--card-bg-solid)] px-3 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--primary)]"
+                                placeholder="Rename path"
+                              />
+                              <Button type="button" size="sm" onClick={() => void handleRenamePath(path.id)} disabled={isPathActionPending}>
+                                Save
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  setRenamingPathId(null);
+                                  setRenamedTitle('');
+                                }}
+                              >
+                                Cancel
+                              </Button>
+                            </div>
+                          ) : (
+                            <div className="mt-3 flex gap-2">
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  setRenamingPathId(path.id);
+                                  setRenamedTitle(path.title);
+                                }}
+                              >
+                                <PencilLine className="h-4 w-4" />
+                                Rename
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={() => void handleDeletePath(path.id)}
+                                disabled={isPathActionPending}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                                Remove
+                              </Button>
+                            </div>
+                          )}
+                        </div>
                       ))
                     )}
                   </div>
@@ -517,7 +795,7 @@ export default function LearnPage() {
 
         <PanelResizeHandle className="w-1.5 bg-[var(--bg-secondary)] transition-all hover:bg-[var(--primary)]/30 active:bg-[var(--primary)]/50" />
 
-        <Panel defaultSize={54} minSize={38}>
+        <Panel defaultSize={58} minSize={38}>
           <div className="flex h-full min-h-0 flex-col bg-[var(--bg-primary)]">
             <div className="border-b border-[var(--card-border)] bg-[var(--bg-secondary)] px-5 py-4">
               <div className="flex items-start justify-between gap-3">
@@ -529,21 +807,25 @@ export default function LearnPage() {
                     {stage === 'topic'
                       ? 'Step 1: choose the topic'
                       : stage === 'background'
-                        ? 'Step 2: set the learner background'
-                        : stage === 'preferences'
-                          ? 'Step 3: tune the path'
-                          : 'Review and generate'}
+                        ? 'Step 2: describe the starting point'
+                        : stage === 'goal'
+                          ? 'Step 3: choose the outcome'
+                          : stage === 'summary'
+                            ? 'Review before building the outline'
+                            : 'Request changes or create the course'}
                   </h2>
                   <p className="mt-1 text-sm text-[var(--text-secondary)]">
-                    One thread. One prompt area. No duplicate form blocks.
+                    {stage === 'outline'
+                      ? 'Select a unit on the left, then ask for changes in the chat.'
+                      : 'The chat drives the setup. Goal, pace, and source live in the prompt actions.'}
                   </p>
                 </div>
 
-                {stage === 'review' ? (
-                  <Button onClick={() => void handleGenerate()} isLoading={isGenerating} disabled={!canGenerate}>
-                    <Sparkles className="h-4 w-4" />
-                    Generate path
-                  </Button>
+                {isSetupBusy || isGenerating ? (
+                  <Badge variant="info">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Working
+                  </Badge>
                 ) : null}
               </div>
             </div>
@@ -554,7 +836,7 @@ export default function LearnPage() {
                   <div key={message.id} className={cn('max-w-[92%]', message.role === 'user' ? 'ml-auto' : '')}>
                     <div
                       className={cn(
-                        'rounded-[1.6rem] border px-4 py-3 text-sm leading-7',
+                        'rounded-[1.6rem] border px-4 py-3 text-sm leading-7 whitespace-pre-wrap',
                         message.role === 'user'
                           ? 'border-[var(--accent-blue)] bg-[var(--documents-bg)] text-[var(--text-primary)]'
                           : 'border-[var(--card-border)] bg-[var(--card-bg-solid)] text-[var(--text-secondary)]'
@@ -566,18 +848,12 @@ export default function LearnPage() {
                 ))}
 
                 {suggestionButtons.length > 0 ? (
-                  <div className="flex flex-wrap gap-2 pt-2">
+                  <div className="flex flex-wrap gap-2 pt-1">
                     {suggestionButtons.map((suggestion) => (
                       <button
                         key={suggestion}
                         type="button"
-                        onClick={() => {
-                          if (stage === 'topic') {
-                            handleTopicSubmit(suggestion);
-                          } else if (stage === 'background') {
-                            handleBackgroundSubmit(suggestion);
-                          }
-                        }}
+                        onClick={() => void handleTopicSubmit(suggestion)}
                         className="rounded-full border border-[var(--card-border)] bg-[var(--card-bg-solid)] px-4 py-2 text-sm text-[var(--text-primary)] transition-colors hover:border-[var(--card-border-hover)]"
                       >
                         {suggestion}
@@ -586,71 +862,109 @@ export default function LearnPage() {
                   </div>
                 ) : null}
 
-                {stage === 'preferences' || stage === 'review' ? (
-                  <div className="space-y-5 rounded-[1.75rem] border border-[var(--card-border)] bg-[var(--card-bg-solid)] p-5">
-                    <PreferenceGroup
-                      title="Goal"
-                      items={goalOptions.map((option) => option.label)}
-                      isSelected={(value) => goalOptions.find((option) => option.value === goalDepth)?.label === value}
-                      onToggle={(value) => {
-                        const selected = goalOptions.find((option) => option.label === value);
-                        if (selected) setGoalDepth(selected.value);
-                      }}
-                    />
+                {stage === 'background' && currentQuestion ? (
+                  <div className="flex flex-wrap gap-2">
+                    {currentQuestion.options.map((option) => (
+                      <button
+                        key={option}
+                        type="button"
+                        onClick={() => void handleBackgroundSubmit(option)}
+                        className="rounded-full border border-[var(--card-border)] bg-[var(--card-bg-solid)] px-4 py-2 text-sm text-[var(--text-primary)] transition-colors hover:border-[var(--card-border-hover)]"
+                      >
+                        {option}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
 
-                    <PreferenceGroup
-                      title="Pace"
-                      items={timeOptions.map((option) => option.label)}
-                      isSelected={(value) => timeOptions.find((option) => option.value === dailyMinutes)?.label === value}
-                      onToggle={(value) => {
-                        const selected = timeOptions.find((option) => option.label === value);
-                        if (selected) setDailyMinutes(selected.value);
-                      }}
-                    />
+                {stage === 'goal' && currentQuestion ? (
+                  <div className="rounded-[1.5rem] border border-[var(--card-border)] bg-[var(--card-bg-solid)] p-5">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-medium text-[var(--text-primary)]">Select all that apply</p>
+                      <p className="text-xs text-[var(--text-tertiary)]">You can also type a custom goal below.</p>
+                    </div>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {currentQuestion.options.map((option) => {
+                        const active = selectedGoals.includes(option);
+                        return (
+                          <button
+                            key={option}
+                            type="button"
+                            onClick={() => setSelectedGoals((current) => toggleToken(current, option))}
+                            className={cn(
+                              'rounded-full border px-4 py-2 text-sm transition-colors',
+                              active
+                                ? 'border-[var(--accent-blue)] bg-[var(--documents-bg)] text-[var(--documents)]'
+                                : 'border-[var(--card-border)] bg-[var(--bg-base)] text-[var(--text-primary)] hover:border-[var(--card-border-hover)]'
+                            )}
+                          >
+                            {option}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
 
-                    <PreferenceGroup
-                      title="Source mode"
-                      items={sourceOptions.map((option) => option.label)}
-                      isSelected={(value) => sourceOptions.find((option) => option.value === sourceMode)?.label === value}
-                      onToggle={(value) => {
-                        const selected = sourceOptions.find((option) => option.label === value);
-                        if (selected) setSourceMode(selected.value);
-                      }}
-                    />
+                {stage === 'summary' ? (
+                  <div className="space-y-5">
+                    <div className="rounded-[1.7rem] border border-[var(--card-border)] bg-[var(--card-bg-solid)] p-5">
+                      <p className="text-sm font-semibold text-[var(--text-primary)]">Here&apos;s what I&apos;m thinking</p>
+                      <div className="mt-4 space-y-4">
+                        <EditableField
+                          label="Course name"
+                          value={courseTitle}
+                          onChange={setCourseTitle}
+                          placeholder="Course name"
+                        />
+                        <EditableField
+                          label="Learning goal"
+                          value={learningGoal}
+                          onChange={setLearningGoal}
+                          multiline
+                          placeholder="What should this course help the learner achieve?"
+                        />
+                        <EditableField
+                          label="Background knowledge"
+                          value={background}
+                          onChange={setBackground}
+                          multiline
+                          placeholder="Summarize the learner's current foundation"
+                        />
+                      </div>
+                    </div>
 
-                    <PreferenceGroup
-                      title="Teaching style"
-                      items={stylePresets}
-                      isSelected={(value) => teachingStyle.includes(value)}
-                      onToggle={(value) => setTeachingStyle((current) => toggleToken(current, value))}
-                      multiple
-                    />
-
-                    <PreferenceGroup
-                      title="Focus areas"
-                      items={focusPresets}
-                      isSelected={(value) => focusAreas.includes(value)}
-                      onToggle={(value) => setFocusAreas((current) => toggleToken(current, value))}
-                      multiple
-                    />
-
-                    {canUseDocs ? (
+                    <div className="rounded-[1.7rem] border border-[var(--card-border)] bg-[var(--card-bg-solid)] p-5">
                       <PreferenceGroup
-                        title="Grounding documents"
-                        items={documents.map((document) => document.id)}
-                        labelFor={(value) => {
-                          const document = documents.find((item) => item.id === value);
-                          return document?.title || document?.original_filename || 'Study source';
-                        }}
-                        isSelected={(value) => selectedDocumentIds.includes(value)}
-                        onToggle={(value) =>
-                          setSelectedDocumentIds((current) =>
-                            current.includes(value) ? current.filter((item) => item !== value) : [...current, value]
-                          )
-                        }
-                        multiple
+                        title="Teaching style"
+                        items={stylePresets}
+                        isSelected={(value) => teachingStyle.includes(value)}
+                        onToggle={(value) => setTeachingStyle((current) => toggleToken(current, value))}
                       />
-                    ) : null}
+
+                      <div className="mt-5">
+                        <PreferenceGroup
+                          title="Focus areas"
+                          items={focusPresets}
+                          isSelected={(value) => focusAreas.includes(value)}
+                          onToggle={(value) => setFocusAreas((current) => toggleToken(current, value))}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+
+                {stage === 'outline' && outlinePreview ? (
+                  <div className="rounded-[1.7rem] border border-[var(--card-border)] bg-[var(--card-bg-solid)] p-5">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-[var(--text-primary)]">Outline ready to review</p>
+                        <p className="mt-1 text-sm leading-6 text-[var(--text-secondary)]">
+                          {outlinePreview.rationale}
+                        </p>
+                      </div>
+                      {selectedPreviewUnit ? <Badge variant="default">{selectedPreviewUnit.title}</Badge> : null}
+                    </div>
                   </div>
                 ) : null}
               </div>
@@ -662,62 +976,234 @@ export default function LearnPage() {
                   value={draft}
                   onValueChange={setDraft}
                   onSubmit={handlePromptSubmit}
-                  isLoading={isGenerating}
+                  isLoading={isGenerating || isSetupBusy}
                   className="border-[var(--card-border)] bg-[var(--card-bg-solid)]"
                 >
                   <div className="flex w-full flex-col">
                     <PromptInputTextarea
                       placeholder={
                         stage === 'topic'
-                          ? 'Teach me OCR, chemistry for designers, practical LLM systems, or anything else...'
+                          ? 'Teach me GPU theory, OCR, practical LLM systems, Roman history, or anything else...'
                           : stage === 'background'
-                            ? 'I am a frontend engineer, researcher, student, beginner, product manager...'
-                            : stage === 'preferences'
-                              ? 'Optional: add a final instruction like “use sports analogies” or “make it resume-focused”.'
-                              : 'Optional: add one last instruction before generating.'
+                            ? 'I know CPU architecture, I am new to the field, I have built projects, etc.'
+                            : stage === 'goal'
+                              ? 'Optional: type a custom goal if none of the options fit.'
+                              : stage === 'summary'
+                                ? 'Want to tweak the course? Tell me what to change or edit the fields above directly.'
+                                : selectedPreviewUnit
+                                  ? `Request changes for ${selectedPreviewUnit.title}...`
+                                  : 'Request changes to the outline...'
                       }
                       className="min-h-[54px] px-3 pt-3 text-base leading-[1.45]"
                     />
 
                     <PromptInputActions className="mt-4 flex w-full items-center justify-between gap-2 px-2 pb-2">
                       <div className="flex flex-wrap items-center gap-2">
-                        <PromptInputAction tooltip="Current source mode">
-                          <Button variant="outline" className="rounded-full" type="button">
-                            <SelectedSourceIcon className="h-4 w-4" />
-                            {selectedSourceMeta.label}
-                          </Button>
-                        </PromptInputAction>
-                        <PromptInputAction tooltip="Current path goal">
-                          <Button variant="outline" className="rounded-full" type="button">
-                            <Wand2 className="h-4 w-4" />
-                            {goalOptions.find((option) => option.value === goalDepth)?.label}
-                          </Button>
-                        </PromptInputAction>
-                        <PromptInputAction tooltip="Current daily pace">
-                          <Button variant="outline" className="rounded-full" type="button">
-                            <Clock3 className="h-4 w-4" />
-                            {dailyMinutes} min/day
-                          </Button>
-                        </PromptInputAction>
+                        <DropdownMenu open={activeActionMenu === 'source'} onOpenChange={(open) => setActiveActionMenu(open ? 'source' : null)}>
+                          <PromptInputAction tooltip="Choose the source mode">
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="outline"
+                                className={cn(
+                                  'rounded-full',
+                                  activeActionMenu === 'source' && 'border-[var(--accent-blue)] bg-[var(--documents-bg)] text-[var(--documents)]'
+                                )}
+                                type="button"
+                              >
+                                <SelectedSourceIcon className="h-4 w-4" />
+                                {selectedSourceMeta.label}
+                                <ChevronDown className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                          </PromptInputAction>
+                          <DropdownMenuContent align="start" side="top" className="w-72">
+                            <DropdownMenuLabel>Source strategy</DropdownMenuLabel>
+                            <DropdownMenuRadioGroup value={sourceMode}>
+                              {sourceOptions.map((option) => (
+                                <DropdownMenuRadioItem
+                                  key={option.value}
+                                  value={option.value}
+                                  onSelect={() => {
+                                    setSourceMode(option.value);
+                                    if (option.value !== 'web' && selectedDocumentIds.length === 0 && documents.length > 0) {
+                                      setSelectedDocumentIds([documents[0].id]);
+                                    }
+                                  }}
+                                >
+                                  {option.label}
+                                </DropdownMenuRadioItem>
+                              ))}
+                            </DropdownMenuRadioGroup>
+
+                            {canUseDocs ? (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuSub>
+                                  <DropdownMenuSubTrigger>PDF sources</DropdownMenuSubTrigger>
+                                  <DropdownMenuSubContent className="w-72">
+                                    <DropdownMenuLabel>{sourceMode === 'hybrid' ? 'Blend with web' : 'Use these PDFs'}</DropdownMenuLabel>
+                                    {documents.length > 0 ? (
+                                      documents.map((document) => {
+                                        const checked = selectedDocumentIds.includes(document.id);
+                                        return (
+                                          <DropdownMenuCheckboxItem
+                                            key={document.id}
+                                            checked={checked}
+                                            onSelect={(event) => event.preventDefault()}
+                                            onCheckedChange={(nextChecked) =>
+                                              setSelectedDocumentIds((current) =>
+                                                nextChecked === true
+                                                  ? current.includes(document.id)
+                                                    ? current
+                                                    : [...current, document.id]
+                                                  : current.filter((item) => item !== document.id)
+                                              )
+                                            }
+                                          >
+                                            {document.title || document.original_filename || 'Study source'}
+                                          </DropdownMenuCheckboxItem>
+                                        );
+                                      })
+                                    ) : (
+                                      <div className="px-3 py-2 text-sm text-[var(--text-tertiary)]">No completed documents available yet.</div>
+                                    )}
+                                  </DropdownMenuSubContent>
+                                </DropdownMenuSub>
+                              </>
+                            ) : null}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+
+                        <DropdownMenu open={activeActionMenu === 'goal'} onOpenChange={(open) => setActiveActionMenu(open ? 'goal' : null)}>
+                          <PromptInputAction tooltip="Choose the learning depth">
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="outline"
+                                className={cn(
+                                  'rounded-full',
+                                  activeActionMenu === 'goal' && 'border-[var(--accent-blue)] bg-[var(--documents-bg)] text-[var(--documents)]'
+                                )}
+                                type="button"
+                              >
+                                <Wand2 className="h-4 w-4" />
+                                {goalOptions.find((option) => option.value === goalDepth)?.label}
+                                <ChevronDown className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                          </PromptInputAction>
+                          <DropdownMenuContent align="start" side="top" className="w-56">
+                            <DropdownMenuLabel>Learning depth</DropdownMenuLabel>
+                            <DropdownMenuRadioGroup value={goalDepth}>
+                              {goalOptions.map((option) => (
+                                <DropdownMenuRadioItem key={option.value} value={option.value} onSelect={() => setGoalDepth(option.value)}>
+                                  {option.label}
+                                </DropdownMenuRadioItem>
+                              ))}
+                            </DropdownMenuRadioGroup>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+
+                        <DropdownMenu open={activeActionMenu === 'pace'} onOpenChange={(open) => setActiveActionMenu(open ? 'pace' : null)}>
+                          <PromptInputAction tooltip="Choose the daily pace">
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="outline"
+                                className={cn(
+                                  'rounded-full',
+                                  activeActionMenu === 'pace' && 'border-[var(--accent-blue)] bg-[var(--documents-bg)] text-[var(--documents)]'
+                                )}
+                                type="button"
+                              >
+                                <Clock3 className="h-4 w-4" />
+                                {dailyMinutes} min/day
+                                <ChevronDown className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                          </PromptInputAction>
+                          <DropdownMenuContent align="start" side="top" className="w-56">
+                            <DropdownMenuLabel>Daily pace</DropdownMenuLabel>
+                            <DropdownMenuRadioGroup value={String(dailyMinutes)}>
+                              {timeOptions.map((option) => (
+                                <DropdownMenuRadioItem key={option.value} value={String(option.value)} onSelect={() => setDailyMinutes(option.value)}>
+                                  {option.label}
+                                </DropdownMenuRadioItem>
+                              ))}
+                            </DropdownMenuRadioGroup>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
 
                       <div className="flex items-center gap-2">
-                        {stage === 'preferences' ? (
-                          <Button variant="outline" type="button" onClick={handlePreferencesContinue}>
-                            Continue
+                        {stage === 'outline' ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => void handleRequestOutlineChanges()}
+                            disabled={isGenerating || !normalizeText(draft)}
+                          >
+                            Request changes
                           </Button>
                         ) : null}
 
-                        {stage === 'review' ? (
-                          <Button type="button" onClick={() => void handleGenerate()} disabled={!canGenerate || isGenerating}>
-                            {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                            Build path
-                          </Button>
-                        ) : (
-                          <Button type="button" onClick={handlePromptSubmit} disabled={stage !== 'preferences' ? !draft.trim() : false}>
-                            <ArrowUp className="h-4 w-4" />
-                          </Button>
-                        )}
+                        {stage === 'topic' || stage === 'background' ? (
+                          <PromptInputAction tooltip="Send">
+                            <Button
+                              type="button"
+                              size="icon"
+                              className="size-10 rounded-full"
+                              onClick={handlePromptSubmit}
+                              disabled={!normalizeText(draft) || isSetupBusy}
+                              aria-label="Send"
+                            >
+                              <ArrowUp className="h-4 w-4" />
+                            </Button>
+                          </PromptInputAction>
+                        ) : null}
+
+                        {stage === 'goal' ? (
+                          <PromptInputAction tooltip="Continue">
+                            <Button
+                              type="button"
+                              size="icon"
+                              className="size-10 rounded-full"
+                              onClick={() => void handleGoalContinue()}
+                              disabled={isSetupBusy}
+                              aria-label="Continue"
+                            >
+                              {isSetupBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-4 w-4" />}
+                            </Button>
+                          </PromptInputAction>
+                        ) : null}
+
+                        {stage === 'summary' ? (
+                          <PromptInputAction tooltip="Create course outline">
+                            <Button
+                              type="button"
+                              size="icon"
+                              className="size-10 rounded-full"
+                              onClick={() => void handlePreviewOutline()}
+                              disabled={isGenerating || isSetupBusy}
+                              aria-label="Create course outline"
+                            >
+                              {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                            </Button>
+                          </PromptInputAction>
+                        ) : null}
+
+                        {stage === 'outline' ? (
+                          <PromptInputAction tooltip="Create course">
+                            <Button
+                              type="button"
+                              size="icon"
+                              className="size-10 rounded-full"
+                              onClick={() => void handleCreatePath()}
+                              disabled={isGenerating}
+                              aria-label="Create course"
+                            >
+                              {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                            </Button>
+                          </PromptInputAction>
+                        ) : null}
                       </div>
                     </PromptInputActions>
                   </div>
@@ -731,22 +1217,37 @@ export default function LearnPage() {
   );
 }
 
-function PreviewStat({
+function EditableField({
   label,
   value,
-  icon: Icon,
+  onChange,
+  placeholder,
+  multiline = false,
 }: {
   label: string;
   value: string;
-  icon: typeof BookOpen;
+  onChange: (value: string) => void;
+  placeholder: string;
+  multiline?: boolean;
 }) {
   return (
-    <div className="rounded-[1.15rem] border border-[var(--card-border)] bg-[var(--card-bg-solid)] px-4 py-3">
-      <div className="flex items-center gap-2 text-[var(--text-tertiary)]">
-        <Icon className="h-4 w-4" />
-        <span className="text-xs font-semibold uppercase tracking-[0.14em]">{label}</span>
-      </div>
-      <p className="mt-2 text-sm font-medium text-[var(--text-primary)]">{value}</p>
+    <div>
+      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-tertiary)]">{label}</p>
+      {multiline ? (
+        <textarea
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={placeholder}
+          className="mt-2 min-h-[120px] w-full rounded-[1.25rem] border border-[var(--card-border)] bg-[var(--bg-base)] px-4 py-3 text-sm leading-7 text-[var(--text-primary)] outline-none transition-colors focus:border-[var(--primary)]"
+        />
+      ) : (
+        <input
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={placeholder}
+          className="mt-2 h-14 w-full rounded-[1.25rem] border border-[var(--card-border)] bg-[var(--bg-base)] px-4 text-sm text-[var(--text-primary)] outline-none transition-colors focus:border-[var(--primary)]"
+        />
+      )}
     </div>
   );
 }
@@ -756,38 +1257,37 @@ function PreferenceGroup({
   items,
   isSelected,
   onToggle,
-  labelFor,
-  multiple = false,
 }: {
   title: string;
   items: string[];
   isSelected: (value: string) => boolean;
   onToggle: (value: string) => void;
-  labelFor?: (value: string) => string;
-  multiple?: boolean;
 }) {
   return (
     <div>
       <div className="mb-3 flex items-center justify-between gap-3">
         <p className="text-sm font-medium text-[var(--text-primary)]">{title}</p>
-        <p className="text-xs text-[var(--text-tertiary)]">{multiple ? 'Pick any that matter' : 'Pick one'}</p>
+        <p className="text-xs text-[var(--text-tertiary)]">Choose what fits this course</p>
       </div>
       <div className="flex flex-wrap gap-2">
-        {items.map((item) => (
-          <button
-            key={item}
-            type="button"
-            onClick={() => onToggle(item)}
-            className={cn(
-              'rounded-full border px-3 py-2 text-sm transition-colors',
-              isSelected(item)
-                ? 'border-[var(--accent-blue)] bg-[var(--documents-bg)] text-[var(--documents)]'
-                : 'border-[var(--card-border)] bg-[var(--bg-base)] text-[var(--text-secondary)] hover:border-[var(--card-border-hover)] hover:text-[var(--text-primary)]'
-            )}
-          >
-            {labelFor ? labelFor(item) : item}
-          </button>
-        ))}
+        {items.map((item) => {
+          const selected = isSelected(item);
+          return (
+            <button
+              key={item}
+              type="button"
+              onClick={() => onToggle(item)}
+              className={cn(
+                'rounded-full border px-3 py-2 text-sm transition-colors',
+                selected
+                  ? 'border-[var(--accent-blue)] bg-[var(--documents-bg)] text-[var(--documents)]'
+                  : 'border-[var(--card-border)] bg-[var(--bg-base)] text-[var(--text-secondary)] hover:border-[var(--card-border-hover)] hover:text-[var(--text-primary)]'
+              )}
+            >
+              {item}
+            </button>
+          );
+        })}
       </div>
     </div>
   );

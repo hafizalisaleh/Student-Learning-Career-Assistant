@@ -43,8 +43,20 @@ def _as_enum_value(value: Any) -> str:
     return getattr(value, "value", value)
 
 
-def _normalize_text(value: Optional[str]) -> str:
-    return " ".join((value or "").strip().split())
+def _normalize_text(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return " ".join(value.strip().split())
+    if isinstance(value, dict):
+        for key in ("label", "text", "content", "value", "title", "name"):
+            normalized = _normalize_text(value.get(key))
+            if normalized:
+                return normalized
+        return ""
+    if isinstance(value, list):
+        return " ".join(part for part in (_normalize_text(item) for item in value) if part)
+    return " ".join(str(value).strip().split())
 
 
 def _normalize_answer(value: Optional[str]) -> str:
@@ -57,6 +69,28 @@ def _truncate(value: Optional[str], limit: int = 700) -> str:
     if len(text) <= limit:
         return text
     return text[: limit - 1].rstrip() + "…"
+
+
+def _suggest_path_title(topic: str) -> str:
+    cleaned = _normalize_text(topic)
+    if not cleaned:
+        return "Personalized Learning Path"
+    return cleaned[:255]
+
+
+def _dedupe_preserve_order(values: Sequence[str]) -> List[str]:
+    seen = set()
+    ordered: List[str] = []
+    for value in values:
+        cleaned = _normalize_text(value)
+        if not cleaned:
+            continue
+        key = cleaned.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        ordered.append(cleaned)
+    return ordered
 
 
 def _coerce_message_text(value: Any) -> str:
@@ -129,6 +163,10 @@ class LearningPathService:
         self._structured_client = RAGLLMClient(
             provider="groq",
             model=settings.GROQ_STRUCTURED_MODEL,
+        )
+        self._setup_client = RAGLLMClient(
+            provider="groq",
+            model=settings.GROQ_SETUP_MODEL,
         )
 
     def _available_chat_models(self) -> List[str]:
@@ -406,6 +444,29 @@ Keep the answer concise but source-aware.
             }
         )
 
+    def _build_setup_question_schema(self) -> Dict[str, Any]:
+        return _strict_object(
+            {
+                "lead": {"type": "string"},
+                "question": {"type": "string"},
+                "options": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                },
+                "multi_select": {"type": "boolean"},
+            }
+        )
+
+    def _build_setup_summary_schema(self) -> Dict[str, Any]:
+        return _strict_object(
+            {
+                "assistant_message": {"type": "string"},
+                "course_title": {"type": "string"},
+                "learning_goal": {"type": "string"},
+                "background": {"type": "string"},
+            }
+        )
+
     def _build_lesson_schema(self) -> Dict[str, Any]:
         section_object = _strict_object(
             {
@@ -482,10 +543,96 @@ Keep the answer concise but source-aware.
             )
         return "\n\n".join(parts)
 
+    def _sanitize_path_outline(
+        self,
+        outline: Dict[str, Any],
+        *,
+        topic: str,
+        goal_depth: str,
+        daily_minutes: int,
+    ) -> Dict[str, Any]:
+        cleaned_units: List[Dict[str, Any]] = []
+        for unit in outline.get("units") or []:
+            if not isinstance(unit, dict):
+                continue
+
+            cleaned_lessons: List[Dict[str, Any]] = []
+            for lesson in unit.get("lessons") or []:
+                if not isinstance(lesson, dict):
+                    continue
+
+                title = _normalize_text(lesson.get("title"))
+                objective = _normalize_text(lesson.get("objective"))
+                if not title or not objective:
+                    continue
+
+                try:
+                    duration_minutes = int(lesson.get("duration_minutes") or 5)
+                except (TypeError, ValueError):
+                    duration_minutes = 5
+
+                try:
+                    difficulty = int(lesson.get("difficulty") or 1)
+                except (TypeError, ValueError):
+                    difficulty = 1
+
+                exercise_type = _normalize_text(lesson.get("exercise_type")) or "multiple_choice"
+                if exercise_type not in {"multiple_choice", "fill_blank", "order_steps"}:
+                    exercise_type = "multiple_choice"
+
+                cleaned_lessons.append(
+                    {
+                        "title": title,
+                        "objective": objective,
+                        "duration_minutes": max(3, min(8, duration_minutes)),
+                        "difficulty": max(1, min(5, difficulty)),
+                        "unlock_hint": _normalize_text(lesson.get("unlock_hint"))
+                        or "Complete the previous step to unlock this lesson.",
+                        "exercise_type": exercise_type,
+                        "key_terms": _dedupe_preserve_order(
+                            [_normalize_text(item) for item in (lesson.get("key_terms") or [])]
+                        )[:8],
+                        "source_refs": _dedupe_preserve_order(
+                            [_normalize_text(item) for item in (lesson.get("source_refs") or [])]
+                        )[:6],
+                    }
+                )
+
+            unit_title = _normalize_text(unit.get("title"))
+            unit_objective = _normalize_text(unit.get("objective"))
+            if not unit_title or not unit_objective or not cleaned_lessons:
+                continue
+
+            cleaned_units.append(
+                {
+                    "title": unit_title,
+                    "objective": unit_objective,
+                    "sequence_reason": _normalize_text(unit.get("sequence_reason"))
+                    or "Builds naturally on the previous unit.",
+                    "lessons": cleaned_lessons,
+                }
+            )
+
+        total_lessons = sum(len(unit["lessons"]) for unit in cleaned_units)
+        return {
+            "title": _normalize_text(outline.get("title")) or _suggest_path_title(topic),
+            "tagline": _normalize_text(outline.get("tagline"))
+            or f"Progress through {total_lessons or self._target_lesson_count(goal_depth, daily_minutes)} short lessons with steady momentum.",
+            "rationale": _normalize_text(outline.get("rationale"))
+            or f"A guided {goal_depth} path for {topic}, designed to fit a {daily_minutes}-minute daily pace.",
+            "estimated_days": max(
+                1,
+                int(outline.get("estimated_days") or math.ceil((total_lessons or 1) * 5 / max(daily_minutes, 5))),
+            ),
+            "units": cleaned_units,
+        }
+
     def _generate_path_outline(
         self,
         topic: str,
         background: str,
+        course_title: Optional[str],
+        learning_goal: Optional[str],
         goal_depth: str,
         daily_minutes: int,
         teaching_style: Sequence[str],
@@ -499,6 +646,8 @@ Design a personalized learning path with short, sequential, motivating lessons.
 
 Topic: {topic}
 Learner background: {background}
+Preferred course title: {course_title or 'derive the best concise title from the topic'}
+Explicit learning goal: {learning_goal or 'derive the goal from the topic, background, and selected depth'}
 Goal depth: {goal_depth}
 Daily time budget: {daily_minutes} minutes
 Teaching style preferences: {', '.join(teaching_style) if teaching_style else 'clear visuals and concrete explanations'}
@@ -526,13 +675,179 @@ Rules:
             max_tokens=2400,
             schema=self._build_path_schema(),
         )
-        outline = safe_load_json(raw)
+        outline = self._sanitize_path_outline(
+            safe_load_json(raw),
+            topic=topic,
+            goal_depth=goal_depth,
+            daily_minutes=daily_minutes,
+        )
         units = outline.get("units") or []
         total_lessons = sum(len(unit.get("lessons") or []) for unit in units)
         if not units or total_lessons == 0:
             raise RuntimeError("Path generation returned no lessons")
+        if _normalize_text(course_title):
+            outline["title"] = course_title.strip()
         outline["estimated_days"] = max(1, int(outline.get("estimated_days") or math.ceil(total_lessons * 5 / max(daily_minutes, 5))))
         return outline
+
+    def _generate_setup_question(
+        self,
+        *,
+        topic: str,
+        stage: str,
+        background: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        topic_label = _normalize_text(topic) or "this topic"
+        fallback = self._fallback_setup_question(topic=topic_label, stage=stage, background=background)
+
+        if stage == "background":
+            prompt = f"""
+Generate the next onboarding question for a learning path builder.
+
+Topic: {topic}
+Stage: background knowledge discovery
+
+Rules:
+- Ask about the learner's background, prior knowledge, or starting point for this topic.
+- Keep the lead warm and concise.
+- Write exactly 4 answer options.
+- Each option should be specific, short, and plausible for the topic.
+- multi_select must be false.
+""".strip()
+        else:
+            prompt = f"""
+Generate the next onboarding question for a learning path builder.
+
+Topic: {topic}
+Known background: {background or 'not provided'}
+Stage: learning goal discovery
+
+Rules:
+- Acknowledge the user's background in one sentence before the question.
+- Ask what they want to achieve with this topic.
+- Write exactly 4 answer options.
+- Options should be short, useful, and action-oriented.
+- multi_select must be true.
+""".strip()
+
+        raw = self._setup_client.generate_json(
+            prompt=prompt,
+            system_prompt="You create onboarding questions for a guided learning-path product. Return JSON only.",
+            temperature=0.35,
+            max_tokens=700,
+            schema=self._build_setup_question_schema(),
+        )
+        payload = safe_load_json(raw)
+        options = _dedupe_preserve_order([_normalize_text(item) for item in (payload.get("options") or [])])
+        if len(options) < 4:
+            options = _dedupe_preserve_order([*options, *fallback["options"]])
+        return {
+            "lead": _normalize_text(payload.get("lead")) or fallback["lead"],
+            "question": _normalize_text(payload.get("question")) or fallback["question"],
+            "options": options[:4],
+            "multi_select": bool(payload.get("multi_select")) if payload.get("multi_select") is not None else fallback["multi_select"],
+        }
+
+    def _fallback_setup_question(
+        self,
+        *,
+        topic: str,
+        stage: str,
+        background: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        if stage == "background":
+            return {
+                "lead": "To personalize your course, let’s understand your learning goal and background knowledge.",
+                "question": f"Which starting point best matches your experience with {topic}?",
+                "options": [
+                    f"I’m completely new to {topic}.",
+                    f"I know the basics of {topic} but want structure.",
+                    f"I’ve used related ideas and want a stronger mental model.",
+                    f"I already work with {topic} and want a deeper foundation.",
+                ],
+                "multi_select": False,
+            }
+
+        background_hint = _normalize_text(background)
+        lead = (
+            f"That’s a helpful foundation for learning about {topic}."
+            if background_hint
+            else f"That gives me enough context to shape your {topic} course."
+        )
+        return {
+            "lead": lead,
+            "question": f"What is your primary goal for learning about {topic}?",
+            "options": [
+                f"Understand the fundamentals of {topic}.",
+                f"Apply {topic} in practical work or projects.",
+                f"Build stronger intuition for research or analysis.",
+                f"Go deeper into advanced ideas and tradeoffs.",
+            ],
+            "multi_select": True,
+        }
+
+    def generate_background_question(
+        self,
+        current_user: User,
+        request: Any,
+    ) -> Dict[str, Any]:
+        _ = current_user
+        return self._generate_setup_question(topic=request.topic, stage="background")
+
+    def generate_goal_question(
+        self,
+        current_user: User,
+        request: Any,
+    ) -> Dict[str, Any]:
+        _ = current_user
+        return self._generate_setup_question(
+            topic=request.topic,
+            stage="goal",
+            background=request.background,
+        )
+
+    def generate_setup_summary(
+        self,
+        current_user: User,
+        request: Any,
+    ) -> Dict[str, Any]:
+        _ = current_user
+        prompt = f"""
+Summarize the setup for a guided learning path.
+
+Topic: {request.topic}
+Background knowledge: {request.background}
+Chosen learner goals: {', '.join(request.selected_goals or []) or 'none provided'}
+Goal depth: {getattr(request.goal_depth, 'value', request.goal_depth)}
+Daily pace: {request.daily_minutes} minutes/day
+Source mode: {getattr(request.source_mode, 'value', request.source_mode)}
+Teaching style: {', '.join(request.teaching_style or []) or 'default'}
+Focus areas: {', '.join(request.focus_areas or []) or 'none'}
+Extra instructions: {request.custom_instructions or 'none'}
+
+Rules:
+- assistant_message should sound like a confident setup assistant.
+- course_title must be concise and marketable.
+- learning_goal must be one strong sentence.
+- background must be a polished rewrite of the learner background knowledge.
+""".strip()
+
+        raw = self._setup_client.generate_json(
+            prompt=prompt,
+            system_prompt="You synthesize onboarding details for a guided course builder. Return JSON only.",
+            temperature=0.35,
+            max_tokens=900,
+            schema=self._build_setup_summary_schema(),
+        )
+        payload = safe_load_json(raw)
+        return {
+            "assistant_message": _normalize_text(payload.get("assistant_message"))
+            or "I've gathered enough information to design a course that fits your background and goals.",
+            "course_title": _normalize_text(payload.get("course_title")) or _suggest_path_title(request.topic),
+            "learning_goal": _normalize_text(payload.get("learning_goal"))
+            or f"Build practical mastery in {request.topic}.",
+            "background": _normalize_text(payload.get("background")) or request.background,
+        }
 
     def _fetch_path_or_404(self, db: Session, current_user: User, path_id: str) -> LearningPath:
         path = db.query(LearningPath).filter(
@@ -775,6 +1090,37 @@ Rules:
         path = self._fetch_path_or_404(db, current_user, path_id)
         return self._serialize_path(db, current_user, path)
 
+    def update_path(
+        self,
+        db: Session,
+        current_user: User,
+        path_id: str,
+        title: str,
+    ) -> Dict[str, Any]:
+        path = self._fetch_path_or_404(db, current_user, path_id)
+        cleaned_title = _normalize_text(title)
+        if len(cleaned_title) < 3:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Path title must be at least 3 characters",
+            )
+        path.title = cleaned_title
+        db.add(path)
+        db.commit()
+        db.refresh(path)
+        return self._serialize_path_card(db, current_user, path)
+
+    def delete_path(
+        self,
+        db: Session,
+        current_user: User,
+        path_id: str,
+    ) -> Dict[str, Any]:
+        path = self._fetch_path_or_404(db, current_user, path_id)
+        db.delete(path)
+        db.commit()
+        return {"success": True}
+
     def _build_curriculum_snapshot(self, path_payload: Dict[str, Any]) -> str:
         lines: List[str] = []
         for unit in path_payload.get("units", [])[:5]:
@@ -987,7 +1333,7 @@ Curriculum snapshot:
             "sources": self._build_chat_sources(path_payload, selected_lesson, tool_results),
         }
 
-    def generate_path(
+    def _prepare_outline_bundle(
         self,
         db: Session,
         current_user: User,
@@ -995,6 +1341,8 @@ Curriculum snapshot:
     ) -> Dict[str, Any]:
         source_mode = request.source_mode.value if hasattr(request.source_mode, "value") else request.source_mode
         goal_depth = request.goal_depth.value if hasattr(request.goal_depth, "value") else request.goal_depth
+        course_title = _normalize_text(getattr(request, "course_title", None))
+        learning_goal = _normalize_text(getattr(request, "learning_goal", None))
         documents = self._load_owned_documents(db, current_user, request.document_ids)
 
         if source_mode in {SourceMode.PDF.value, SourceMode.HYBRID.value} and not documents:
@@ -1033,9 +1381,65 @@ Curriculum snapshot:
                 detail="No usable evidence was found to build a learning path",
             )
 
+        return {
+            "source_mode": source_mode,
+            "goal_depth": goal_depth,
+            "course_title": course_title or None,
+            "learning_goal": learning_goal or None,
+            "documents": documents,
+            "evidence": evidence,
+        }
+
+    def preview_path(
+        self,
+        db: Session,
+        current_user: User,
+        request: Any,
+    ) -> Dict[str, Any]:
+        bundle = self._prepare_outline_bundle(db, current_user, request)
         outline = self._generate_path_outline(
             topic=request.topic,
             background=request.background,
+            course_title=bundle["course_title"],
+            learning_goal=bundle["learning_goal"],
+            goal_depth=bundle["goal_depth"],
+            daily_minutes=request.daily_minutes,
+            teaching_style=request.teaching_style,
+            focus_areas=request.focus_areas,
+            source_mode=bundle["source_mode"],
+            custom_instructions=request.custom_instructions,
+            evidence=bundle["evidence"],
+        )
+        units = outline.get("units") or []
+        total_lessons = sum(len(unit.get("lessons") or []) for unit in units)
+        return {
+            "title": outline["title"],
+            "tagline": outline["tagline"],
+            "rationale": outline["rationale"],
+            "estimated_days": int(outline["estimated_days"]),
+            "total_lessons": total_lessons,
+            "daily_minutes": request.daily_minutes,
+            "learning_goal": bundle["learning_goal"],
+            "units": units,
+        }
+
+    def generate_path(
+        self,
+        db: Session,
+        current_user: User,
+        request: Any,
+    ) -> Dict[str, Any]:
+        bundle = self._prepare_outline_bundle(db, current_user, request)
+        source_mode = bundle["source_mode"]
+        goal_depth = bundle["goal_depth"]
+        documents = bundle["documents"]
+        evidence = bundle["evidence"]
+
+        outline = self._generate_path_outline(
+            topic=request.topic,
+            background=request.background,
+            course_title=bundle["course_title"],
+            learning_goal=bundle["learning_goal"],
             goal_depth=goal_depth,
             daily_minutes=request.daily_minutes,
             teaching_style=request.teaching_style,
@@ -1066,6 +1470,8 @@ Curriculum snapshot:
                 "request_profile": {
                     "topic": request.topic,
                     "background": request.background,
+                    "course_title": bundle["course_title"],
+                    "learning_goal": bundle["learning_goal"],
                     "goal_depth": goal_depth,
                     "daily_minutes": request.daily_minutes,
                     "teaching_style": list(request.teaching_style or []),

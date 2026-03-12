@@ -8,6 +8,12 @@ import type {
   LearningPath,
   LearningPathCard,
   LearningPathGenerateRequest,
+  LearningPathOutlinePreview,
+  LearningPathSetupQuestionRequest,
+  LearningPathSetupQuestionResponse,
+  LearningPathSetupSummaryRequest,
+  LearningPathSetupSummaryResponse,
+  LearningPathUpdateRequest,
   QuizResult,
   RagQueryOptions,
   TableOfContentsResponse,
@@ -31,8 +37,14 @@ interface ApiInstance extends AxiosInstance {
 
   // Learning Paths
   getLearningPaths: () => Promise<LearningPathCard[]>;
+  getLearningPathBackgroundQuestion: (data: LearningPathSetupQuestionRequest) => Promise<LearningPathSetupQuestionResponse>;
+  getLearningPathGoalQuestion: (data: LearningPathSetupQuestionRequest) => Promise<LearningPathSetupQuestionResponse>;
+  getLearningPathSetupSummary: (data: LearningPathSetupSummaryRequest) => Promise<LearningPathSetupSummaryResponse>;
+  previewLearningPath: (data: LearningPathGenerateRequest) => Promise<LearningPathOutlinePreview>;
   generateLearningPath: (data: LearningPathGenerateRequest) => Promise<LearningPath>;
   getLearningPath: (id: string) => Promise<LearningPath>;
+  updateLearningPath: (id: string, data: LearningPathUpdateRequest) => Promise<LearningPathCard>;
+  deleteLearningPath: (id: string) => Promise<{ success: boolean }>;
   chatLearningPath: (pathId: string, data: LearningPathChatRequest) => Promise<LearningPathChatResponse>;
   getLearningLesson: (pathId: string, lessonId: string) => Promise<LearningLessonDetail>;
   generateLearningLesson: (pathId: string, lessonId: string, regenerate?: boolean) => Promise<LearningLessonDetail>;
@@ -205,6 +217,26 @@ axiosInstance.getLearningPaths = async () => {
   return response.data;
 };
 
+axiosInstance.getLearningPathBackgroundQuestion = async (data: LearningPathSetupQuestionRequest) => {
+  const response = await axiosInstance.post('/api/learning-paths/setup/background-question', data);
+  return response.data;
+};
+
+axiosInstance.getLearningPathGoalQuestion = async (data: LearningPathSetupQuestionRequest) => {
+  const response = await axiosInstance.post('/api/learning-paths/setup/goal-question', data);
+  return response.data;
+};
+
+axiosInstance.getLearningPathSetupSummary = async (data: LearningPathSetupSummaryRequest) => {
+  const response = await axiosInstance.post('/api/learning-paths/setup/summary', data);
+  return response.data;
+};
+
+axiosInstance.previewLearningPath = async (data: LearningPathGenerateRequest) => {
+  const response = await axiosInstance.post('/api/learning-paths/preview', data);
+  return response.data;
+};
+
 axiosInstance.generateLearningPath = async (data: LearningPathGenerateRequest) => {
   const response = await axiosInstance.post('/api/learning-paths/generate', data);
   return response.data;
@@ -212,6 +244,16 @@ axiosInstance.generateLearningPath = async (data: LearningPathGenerateRequest) =
 
 axiosInstance.getLearningPath = async (id: string) => {
   const response = await axiosInstance.get(`/api/learning-paths/${id}`);
+  return response.data;
+};
+
+axiosInstance.updateLearningPath = async (id: string, data: LearningPathUpdateRequest) => {
+  const response = await axiosInstance.patch(`/api/learning-paths/${id}`, data);
+  return response.data;
+};
+
+axiosInstance.deleteLearningPath = async (id: string) => {
+  const response = await axiosInstance.delete(`/api/learning-paths/${id}`);
   return response.data;
 };
 

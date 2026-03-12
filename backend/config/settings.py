@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     # Groq
     GROQ_API_KEY: str = ""
     GROQ_MODEL: str = "llama-3.3-70b-versatile"
+    GROQ_SETUP_MODEL: str = "llama-3.3-70b-versatile"
     GROQ_VISION_MODEL: str = "meta-llama/llama-4-scout-17b-16e-instruct"
     GROQ_RESEARCH_MODEL: str = "groq/compound-mini"
     GROQ_DEEP_RESEARCH_MODEL: str = "groq/compound"

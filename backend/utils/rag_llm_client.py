@@ -48,6 +48,21 @@ _GROQ_STRICT_JSON_SCHEMA_MODELS = {
 }
 
 
+def _is_groq_json_validation_error(exc: Exception) -> bool:
+    body = getattr(exc, "body", None)
+    if isinstance(body, dict):
+        error = body.get("error")
+        if isinstance(error, dict):
+            if error.get("code") == "json_validate_failed":
+                return True
+            message = str(error.get("message") or "")
+            if "Generated JSON does not match the expected schema" in message:
+                return True
+
+    message = str(exc)
+    return "json_validate_failed" in message or "Generated JSON does not match the expected schema" in message
+
+
 def _coerce_provider_text(content: Any) -> str:
     if content is None:
         return ""
@@ -417,13 +432,34 @@ class RAGLLMClient:
             json_prompt = prompt
             if response_format.get("type") == "json_object" and "JSON" not in prompt.upper():
                 json_prompt = f"{prompt}\n\nReturn only valid JSON."
-            response = self._groq_client.chat.completions.create(  # type: ignore[union-attr]
-                model=self.model,
-                messages=self._build_messages(json_prompt, system_prompt),
-                temperature=temperature,
-                max_completion_tokens=max_tokens,
-                response_format=response_format,
-            )
+            try:
+                response = self._groq_client.chat.completions.create(  # type: ignore[union-attr]
+                    model=self.model,
+                    messages=self._build_messages(json_prompt, system_prompt),
+                    temperature=temperature,
+                    max_completion_tokens=max_tokens,
+                    response_format=response_format,
+                )
+            except Exception as exc:
+                if response_format.get("type") != "json_schema" or not _is_groq_json_validation_error(exc):
+                    raise
+
+                logger.warning(
+                    "Groq json_schema generation failed for model %s; retrying in json_object mode",
+                    self.model,
+                )
+                fallback_prompt = (
+                    f"{json_prompt}\n\n"
+                    "Return only valid JSON. Do not repeat property names or emit stray tokens.\n"
+                    f"Match this schema exactly:\n{json.dumps(schema or {}, ensure_ascii=False)}"
+                )
+                response = self._groq_client.chat.completions.create(  # type: ignore[union-attr]
+                    model=self.model,
+                    messages=self._build_messages(fallback_prompt, system_prompt),
+                    temperature=min(temperature, 0.1),
+                    max_completion_tokens=max_tokens,
+                    response_format={"type": "json_object"},
+                )
             return _coerce_provider_text(response.choices[0].message.content).strip()
 
         if self.provider == "ollama":

@@ -35,6 +35,8 @@ class LessonProgressStatusEnum(str, Enum):
 class LearningPathGenerateRequest(BaseModel):
     topic: str = Field(min_length=3, max_length=500)
     background: str = Field(min_length=3, max_length=2000)
+    course_title: Optional[str] = Field(default=None, max_length=255)
+    learning_goal: Optional[str] = Field(default=None, max_length=2000)
     goal_depth: GoalDepthEnum
     daily_minutes: int = Field(ge=5, le=120)
     teaching_style: list[str] = Field(default_factory=list)
@@ -43,6 +45,41 @@ class LearningPathGenerateRequest(BaseModel):
     document_ids: list[uuid.UUID] = Field(default_factory=list)
     seed_urls: list[HttpUrl] = Field(default_factory=list)
     custom_instructions: Optional[str] = Field(default=None, max_length=2000)
+
+
+class LearningPathUpdateRequest(BaseModel):
+    title: str = Field(min_length=3, max_length=255)
+
+
+class LearningPathSetupQuestionRequest(BaseModel):
+    topic: str = Field(min_length=3, max_length=500)
+    background: Optional[str] = Field(default=None, max_length=2000)
+
+
+class LearningPathSetupQuestionResponse(BaseModel):
+    lead: str
+    question: str
+    options: list[str] = Field(min_length=2, max_length=4)
+    multi_select: bool = False
+
+
+class LearningPathSetupSummaryRequest(BaseModel):
+    topic: str = Field(min_length=3, max_length=500)
+    background: str = Field(min_length=3, max_length=2000)
+    selected_goals: list[str] = Field(default_factory=list)
+    goal_depth: GoalDepthEnum
+    daily_minutes: int = Field(ge=5, le=120)
+    source_mode: SourceModeEnum
+    teaching_style: list[str] = Field(default_factory=list)
+    focus_areas: list[str] = Field(default_factory=list)
+    custom_instructions: Optional[str] = Field(default=None, max_length=2000)
+
+
+class LearningPathSetupSummaryResponse(BaseModel):
+    assistant_message: str
+    course_title: str
+    learning_goal: str
+    background: str
 
 
 class SourceReferenceResponse(BaseModel):
@@ -113,6 +150,30 @@ class LearningPathDocumentResponse(BaseModel):
     id: uuid.UUID
     title: str
     content_type: str
+
+
+class LearningPathOutlinePreviewLessonResponse(BaseModel):
+    title: str
+    objective: str
+    duration_minutes: int
+
+
+class LearningPathOutlinePreviewUnitResponse(BaseModel):
+    title: str
+    objective: str
+    sequence_reason: str
+    lessons: list[LearningPathOutlinePreviewLessonResponse] = Field(default_factory=list)
+
+
+class LearningPathOutlinePreviewResponse(BaseModel):
+    title: str
+    tagline: str
+    rationale: str
+    estimated_days: int
+    total_lessons: int
+    daily_minutes: int
+    learning_goal: Optional[str] = None
+    units: list[LearningPathOutlinePreviewUnitResponse] = Field(default_factory=list)
 
 
 class LearningPathResponse(BaseModel):
@@ -225,6 +286,10 @@ class LearningPathChatResponse(BaseModel):
     used_live_tools: bool
     history_turns_used: int
     sources: list[LearningPathChatSourceResponse] = Field(default_factory=list)
+
+
+class LearningPathDeleteResponse(BaseModel):
+    success: bool = True
 
 
 class LessonCompletionRequest(BaseModel):

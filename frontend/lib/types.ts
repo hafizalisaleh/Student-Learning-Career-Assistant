@@ -87,6 +87,8 @@ export type LessonProgressStatus = 'not_started' | 'completed' | 'review_due';
 export interface LearningPathGenerateRequest {
   topic: string;
   background: string;
+  course_title?: string;
+  learning_goal?: string;
   goal_depth: GoalDepth;
   daily_minutes: number;
   teaching_style: string[];
@@ -95,6 +97,41 @@ export interface LearningPathGenerateRequest {
   document_ids: string[];
   seed_urls: string[];
   custom_instructions?: string;
+}
+
+export interface LearningPathUpdateRequest {
+  title: string;
+}
+
+export interface LearningPathSetupQuestionRequest {
+  topic: string;
+  background?: string;
+}
+
+export interface LearningPathSetupQuestionResponse {
+  lead: string;
+  question: string;
+  options: string[];
+  multi_select: boolean;
+}
+
+export interface LearningPathSetupSummaryRequest {
+  topic: string;
+  background: string;
+  selected_goals: string[];
+  goal_depth: GoalDepth;
+  daily_minutes: number;
+  source_mode: LearningSourceMode;
+  teaching_style: string[];
+  focus_areas: string[];
+  custom_instructions?: string;
+}
+
+export interface LearningPathSetupSummaryResponse {
+  assistant_message: string;
+  course_title: string;
+  learning_goal: string;
+  background: string;
 }
 
 export interface LearningPathSourceReference {
@@ -165,6 +202,30 @@ export interface LearningPathDocument {
   id: string;
   title: string;
   content_type: string;
+}
+
+export interface LearningPathOutlinePreviewLesson {
+  title: string;
+  objective: string;
+  duration_minutes: number;
+}
+
+export interface LearningPathOutlinePreviewUnit {
+  title: string;
+  objective: string;
+  sequence_reason: string;
+  lessons: LearningPathOutlinePreviewLesson[];
+}
+
+export interface LearningPathOutlinePreview {
+  title: string;
+  tagline: string;
+  rationale: string;
+  estimated_days: number;
+  total_lessons: number;
+  daily_minutes: number;
+  learning_goal?: string | null;
+  units: LearningPathOutlinePreviewUnit[];
 }
 
 export interface LearningPath {
